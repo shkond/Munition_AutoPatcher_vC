@@ -1,3 +1,6 @@
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins.Order;
+
 namespace MunitionAutoPatcher.Services.Interfaces;
 
 /// <summary>
@@ -5,7 +8,7 @@ namespace MunitionAutoPatcher.Services.Interfaces;
 /// </summary>
 public interface ILoadOrderService
 {
-    Task<List<string>> GetLoadOrderAsync();
+    Task<ILoadOrder<IModListing<IFallout4ModGetter>>?> GetLoadOrderAsync();
     Task<bool> ValidateLoadOrderAsync();
     string GetGameDataPath();
 }

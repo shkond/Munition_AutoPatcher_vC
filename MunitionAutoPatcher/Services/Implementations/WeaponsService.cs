@@ -1,49 +1,102 @@
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Fallout4;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
 /// <summary>
-/// Stub implementation of the weapons service
+/// Implementation of the weapons service using Mutagen
 /// </summary>
 public class WeaponsService : IWeaponsService
 {
+    private readonly ILoadOrderService _loadOrderService;
     private readonly List<WeaponData> _weapons = new();
+
+    public WeaponsService(ILoadOrderService loadOrderService)
+    {
+        _loadOrderService = loadOrderService;
+    }
 
     public async Task<List<WeaponData>> ExtractWeaponsAsync(IProgress<string>? progress = null)
     {
-        progress?.Report("Mutagenを使用して武器データを抽出しています... (スタブ)");
-        await Task.Delay(1000); // Simulate extraction
-
-        // Create some stub data
-        _weapons.Clear();
-        _weapons.AddRange(new[]
+        progress?.Report("Mutagenを使用して武器データを抽出しています...");
+        
+        try
         {
-            new WeaponData
+            // Get the load order from the load order service
+            var loadOrder = await _loadOrderService.GetLoadOrderAsync();
+            
+            if (loadOrder == null)
             {
-                FormKey = new FormKey { PluginName = "Fallout4.esm", FormId = 0x001234 },
-                EditorId = "WeaponPistol10mm",
-                Name = "10mmピストル",
-                WeaponType = "Pistol",
-                Damage = 18.0f,
-                FireRate = 46.0f
-            },
-            new WeaponData
-            {
-                FormKey = new FormKey { PluginName = "Fallout4.esm", FormId = 0x005678 },
-                EditorId = "WeaponCombatRifle",
-                Name = "コンバットライフル",
-                WeaponType = "Rifle",
-                Damage = 33.0f,
-                FireRate = 40.0f
+                progress?.Report("エラー: ロードオーダーの取得に失敗しました");
+                return _weapons;
             }
-        });
 
-        progress?.Report($"{_weapons.Count}個の武器データを抽出しました");
-        return _weapons;
+            _weapons.Clear();
+            int weaponCount = 0;
+
+            // Use WinningOverrides to get the final, winning version of each weapon record
+            progress?.Report("プラグインから武器レコードを読み込んでいます...");
+            
+            foreach (var weaponGetter in loadOrder.PriorityOrder.Weapon().WinningOverrides())
+            {
+                try
+                {
+                    // Convert Mutagen weapon to our WeaponData model
+                    var weaponData = new WeaponData
+                    {
+                        FormKey = new Models.FormKey 
+                        { 
+                            PluginName = weaponGetter.FormKey.ModKey.FileName,
+                            FormId = weaponGetter.FormKey.ID
+                        },
+                        EditorId = weaponGetter.EditorID ?? string.Empty,
+                        Name = weaponGetter.Name?.String ?? string.Empty,
+                        Description = weaponGetter.Description?.String ?? string.Empty,
+                        WeaponType = "Unknown", // AnimationType is not directly available in this version
+                        Damage = weaponGetter.BaseDamage,
+                        FireRate = weaponGetter.AnimationAttackSeconds > 0 
+                            ? 60f / weaponGetter.AnimationAttackSeconds 
+                            : 0f
+                    };
+
+                    // Extract default ammo if available
+                    if (weaponGetter.Ammo.FormKey != null)
+                    {
+                        weaponData.DefaultAmmo = new Models.FormKey
+                        {
+                            PluginName = weaponGetter.Ammo.FormKey.ModKey.FileName,
+                            FormId = weaponGetter.Ammo.FormKey.ID
+                        };
+                    }
+
+                    _weapons.Add(weaponData);
+                    weaponCount++;
+                    
+                    // Report progress every 50 weapons
+                    if (weaponCount % 50 == 0)
+                    {
+                        progress?.Report($"{weaponCount}個の武器を処理中...");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Skip weapons that fail to parse
+                    progress?.Report($"警告: 武器の解析に失敗しました: {ex.Message}");
+                }
+            }
+
+            progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
+            return _weapons;
+        }
+        catch (Exception ex)
+        {
+            progress?.Report($"エラー: 武器データの抽出中にエラーが発生しました: {ex.Message}");
+            return _weapons;
+        }
     }
 
-    public Task<WeaponData?> GetWeaponAsync(FormKey formKey)
+    public Task<WeaponData?> GetWeaponAsync(Models.FormKey formKey)
     {
         var weapon = _weapons.FirstOrDefault(w => 
             w.FormKey.PluginName == formKey.PluginName && 
