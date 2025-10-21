@@ -1,0 +1,53 @@
+<UserControl x:Class="MunitionAutoPatcher.Views.MapperView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="武器マッピング" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button Content="マッピング生成" 
+                    Command="{Binding GenerateMappingsCommand}"
+                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
+                    Padding="10,5" 
+                    Margin="0,0,10,0"/>
+            <Button Content="INI生成" 
+                    Command="{Binding GenerateIniCommand}"
+                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
+                    Padding="10,5"/>
+            <ProgressBar Width="200" 
+                         Height="20" 
+                         IsIndeterminate="True" 
+                         Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVisibilityConverter}}"
+                         Margin="10,0,0,0"/>
+        </StackPanel>
+
+        <!-- Mappings Grid -->
+        <DataGrid Grid.Row="2" 
+                  ItemsSource="{Binding WeaponMappings}"
+                  SelectedItem="{Binding SelectedMapping}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="武器名" Binding="{Binding WeaponName}" Width="*"/>
+                <DataGridTextColumn Header="武器FormKey" Binding="{Binding WeaponFormKey}" Width="150"/>
+                <DataGridTextColumn Header="弾薬名" Binding="{Binding AmmoName}" Width="*"/>
+                <DataGridTextColumn Header="弾薬FormKey" Binding="{Binding AmmoFormKey}" Width="150"/>
+                <DataGridTextColumn Header="戦略" Binding="{Binding Strategy}" Width="100"/>
+                <DataGridCheckBoxColumn Header="手動" Binding="{Binding IsManualMapping}" Width="60"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

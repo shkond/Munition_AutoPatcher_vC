@@ -1,1 +1,162 @@
-# Munition_AutoPatcher_vC
+# Munition AutoPatcher vC
+
+Fallout 4武器自動パッチツール - WPF MVVM実装
+
+## 概要
+
+このツールは、Fallout 4の武器MODに対して、RobCo Patcherの設定ファイル（INI）を自動生成するためのWPFアプリケーションです。Mutagenを使用してプラグインから武器データを抽出し、弾薬とのマッピングを行い、パッチ設定を生成します。
+
+## 機能
+
+- **設定画面**: ゲームデータパスの設定、出力パスの設定、マッピング戦略の設定
+- **武器データ抽出**: Mutagenを使用したプラグインからの武器データ抽出（現在はスタブ実装）
+- **マッピング画面**: 武器と弾薬のマッピング管理、マッピング生成
+- **INI生成**: RobCo Patcher用の設定ファイル生成（現在はスタブ実装）
+- **ログ/ステータス**: リアルタイムログ表示とステータス表示
+
+## 技術スタック
+
+- .NET 8.0
+- WPF (Windows Presentation Foundation)
+- MVVM (Model-View-ViewModel) パターン
+- Microsoft.Extensions.DependencyInjection (DI)
+- Microsoft.Extensions.Hosting
+
+## プロジェクト構造
+
+```
+MunitionAutoPatcher/
+├── Models/                          # データモデル
+│   ├── FormKey.cs
+│   ├── WeaponData.cs
+│   ├── WeaponMapping.cs
+│   ├── StrategyConfig.cs
+│   ├── AmmoCategory.cs
+│   └── AmmoData.cs
+├── ViewModels/                      # ビューモデル
+│   ├── ViewModelBase.cs
+│   ├── MainViewModel.cs
+│   ├── SettingsViewModel.cs
+│   ├── MapperViewModel.cs
+│   ├── WeaponMappingViewModel.cs
+│   └── AmmoViewModel.cs
+├── Views/                           # ビュー (XAML + Code-behind)
+│   ├── MainWindow.xaml
+│   ├── SettingsView.xaml
+│   └── MapperView.xaml
+├── Services/                        # サービス層
+│   ├── Interfaces/
+│   │   ├── IOrchestrator.cs
+│   │   ├── IWeaponsService.cs
+│   │   ├── IRobCoIniGenerator.cs
+│   │   ├── ILoadOrderService.cs
+│   │   └── IConfigService.cs
+│   └── Implementations/
+│       ├── OrchestratorService.cs
+│       ├── WeaponsService.cs
+│       ├── RobCoIniGenerator.cs
+│       ├── LoadOrderService.cs
+│       └── ConfigService.cs
+├── Commands/                        # コマンドハンドラ
+│   ├── RelayCommand.cs
+│   └── AsyncRelayCommand.cs
+├── Converters/                      # 値変換
+│   ├── BoolToVisibilityConverter.cs
+│   └── InverseBoolConverter.cs
+└── App.xaml.cs                      # アプリケーションエントリポイント + DI設定
+```
+
+## ビルド方法
+
+### 前提条件
+
+- .NET 8.0 SDK以降
+- Windows 10/11
+- Visual Studio 2022 または Visual Studio Code（推奨）
+
+### ビルドコマンド
+
+```bash
+# ソリューションディレクトリで
+dotnet restore
+dotnet build
+```
+
+### 実行方法
+
+```bash
+# ソリューションディレクトリで
+dotnet run --project MunitionAutoPatcher/MunitionAutoPatcher.csproj
+```
+
+または Visual Studio で F5 キーを押して実行します。
+
+## 使用方法
+
+1. **設定画面**:
+   - ゲームデータパス（Fallout4の Data フォルダ）を設定
+   - 出力INIファイルのパスを設定
+   - マッピング戦略を選択
+   - 「武器データ抽出を開始」ボタンをクリック
+
+2. **マッピング画面**:
+   - メニューから「マッピング」を選択
+   - 「マッピング生成」ボタンをクリックして武器と弾薬のマッピングを生成
+   - マッピングテーブルで確認・編集
+   - 「INI生成」ボタンをクリックしてRobCo Patcher用の設定ファイルを生成
+
+3. **ログ確認**:
+   - 画面下部のログパネルで処理状況を確認
+
+## 今後の実装予定 (TODOs)
+
+### 次のPRで実装予定の機能
+
+- [ ] Mutagen統合: 実際のプラグイン読み込みと武器データ抽出
+- [ ] 弾薬データ抽出: プラグインからの弾薬データ抽出
+- [ ] 自動マッピングロジック: 名前ベース、タイプベースの自動マッピング
+- [ ] マニュアルマッピング編集: UIでの手動マッピング編集機能
+- [ ] INI生成の実装: 実際のRobCo Patcher INIファイル生成
+- [ ] 設定の永続化: アプリケーション設定のJSON保存/読み込み
+- [ ] エラーハンドリング: エラー処理とユーザーへのフィードバック改善
+- [ ] ロードオーダー検証: 実際のプラグインロードオーダーの読み込みと検証
+- [ ] プレビュー機能: INI生成前のプレビュー表示
+- [ ] エクスポート/インポート: マッピングデータのエクスポート/インポート
+
+### 将来的な拡張機能
+
+- ユニットテスト追加
+- 多言語対応（英語など）
+- マッピングルールのテンプレート機能
+- バッチ処理モード
+- プラグイン競合検出
+
+## アーキテクチャ
+
+### MVVM パターン
+
+- **Model**: データとビジネスロジック（Models/, Services/）
+- **View**: UI表示（Views/）
+- **ViewModel**: ViewとModelの仲介、プレゼンテーションロジック（ViewModels/）
+
+### 依存性注入 (DI)
+
+App.xaml.cs で Microsoft.Extensions.DependencyInjection を使用してサービスとViewModelを登録し、DIコンテナから解決しています。
+
+### 非同期処理
+
+AsyncRelayCommand を使用して、長時間実行される処理（データ抽出、INI生成など）を非同期で実行し、UIのレスポンスを維持します。
+
+## 注意事項
+
+- 現在のバージョンは**スタブ実装**です。Mutagen統合やINI生成などの実際の機能は次のPRで実装されます。
+- Windows専用アプリケーションです（WPF使用のため）。
+- .NET 8.0以降が必要です。
+
+## ライセンス
+
+TBD
+
+## 貢献
+
+TBD

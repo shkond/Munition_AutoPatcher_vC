@@ -1,0 +1,67 @@
+<UserControl x:Class="MunitionAutoPatcher.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="設定" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+        <!-- Game Data Path -->
+        <GroupBox Grid.Row="1" Header="ゲームデータパス" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding GameDataPath}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="参照..." Command="{Binding BrowseGameDataCommand}" Width="80"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Output Path -->
+        <GroupBox Grid.Row="2" Header="出力INIファイルパス" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding OutputPath}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="参照..." Command="{Binding BrowseOutputPathCommand}" Width="80"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Strategy Settings -->
+        <GroupBox Grid.Row="3" Header="マッピング戦略" Margin="0,0,0,10">
+            <StackPanel>
+                <CheckBox Content="名前で自動マッピング" IsChecked="{Binding AutoMapByName}" Margin="0,5"/>
+                <CheckBox Content="タイプで自動マッピング" IsChecked="{Binding AutoMapByType}" Margin="0,5"/>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Actions -->
+        <GroupBox Grid.Row="4" Header="アクション" Margin="0,0,0,10">
+            <StackPanel>
+                <Button Content="武器データ抽出を開始" 
+                        Command="{Binding StartExtractionCommand}" 
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
+                        Padding="10,5" 
+                        Margin="0,5"/>
+                <ProgressBar Height="20" 
+                             IsIndeterminate="True" 
+                             Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVisibilityConverter}}"
+                             Margin="0,5"/>
+            </StackPanel>
+        </GroupBox>
+    </Grid>
+</UserControl>
