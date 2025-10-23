@@ -11,6 +11,7 @@ public class WeaponsService : IWeaponsService
 {
     private readonly ILoadOrderService _loadOrderService;
     private readonly List<WeaponData> _weapons = new();
+    private readonly List<AmmoData> _ammo = new();
 
     public WeaponsService(ILoadOrderService loadOrderService)
     {
@@ -87,6 +88,38 @@ public class WeaponsService : IWeaponsService
             }
 
             progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
+            // Build an ammo list by scanning the weapons' DefaultAmmo entries (fallback)
+            _ammo.Clear();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var w in _weapons)
+            {
+                try
+                {
+                    if (w.DefaultAmmo != null && !string.IsNullOrEmpty(w.DefaultAmmo.PluginName) && w.DefaultAmmo.FormId != 0)
+                    {
+                        var key = $"{w.DefaultAmmo.PluginName}:{w.DefaultAmmo.FormId:X8}";
+                        if (!seen.Contains(key))
+                        {
+                            seen.Add(key);
+                            _ammo.Add(new AmmoData
+                            {
+                                FormKey = new Models.FormKey
+                                {
+                                    PluginName = w.DefaultAmmo.PluginName,
+                                    FormId = w.DefaultAmmo.FormId
+                                },
+                                Name = string.Empty,
+                                EditorId = string.Empty,
+                                Damage = 0,
+                                AmmoType = string.Empty
+                            });
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            progress?.Report($"弾薬抽出(武器参照から)完了: {_ammo.Count}個の弾薬を収集しました");
             return _weapons;
         }
         catch (Exception ex)
@@ -107,5 +140,10 @@ public class WeaponsService : IWeaponsService
     public List<WeaponData> GetAllWeapons()
     {
         return _weapons.ToList();
+    }
+
+    public List<AmmoData> GetAllAmmo()
+    {
+        return _ammo.ToList();
     }
 }

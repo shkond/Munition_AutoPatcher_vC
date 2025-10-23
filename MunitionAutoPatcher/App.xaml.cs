@@ -40,7 +40,34 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
-        await _host.StartAsync();
+#if DEBUG
+        // In Debug builds, pause at startup to allow attaching a debugger (useful when launching via MO2)
+        try
+        {
+            DebugConsole.Show();
+            Console.WriteLine("--- DEBUG MODE ---");
+            Console.WriteLine("デバッガをアタッチしてください。アタッチ後、Enterキーを押すと処理を続行します...");
+            Console.ReadLine();
+        }
+        catch
+        {
+            // Console may not be available in some launch contexts (e.g., GUI-only hosts). Ignore failures.
+        }
+#endif
+
+        try
+        {
+            await _host.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            // Always log a summary; in DEBUG builds, print full exception
+            Console.WriteLine($"ホストの起動中にエラーが発生しました: {ex.Message}");
+#if DEBUG
+            Console.WriteLine(ex.ToString());
+#endif
+            throw;
+        }
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
         var mainViewModel = _host.Services.GetRequiredService<MainViewModel>();
@@ -53,6 +80,9 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+#if DEBUG
+        try { DebugConsole.Hide(); } catch { }
+#endif
         await _host.StopAsync();
         _host.Dispose();
 

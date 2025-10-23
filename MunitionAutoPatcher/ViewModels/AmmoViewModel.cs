@@ -40,4 +40,6 @@ public class AmmoViewModel : ViewModelBase
         get => _ammoType;
         set => SetProperty(ref _ammoType, value);
     }
+
+    public string DisplayName => string.IsNullOrEmpty(Name) ? FormKey : $"{Name} ({FormKey})";
 }

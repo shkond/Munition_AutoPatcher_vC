@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": ".NET Launch (WPF)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/MunitionAutoPatcher/bin/Debug/net8.0-windows/MunitionAutoPatcher.dll",
+      "args": [],
+  "cwd": "${workspaceFolder}",
+  "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+            "name": "Attach to MO2 Process", // 分かりやすい名前を付けます
+            "type": "coreclr",
+            "request": "attach",
+            "processId": "${command:pickProcess}" // これが重要。実行時にプロセスを選択するダイアログを表示します
+    }
+  ]
+}

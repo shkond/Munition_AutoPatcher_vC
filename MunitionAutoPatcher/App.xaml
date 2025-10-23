@@ -1,7 +1,11 @@
 <Application x:Class="MunitionAutoPatcher.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:MunitionAutoPatcher.Converters">
     <Application.Resources>
-         
+        <!-- Converters shared across views. Placing them here ensures UserControls
+             can resolve StaticResource references during InitializeComponent. -->
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
     </Application.Resources>
 </Application>
