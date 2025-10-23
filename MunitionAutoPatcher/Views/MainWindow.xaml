@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:MunitionAutoPatcher.Views"
+        xmlns:vm="clr-namespace:MunitionAutoPatcher.ViewModels"
         xmlns:converters="clr-namespace:MunitionAutoPatcher.Converters"
         mc:Ignorable="d"
         Title="Munition AutoPatcher" Height="600" Width="900">
@@ -11,10 +12,11 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         
-        <DataTemplate x:Key="SettingsViewTemplate">
+        <!-- Use DataType-based DataTemplates so WPF automatically selects the view for a ViewModel -->
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
             <views:SettingsView/>
         </DataTemplate>
-        <DataTemplate x:Key="MapperViewTemplate">
+        <DataTemplate DataType="{x:Type vm:MapperViewModel}">
             <views:MapperView/>
         </DataTemplate>
     </Window.Resources>
@@ -42,29 +44,8 @@
 
         <!-- Content Area -->
         <Border Grid.Row="1" BorderBrush="LightGray" BorderThickness="0,1,0,1">
-            <ContentControl Content="{Binding CurrentView}">
-                <ContentControl.Resources>
-                    <Style TargetType="ContentControl">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding CurrentView}" Value="{x:Null}">
-                                <Setter Property="ContentTemplate" Value="{x:Null}"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </ContentControl.Resources>
-                <ContentControl.Style>
-                    <Style TargetType="ContentControl">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding CurrentView.GetType().Name}" Value="SettingsViewModel">
-                                <Setter Property="ContentTemplate" Value="{StaticResource SettingsViewTemplate}"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding CurrentView.GetType().Name}" Value="MapperViewModel">
-                                <Setter Property="ContentTemplate" Value="{StaticResource MapperViewTemplate}"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </ContentControl.Style>
-            </ContentControl>
+            <!-- Let WPF pick the DataTemplate based on the ViewModel type (CurrentView) -->
+            <ContentControl Content="{Binding CurrentView}" />
         </Border>
 
         <!-- Status Bar -->
