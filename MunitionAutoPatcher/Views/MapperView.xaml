@@ -33,21 +33,45 @@
         </StackPanel>
 
         <!-- Mappings Grid -->
-        <DataGrid Grid.Row="2" 
-                  ItemsSource="{Binding WeaponMappings}"
-                  SelectedItem="{Binding SelectedMapping}"
-                  AutoGenerateColumns="False"
-                  CanUserAddRows="False"
-                  CanUserDeleteRows="False"
-                  IsReadOnly="True">
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <DataGrid Grid.Column="0"
+                      ItemsSource="{Binding WeaponMappings}"
+                      SelectedItem="{Binding SelectedMapping}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      IsReadOnly="False">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="武器名" Binding="{Binding WeaponName}" Width="*"/>
                 <DataGridTextColumn Header="武器FormKey" Binding="{Binding WeaponFormKey}" Width="150"/>
                 <DataGridTextColumn Header="弾薬名" Binding="{Binding AmmoName}" Width="*"/>
                 <DataGridTextColumn Header="弾薬FormKey" Binding="{Binding AmmoFormKey}" Width="150"/>
                 <DataGridTextColumn Header="戦略" Binding="{Binding Strategy}" Width="100"/>
-                <DataGridCheckBoxColumn Header="手動" Binding="{Binding IsManualMapping}" Width="60"/>
+                    <DataGridCheckBoxColumn Header="手動" Binding="{Binding IsManualMapping}" Width="60"/>
             </DataGrid.Columns>
         </DataGrid>
+
+            <!-- Details pane: ammo selector limited to specific plugin -->
+            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                <TextBlock Text="選択中のマッピング" FontWeight="Bold" Margin="0,0,0,10"/>
+                <TextBlock Text="武器:"/>
+                <TextBlock Text="{Binding SelectedMapping.WeaponName}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+                <TextBlock Text="弾薬候補 (Munitions - An Ammo Expansion.esl)"/>
+                <ComboBox ItemsSource="{Binding AmmoCandidates}"
+                          SelectedItem="{Binding SelectedAmmo}"
+                          DisplayMemberPath="DisplayName"
+                          Margin="0,5,0,10"/>
+
+                <Button Content="適用 (選択弾薬をマッピングに反映)"
+                        Command="{Binding ApplyMappingCommand}"
+                        IsEnabled="{Binding SelectedAmmo, Converter={StaticResource InverseBoolConverter}}"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>
