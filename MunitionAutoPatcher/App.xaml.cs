@@ -40,6 +40,9 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Ensure support for legacy code page encodings (Shift-JIS, etc.) used by some game plugins.
+        // Call once at startup so Encoding.GetEncoding(...) works for code pages.
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 #if DEBUG
         // In Debug builds, pause at startup to allow attaching a debugger (useful when launching via MO2)
         try

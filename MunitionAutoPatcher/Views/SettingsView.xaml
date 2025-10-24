@@ -5,7 +5,8 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
-    <Grid Margin="20">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -42,7 +43,7 @@
         </GroupBox>
 
         <!-- Strategy Settings -->
-        <GroupBox Grid.Row="3" Header="マッピング戦略" Margin="0,0,0,10">
+        <GroupBox Grid.Row="4" Header="マッピング戦略" Margin="0,0,0,10">
             <StackPanel>
                 <CheckBox Content="名前で自動マッピング" IsChecked="{Binding AutoMapByName}" Margin="0,5"/>
                 <CheckBox Content="タイプで自動マッピング" IsChecked="{Binding AutoMapByType}" Margin="0,5"/>
@@ -57,7 +58,7 @@
         </GroupBox>
 
         <!-- Actions -->
-        <GroupBox Grid.Row="4" Header="アクション" Margin="0,0,0,10">
+        <GroupBox Grid.Row="3" Header="アクション" Margin="0,0,0,10">
             <StackPanel>
                 <Button Content="武器データ抽出を開始" 
                         Command="{Binding StartExtractionCommand}" 
@@ -70,5 +71,6 @@
                              Margin="0,5"/>
             </StackPanel>
         </GroupBox>
-    </Grid>
+        </Grid>
+    </ScrollViewer>
 </UserControl>
