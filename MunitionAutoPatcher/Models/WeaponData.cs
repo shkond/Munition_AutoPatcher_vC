@@ -10,6 +10,7 @@ public class WeaponData
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public FormKey? DefaultAmmo { get; set; }
+    public string DefaultAmmoName { get; set; } = string.Empty;
     public float Damage { get; set; }
     public float FireRate { get; set; }
     public string WeaponType { get; set; } = string.Empty;
