@@ -110,13 +110,24 @@ public class MapperViewModel : ViewModelBase
             try
             {
                 var pluginFilter = "Munitions - An Ammo Expansion"; // match with or without extension
+                // read exclusion flags from config
+                var excludeFallout = _configService.GetExcludeFallout4Esm();
+                var excludeDlc = _configService.GetExcludeDlcEsms();
+                var excludeCc = _configService.GetExcludeCcEsl();
                 var allAmmo = _weaponsService.GetAllAmmo();
+                    var preferEditor = _configService.GetPreferEditorIdForDisplay();
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var a in allAmmo)
                 {
                     if (a == null) continue;
                     if (string.IsNullOrEmpty(a.FormKey.PluginName)) continue;
                     var pn = a.FormKey.PluginName;
+                    var pnLower = pn.Trim().ToLowerInvariant();
+                    // Exclude based on user settings
+                    if ((excludeFallout && pnLower == "fallout4.esm") ||
+                        (excludeDlc && pnLower.StartsWith("dlc") && pnLower.EndsWith(".esm")) ||
+                        (excludeCc && pnLower.StartsWith("cc") && pnLower.EndsWith(".esl")))
+                        continue;
                     var pnNorm = pn.EndsWith(".esp", StringComparison.OrdinalIgnoreCase) || pn.EndsWith(".esl", StringComparison.OrdinalIgnoreCase)
                         ? pn[..pn.LastIndexOf('.')]
                         : pn;
@@ -124,12 +135,22 @@ public class MapperViewModel : ViewModelBase
                     var key = $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}";
                     if (seen.Add(key))
                     {
+                        var name = a.Name ?? string.Empty;
+                        var editor = a.EditorId ?? string.Empty;
+                        var display = string.Empty;
+                        if (preferEditor && !string.IsNullOrEmpty(editor))
+                            display = !string.IsNullOrEmpty(name) ? $"{editor} — {name}" : editor;
+                        else
+                            display = !string.IsNullOrEmpty(name) ? $"{name} ({key})" : (!string.IsNullOrEmpty(editor) ? $"{editor} ({key})" : key);
+
                         AmmoCandidates.Add(new AmmoViewModel
                         {
-                            Name = a.Name ?? string.Empty,
+                            Name = name,
+                            EditorId = editor,
                             FormKey = key,
                             Damage = a.Damage,
-                            AmmoType = a.AmmoType ?? string.Empty
+                            AmmoType = a.AmmoType ?? string.Empty,
+                            DisplayName = display
                         });
                     }
                 }
@@ -143,16 +164,25 @@ public class MapperViewModel : ViewModelBase
                         if (fa == null) continue;
                         if (string.IsNullOrEmpty(fa.PluginName)) continue;
                         var pn = fa.PluginName;
+                        var pnLower = pn.Trim().ToLowerInvariant();
+                        // Exclude based on user settings
+                        if ((excludeFallout && pnLower == "fallout4.esm") ||
+                            (excludeDlc && pnLower.StartsWith("dlc") && pnLower.EndsWith(".esm")) ||
+                            (excludeCc && pnLower.StartsWith("cc") && pnLower.EndsWith(".esl")))
+                            continue;
                         var pnNorm = pn.EndsWith(".esp", StringComparison.OrdinalIgnoreCase) || pn.EndsWith(".esl", StringComparison.OrdinalIgnoreCase)
                             ? pn[..pn.LastIndexOf('.')]
                             : pn;
                         if (!string.Equals(pnNorm, pluginFilter, StringComparison.OrdinalIgnoreCase)) continue;
                         if (seen2.Add(fa.FormId))
                         {
+                            var key2 = $"{fa.PluginName}:{fa.FormId:X8}";
                             AmmoCandidates.Add(new AmmoViewModel
                             {
                                 Name = string.Empty,
-                                FormKey = $"{fa.PluginName}:{fa.FormId:X8}",
+                                EditorId = string.Empty,
+                                FormKey = key2,
+                                DisplayName = key2
                             });
                         }
                     }
@@ -162,10 +192,29 @@ public class MapperViewModel : ViewModelBase
             {
                 // ignore
             }
+            // Read exclusion flags for weapon filtering
+            var excludeFalloutWeapons = _configService.GetExcludeFallout4Esm();
+            var excludeDlcWeapons = _configService.GetExcludeDlcEsms();
+            var excludeCcWeapons = _configService.GetExcludeCcEsl();
+
+            var preferEditorForWeapons = _configService.GetPreferEditorIdForDisplay();
             foreach (var weapon in weapons)
             {
                 var ammoName = string.Empty;
                 var ammoFormKey = "N/A";
+                // Exclude entire weapon row if its plugin is excluded by settings
+                try
+                {
+                    var wpnPn = weapon.FormKey?.PluginName ?? string.Empty;
+                    var wpnPnLower = wpnPn.Trim().ToLowerInvariant();
+                    if ((excludeFalloutWeapons && wpnPnLower == "fallout4.esm") ||
+                        (excludeDlcWeapons && wpnPnLower.StartsWith("dlc") && wpnPnLower.EndsWith(".esm")) ||
+                        (excludeCcWeapons && wpnPnLower.StartsWith("cc") && wpnPnLower.EndsWith(".esl")))
+                    {
+                        continue; // skip this weapon entirely
+                    }
+                }
+                catch { }
                 if (weapon.DefaultAmmo != null)
                 {
                     ammoFormKey = $"{weapon.DefaultAmmo.PluginName}:{weapon.DefaultAmmo.FormId:X8}";
@@ -186,10 +235,19 @@ public class MapperViewModel : ViewModelBase
                 if (string.IsNullOrEmpty(ammoName) && ammoFormKey != "N/A")
                     ammoName = ammoFormKey; // final fallback show formkey
 
+                // Determine weapon display name based on preference
+                var wname = weapon.Name ?? string.Empty;
+                var weditor = weapon.EditorId ?? string.Empty;
+                string weaponDisplay;
+                if (preferEditorForWeapons && !string.IsNullOrEmpty(weditor))
+                    weaponDisplay = !string.IsNullOrEmpty(wname) ? $"{weditor} — {wname}" : weditor;
+                else
+                    weaponDisplay = !string.IsNullOrEmpty(wname) ? wname : (!string.IsNullOrEmpty(weditor) ? weditor : (weapon.FormKey?.ToString() ?? "Unknown"));
+
                 WeaponMappings.Add(new WeaponMappingViewModel
                 {
-                    WeaponName = weapon.Name,
-                    WeaponFormKey = weapon.FormKey.ToString(),
+                    WeaponName = weaponDisplay,
+                    WeaponFormKey = weapon.FormKey?.ToString() ?? "Unknown",
                     AmmoName = ammoName,
                     AmmoFormKey = ammoFormKey,
                     Strategy = "Default"

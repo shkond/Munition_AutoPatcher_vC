@@ -46,6 +46,13 @@
             <StackPanel>
                 <CheckBox Content="名前で自動マッピング" IsChecked="{Binding AutoMapByName}" Margin="0,5"/>
                 <CheckBox Content="タイプで自動マッピング" IsChecked="{Binding AutoMapByType}" Margin="0,5"/>
+                <!-- Plugin exclusion toggles -->
+                <Separator Margin="0,8"/>
+                <TextBlock Text="表示フィルター" FontWeight="Bold" Margin="0,6,0,2"/>
+                <CheckBox Content="Fallout4.esm を除外" IsChecked="{Binding ExcludeFallout4Esm}" Margin="0,3"/>
+                <CheckBox Content="DLC*.esm を除外" IsChecked="{Binding ExcludeDlcEsms}" Margin="0,3"/>
+                <CheckBox Content="cc*.esl を除外" IsChecked="{Binding ExcludeCcEsl}" Margin="0,3"/>
+                <CheckBox Content="EditorID を優先表示" IsChecked="{Binding PreferEditorIdForDisplay}" Margin="0,8"/>
             </StackPanel>
         </GroupBox>
 
