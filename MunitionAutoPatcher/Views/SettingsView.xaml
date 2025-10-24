@@ -76,6 +76,22 @@
                              Margin="0,5"/>
             </StackPanel>
         </GroupBox>
+
+        <!-- OMOD extraction results -->
+        <GroupBox Grid.Row="5" Header="OMOD 抽出結果 (CSV 出力および一覧)" Margin="0,0,0,10">
+            <DataGrid ItemsSource="{Binding OmodCandidates}" AutoGenerateColumns="False" IsReadOnly="True" SelectedItem="{Binding SelectedOmodCandidate}" Height="250">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="種類" Binding="{Binding CandidateType}" Width="80" />
+                    <DataGridTextColumn Header="ベース武器" Binding="{Binding BaseWeaponEditorId}" Width="150" />
+                    <DataGridTextColumn Header="候補 ID" Binding="{Binding CandidateEditorId}" Width="150" />
+                    <DataGridTextColumn Header="候補 FormKey" Binding="{Binding CandidateFormKey}" Width="140" />
+                    <DataGridTextColumn Header="候補弾薬" Binding="{Binding CandidateAmmo}" Width="140" />
+                    <DataGridTextColumn Header="プラグイン" Binding="{Binding SourcePlugin}" Width="120" />
+                    <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="*" />
+                    <DataGridTextColumn Header="SuggestedTarget" Binding="{Binding SuggestedTarget}" Width="100" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </GroupBox>
         </Grid>
     </ScrollViewer>
 </UserControl>

@@ -1,4 +1,6 @@
 using System.Windows.Input;
+using System.Collections.ObjectModel;
+using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Commands;
 using MunitionAutoPatcher.Services.Interfaces;
 using Microsoft.Win32;
@@ -22,6 +24,7 @@ public class SettingsViewModel : ViewModelBase
     private bool _excludeCcEsl = true;
     private bool _preferEditorIdForDisplay = false;
     private bool _isProcessing;
+    private OmodCandidate? _selectedOmodCandidate;
 
     public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator, MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor omodExtractor)
     {
@@ -35,6 +38,7 @@ public class SettingsViewModel : ViewModelBase
     ExtractOmodsCommand = new AsyncRelayCommand(StartOmodExtraction, () => !IsProcessing);
         
         LoadSettings();
+        OmodCandidates = new ObservableCollection<OmodCandidate>();
     }
 
     public string GameDataPath
@@ -120,6 +124,14 @@ public class SettingsViewModel : ViewModelBase
     public ICommand StartExtractionCommand { get; }
     public ICommand ExtractOmodsCommand { get; }
 
+    public ObservableCollection<OmodCandidate> OmodCandidates { get; }
+
+    public OmodCandidate? SelectedOmodCandidate
+    {
+        get => _selectedOmodCandidate;
+        set => SetProperty(ref _selectedOmodCandidate, value);
+    }
+
     private void LoadSettings()
     {
         GameDataPath = _configService.GetGameDataPath();
@@ -198,7 +210,13 @@ public class SettingsViewModel : ViewModelBase
                 }
             });
 
-            await _omodExtractor.ExtractCandidatesAsync(progress);
+            var results = await _omodExtractor.ExtractCandidatesAsync(progress);
+            // Populate UI collection
+            OmodCandidates.Clear();
+            foreach (var r in results)
+            {
+                OmodCandidates.Add(r);
+            }
         }
         finally
         {
