@@ -24,6 +24,7 @@ public partial class App : Application
                 services.AddSingleton<IConfigService, ConfigService>();
                 services.AddSingleton<ILoadOrderService, LoadOrderService>();
                 services.AddSingleton<IWeaponsService, WeaponsService>();
+                services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
                 services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
                 services.AddSingleton<IOrchestrator, OrchestratorService>();
 

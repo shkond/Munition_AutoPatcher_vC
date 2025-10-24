@@ -1,0 +1,196 @@
+
+Robco Patcher 技術仕様・機能解説ドキュメント
+
+
+1. エグゼクティブサマリー
+
+Robco Patcherは、Bethesda Game Studiosのビデオゲーム「Fallout 4」用の高度なMOD（改造）ツールです。このツールの最大の特徴は、ゲームの**実行時（ランタイム）**に、シンプルなINI設定ファイルを通じてゲーム内のデータレコードを動的に変更する能力にあります。
+解決する問題:
+従来のFallout 4のMOD制作では、ゲームデータを変更する際に.espや.eslといったプラグインファイルを作成する必要がありました。これらのプラグインはロード順によって互いに設定を上書きするため、MODが増えるほど深刻な競合問題を引き起こし、ユーザー体験を損なう原因となっていました。
+Robco Patcherは、プラグインファイルを一切使用せず、ゲームがメモリにロードしたデータを直接書き換えることで、これらの競合問題を根本的に回避します。
+対象利用者:
+MOD制作者: 自身のMODと他のMODとの互勘性を容易に確保したい開発者。
+上級MODユーザー: 複数のMODを組み合わせて、自分だけの安定したゲーム環境を構築したいユーザー。
+
+2. コアコンセプト
+
+Robco Patcherの動作は、以下の3つの主要な概念に基づいています。
+
+2.1. ランタイムパッチング
+
+ゲームの起動時、F4SE（Fallout 4 Script Extender）を通じてRobco PatcherのDLLファイルがロードされます。その後、指定されたフォルダにあるINI設定ファイルを読み込み、その指示に従ってメモリ上のゲームデータを直接変更します。この処理はゲームがセーブデータをロードする前に行われるため、変更は即座にゲームプレイに反映されます。
+利点:
+競合の排除: プラグインのロード順に依存しないため、MOD同士が同じレコードを編集しても競合しません。
+クリーンなアンインストール: INIファイルを削除するだけでパッチを無効化でき、セーブデータに不要なデータを残しません。
+
+2.2. INIベースのコンフィギュレーション
+
+全てのパッチは、人間が読み書きしやすい.ini形式のテキストファイルで記述されます。これにより、専門的なMOD開発ツール（Creation Kitなど）を必要とせず、メモ帳などのシンプルなテキストエディタだけでパッチの作成・編集が可能です。
+
+2.3. モジュール化されたパッチャーシステム
+
+Robco Patcherは、単一の巨大なツールではなく、変更したいデータの種類（武器、NPC、アーマーなど）ごとに特化した複数の「パッチャー」モジュールで構成されています。これにより、各機能の役割が明確になり、設定ファイルの記述がシンプルになります。
+
+3. アーキテクチャとファイル構造
+
+Robco Patcherが正しく機能するためには、特定のフォルダ構造に従ってファイルを配置する必要があります。
+メインDLL:
+[Fallout 4インストール先]\Data\F4SE\Plugins\RobCo_Patcher.dll
+ツールの本体です。F4SEによってロードされます。
+設定ファイル用ルートフォルダ:
+[Fallout 4インストール先]\Data\F4SE\Plugins\RobCo_Patcher\
+全てのINIパッチファイルはこのフォルダ以下に配置されます。
+カテゴリ別サブフォルダ:
+ルートフォルダの下には、各パッチャーに対応したサブフォルダが存在します。INIファイルは、その内容に応じた正しいフォルダに配置する必要があります。
+...\RobCo_Patcher\weapon\ : 武器レコードを変更するパッチ
+...\RobCo_Patcher\armor\ : アーマーレコードを変更するパッチ
+...\RobCo_Patcher\npc\ : NPCレコードを変更するパッチ
+...\RobCo_Patcher\formlist\ : FormList（レベルドリストを含む）を変更するパッチ
+...\RobCo_Patcher\race\ : 種族レコードを変更するパッチ
+(その他、各パッチャーに対応したフォルダ)
+INIファイルの命名規則とベストプラクティス:
+常時ロード: MyPatch.ini のように、プラグイン名と無関係な名前のINIファイルは、MODの導入状況に関わらず常に読み込まれます。
+条件付きロード: SomeMod.esp.ini のように、ファイル名を特定のプラグインファイル（.esp, .esl）と同じにすると、そのプラグインがロードオーダー上で有効になっている場合にのみINIファイルが読み込まれます。
+フォルダ分けの推奨: 複数のMODが同じFallout4.esm.iniという名前のファイルを使用する可能性があるため、競合を避けるために、以下のようにMODごとにさらにサブフォルダを作成することが強く推奨されます。
+良い例: ...\npc\MySuperMod\Fallout4.esm.ini
+
+4. パッチ作成のワークフロー
+
+目的の明確化:
+何を達成したいかを具体的に定義します。（例: 「Aという武器MODが使用する独自弾薬を、Bという弾薬拡張MODの弾薬に変更したい」）
+レコード情報の特定:
+xEdit (FO4Edit) などのツールを使用し、変更対象となるレコードのFormIDと、それらが含まれるプラグインファイル名を正確に特定します。
+適切なパッチャーの選択:
+変更したいレコードの種類に応じて、使用するパッチャーを決定します。（例: 武器の使用弾薬を変更する場合 → Weapon Patcher）
+パッチ文字列の記述:
+INIファイル内に、フィルター:操作 の形式でパッチを記述します。
+フィルター (filterBy...): 変更したい対象を正確に絞り込むための条件を指定します。
+操作 (change..., set..., add...): 対象に対してどのような変更を加えるかを指定します。
+配置とテスト:
+作成したINIファイルを、前述の正しいカテゴリフォルダ内に配置します。その後、ゲームを起動し、意図した変更が反映されているかを確認します。
+
+5. 主要なパッチャー機能の概要 (一部抜粋)
+
+
+Weapon Patcher
+
+目的: 武器レコードの変更。
+フィルター例: filterByWeapons (FormIDで指定), filterByKeywords (キーワードで指定)
+操作例: setNewAmmo (使用弾薬の変更), attackDamage (攻撃力の変更), keywordsToAdd (キーワードの追加)
+
+FormList / Leveled List Patcher
+
+目的: FormListやレベルドリスト（敵やコンテナから出現するアイテムのリスト）の編集。
+フィルター例: filterByFormLists, filterByLLs (リストのFormIDで指定)
+操作例: formsToAdd / addToLLs (リストへのアイテム追加), formsToRemove / removeFromLLs (リストからのアイテム削除)
+
+NPC Patcher
+
+目的: NPCレコードの広範な変更。
+フィルター例: filterByNpcs (FormIDで指定), filterByRaces (種族で指定), filterByFactions (所属組織で指定)
+操作例: changeAVIFS (体力などのステータス変更), objectsToAdd (インベントリへのアイテム追加), factionsToAdd (所属組織の追加)
+(その他、Armor, Race, Ingestible, Miscなど、各種レコードに対応したパッチャーが存在する)
+
+6. トラブルシューティングとFAQ
+
+Q: パッチが機能しません。
+A: 以下の点を確認してください。
+INIファイルは正しいカテゴリフォルダに配置されていますか？
+INIファイルの構文（コロン:、コンマ,、チルダ~など）は正しいですか？
+指定したFormIDやプラグイン名は正確ですか？
+コメントは ; ではなく // で記述されていますか？
+Q: クラフトメニューでレシピを見ても、作成されるアイテムの情報が変更されていません。
+A: これはRobco Patcherの正常な動作です。パッチはゲームの実行時にメモリ上のデータを変更するため、クラフトメニューのような静的なUIには変更が反映されません。実際にアイテムを作成し、インベントリ内で確認すれば、パッチが適用されていることが確認できます。
+
+
+
+Robco Patcher INI構文 詳細リファレンス
+1. 基本構文とルール
+Robco PatcherのすべてのINIファイルは、一貫した基本構造に従います。
+1.1. パッチ文字列の構造
+各行が一つのパッチ処理を表し、フィルターと操作の2つの部分で構成されます。これらはコロン:で区切られます。
+フィルター1=値:フィルター2=値:操作1=値:操作2=値
+フィルター (filterBy...): 変更したい対象（特定の武器、NPC、キーワードを持つアイテムなど）を絞り込むための条件です。
+操作 (change..., set..., add...): フィルターで選択された対象にどのような変更を加えるかを定義します。
+1.2. 区切り文字
+: (コロン): フィルター群と操作群を区切ります。
+, (カンマ): フィルターや操作に複数のFormIDやキーワードを指定する場合の区切り文字として使用します。
+~ (チルダ): 操作の引数（パラメータ）を区切るために使用します。例えば、レベルドリストに追加する際のレベル~個数のように使われます。
+1.3. FormIDの書式
+ゲーム内レコードを指定する際は、以下の形式を使用します。
+PluginName.esp|FormID
+例: Fallout4.esm|00004822
+1.4. コメント
+INIファイル内でコメントを記述する場合、行の先頭にスラッシュを2つ//置きます。
+例: //これは10mmピストルを変更するパッチです
+
+2. パッチャー別 フィルターと操作の詳細
+以下に、各パッチャーモジュールで利用可能な主要なフィルターと操作を記載します。
+2.1. Weapon Patcher
+(配置先: ...\RobCo_Patcher\weapon\)
+フィルター:
+filterByWeapons: FormIDで特定の武器を指定します。
+filterByAmmos: 使用している弾薬で武器を絞り込みます。
+filterByKeywords: 指定したキーワードをすべて持つ武器を対象とします（AND条件）。
+filterByKeywordsOr: 指定したキーワードのいずれかを持つ武器を対象とします（OR条件）。
+操作:
+setNewAmmo: 武器が使用する弾薬を変更します。
+setNewAmmoList: NPCがその武器を装備した際に所持する弾薬リストを変更します。
+attackDamage: 武器の基本攻撃力を設定します。
+outOfRangeDamageMult: 射程外ダメージ倍率を設定します。
+keywordsToAdd/keywordsToRemove: 武器にキーワードを追加または削除します。
+fullName: 武器の名前を変更します。~新しい名前~のようにチルダで囲みます。
+2.2. Armor Patcher
+(配置先: ...\RobCo_Patcher\armor\)
+フィルター:
+filterByArmors: FormIDで特定のアーマーを指定します。
+filterByKeywords/Or/Excluded: キーワードでアーマーを絞り込みます。
+filterByBipedSlots: 装備部位（スロット）のインデックス番号で絞り込みます（AND条件）。
+操作:
+damageResist: 物理ダメージ耐性を設定します。
+weight: 重量 (weight) または重量の倍率 (weightMult) を設定します。
+health: 耐久値 (health) または耐久値の倍率 (healthMult) を設定します。
+objectEffect: 特殊効果（レジェンダリー効果など）を追加または削除します。削除する場合はnullを指定します。
+keywordsToAdd/keywordsToRemove: アーマーにキーワードを追加または削除します。
+2.3. NPC Patcher
+(配置先: ...\RobCo_Patcher\npc\)
+フィルター:
+filterByNpcs: FormIDで特定のNPCを指定します。
+filterByRaces: 種族でNPCを絞り込みます。
+filterByFactions: 所属派閥でNPCを絞り込みます（AND条件）。
+filterByGender: 性別 (maleまたはfemale) で絞り込みます。
+操作:
+changeAVIFS: 体力、各種耐性などのアクター値を変更します。AV_FormID=値またはAV_FormID=最小値~最大値の形式で指定します。
+levelRange: 指定したレベル範囲のNPCに対して、アクター値をレベルに比例して変動させます。
+objectsToAdd/objectsToRemove: NPCのインベントリにアイテムを追加または削除します。追加時はアイテムID=個数の形式で指定します。
+factionsToAdd/factionsToRemove: NPCの所属派閥を追加または削除します。追加時は派閥ID=ランクの形式で指定します。
+perksToAdd/spellsToAdd: NPCにパークや魔法効果を追加します。
+setEssential: 不死属性フラグを有効 (yes) または無効 (no) にします。
+2.4. Leveled List / FormList Patcher
+(配置先: ...\RobCo_Patcher\formlist\ または leveledlist\)
+フィルター:
+filterByFormLists / filterByLLs: FormIDで特定のリストを指定します。
+filterByContainers: FormIDで特定のコンテナを指定します。
+フィルターなし: フィルターを指定しない場合、全てのリストが対象となります。
+操作:
+formsToAdd/formsToRemove: FormListにアイテムを追加または削除します。
+formsToReplace: FormList内のアイテムを別のアイテムに置換します。置換前ID=置換後IDの形式で指定します。
+addToLLs: レベルドリストにアイテムを追加します。アイテムID~レベル~個数~確率の形式で指定します。
+clear: リスト内の全てのアイテムを削除します。
+2.5. Object Modification (OMOD) Patcher
+(配置先: ...\RobCo_Patcher\omod\)
+フィルター:
+filterByOMod: FormIDで特定の改造パーツを指定します。
+filterByNameContainsAnd/Or/Exclude: 名前に含まれる文字列で改造パーツを絞り込みます。
+操作:
+changeOModPropertiesFloat: 単純な数値プロパティ（重量など）を変更します。プロパティ名=数値の形式で指定します。
+changeOModPropertiesVP: FormIDと数値のペアで構成されるプロパティ（ダメージタイプなど）を変更します。VPのFormID=数値の形式で指定します。
+changeOModPropertiesForm: FormIDで管理されるプロパティ（キーワードや使用弾薬など）を変更します。変更前のFormID=変更後のFormIDの形式で指定します。
+2.6. Constructible Object (COBJ) Patcher
+(配置先: ...\RobCo_Patcher\cobj\)
+フィルター:
+filterByCobjs: FormIDで特定のレシピを指定します。
+操作:
+categoryKeywordsToAdd/ToRemove: レシピがクラフトメニューで表示されるカテゴリを変更します。
+workbenchKeyword: レシピの作成に必要なワークベンチを指定します。nullを指定すると削除されます。
+
