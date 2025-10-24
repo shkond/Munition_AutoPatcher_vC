@@ -1,6 +1,10 @@
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
 using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda;
+using Mutagen.Bethesda.Environments;
+
+using System.Linq;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -21,12 +25,12 @@ public class WeaponsService : IWeaponsService
     public async Task<List<WeaponData>> ExtractWeaponsAsync(IProgress<string>? progress = null)
     {
         progress?.Report("Mutagenを使用して武器データを抽出しています...");
-        
+
         try
         {
             // Get the load order from the load order service
             var loadOrder = await _loadOrderService.GetLoadOrderAsync();
-            
+
             if (loadOrder == null)
             {
                 progress?.Report("エラー: ロードオーダーの取得に失敗しました");
@@ -36,61 +40,112 @@ public class WeaponsService : IWeaponsService
             _weapons.Clear();
             int weaponCount = 0;
 
-            // Use WinningOverrides to get the final, winning version of each weapon record
+            // Try to use Mutagen's GameEnvironment (MO2) so we can resolve FormLinks via the env.LinkCache.
+            // If that fails, fall back to the provided loadOrder's PriorityOrder enumeration.
             progress?.Report("プラグインから武器レコードを読み込んでいます...");
-            
-            foreach (var weaponGetter in loadOrder.PriorityOrder.Weapon().WinningOverrides())
+
+            // Track seen ammo keys while building _ammo so we don't duplicate entries.
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            try
             {
-                try
-                {
-                    // Convert Mutagen weapon to our WeaponData model
-                    var weaponData = new WeaponData
-                    {
-                        FormKey = new Models.FormKey 
-                        { 
-                            PluginName = weaponGetter.FormKey.ModKey.FileName,
-                            FormId = weaponGetter.FormKey.ID
-                        },
-                        EditorId = weaponGetter.EditorID ?? string.Empty,
-                        Name = weaponGetter.Name?.String ?? string.Empty,
-                        Description = weaponGetter.Description?.String ?? string.Empty,
-                        WeaponType = "Unknown", // AnimationType is not directly available in this version
-                        Damage = weaponGetter.BaseDamage,
-                        FireRate = weaponGetter.AnimationAttackSeconds > 0 
-                            ? 60f / weaponGetter.AnimationAttackSeconds 
-                            : 0f
-                    };
+                using var env = GameEnvironment.Typical.Fallout4(Fallout4Release.Fallout4);
+                var weaponGetters = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides();
 
-                    // Extract default ammo if available
-                    if (weaponGetter.Ammo.FormKey != null)
+                foreach (var weaponGetter in weaponGetters)
+                {
+                    try
                     {
-                        weaponData.DefaultAmmo = new Models.FormKey
+                        var weaponData = new WeaponData
                         {
-                            PluginName = weaponGetter.Ammo.FormKey.ModKey.FileName,
-                            FormId = weaponGetter.Ammo.FormKey.ID
+                            FormKey = new Models.FormKey
+                            {
+                                PluginName = weaponGetter.FormKey.ModKey.FileName,
+                                FormId = weaponGetter.FormKey.ID
+                            },
+                            EditorId = weaponGetter.EditorID ?? string.Empty,
+                            Name = weaponGetter.Name?.String ?? string.Empty,
+                            Description = weaponGetter.Description?.String ?? string.Empty,
+                            WeaponType = "Unknown",
+                            Damage = weaponGetter.BaseDamage,
+                            FireRate = weaponGetter.AnimationAttackSeconds > 0
+                                ? 60f / weaponGetter.AnimationAttackSeconds
+                                : 0f
                         };
-                    }
 
-                    _weapons.Add(weaponData);
-                    weaponCount++;
-                    
-                    // Report progress every 50 weapons
-                    if (weaponCount % 50 == 0)
+                        // Try to resolve ammunition via the record's FormLink using env.LinkCache
+                        try
+                        {
+                            // Many weapon records expose their ammo as .Ammo (FormLink) - try to resolve it.
+                            var ammoLink = weaponGetter.Ammo;
+                            if (!ammoLink.IsNull && ammoLink.TryResolve(env.LinkCache, out var ammoRecord))
+                            {
+                                weaponData.DefaultAmmo = new Models.FormKey
+                                {
+                                    PluginName = ammoRecord.FormKey.ModKey.FileName,
+                                    FormId = ammoRecord.FormKey.ID
+                                };
+                                weaponData.DefaultAmmoName = ammoRecord.Name?.String ?? string.Empty;
+
+                                var key = $"{weaponData.DefaultAmmo.PluginName}:{weaponData.DefaultAmmo.FormId:X8}";
+                                if (!seen.Contains(key))
+                                {
+                                    seen.Add(key);
+                                    _ammo.Add(new AmmoData
+                                    {
+                                        FormKey = new Models.FormKey
+                                        {
+                                            PluginName = weaponData.DefaultAmmo.PluginName,
+                                            FormId = weaponData.DefaultAmmo.FormId
+                                        },
+                                        Name = weaponData.DefaultAmmoName,
+                                        EditorId = ammoRecord.EditorID ?? string.Empty,
+                                        Damage = 0,
+                                        AmmoType = string.Empty
+                                    });
+                                }
+                            }
+                            else
+                            {
+                                // No resolvable ammo record; if a FormKey is present on the link, preserve it as a fallback
+                                if (weaponGetter.Ammo.FormKey != null)
+                                {
+                                    weaponData.DefaultAmmo = new Models.FormKey
+                                    {
+                                        PluginName = weaponGetter.Ammo.FormKey.ModKey.FileName,
+                                        FormId = weaponGetter.Ammo.FormKey.ID
+                                    };
+                                }
+                            }
+                        }
+                        catch { }
+
+                        _weapons.Add(weaponData);
+                        weaponCount++;
+
+                        if (weaponCount % 50 == 0)
+                        {
+                            progress?.Report($"{weaponCount}個の武器を処理中...");
+                        }
+                    }
+                    catch (Exception ex)
                     {
-                        progress?.Report($"{weaponCount}個の武器を処理中...");
+                        progress?.Report($"警告: 武器の解析に失敗しました: {ex.Message}");
                     }
                 }
-                catch (Exception ex)
-                {
-                    // Skip weapons that fail to parse
-                    progress?.Report($"警告: 武器の解析に失敗しました: {ex.Message}");
-                }
+
+                progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
+                progress?.Report($"弾薬抽出(MO2 LinkCache 経由)完了: {_ammo.Count}個の弾薬を収集しました");
+                return _weapons;
+            }
+            catch
+            {
+                // Could not use GameEnvironment (not running under MO2 or API unavailable) - fall back to provided loadOrder
             }
 
             progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
             // Build an ammo list by scanning the weapons' DefaultAmmo entries (fallback)
             _ammo.Clear();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var w in _weapons)
             {
                 try
@@ -108,7 +163,7 @@ public class WeaponsService : IWeaponsService
                                     PluginName = w.DefaultAmmo.PluginName,
                                     FormId = w.DefaultAmmo.FormId
                                 },
-                                Name = string.Empty,
+                                Name = w.DefaultAmmoName ?? string.Empty,
                                 EditorId = string.Empty,
                                 Damage = 0,
                                 AmmoType = string.Empty
@@ -128,11 +183,13 @@ public class WeaponsService : IWeaponsService
             return _weapons;
         }
     }
+    
 
+    // 既存の GetWeaponAsync / GetAllWeapons / GetAllAmmo など...
     public Task<WeaponData?> GetWeaponAsync(Models.FormKey formKey)
     {
-        var weapon = _weapons.FirstOrDefault(w => 
-            w.FormKey.PluginName == formKey.PluginName && 
+        var weapon = _weapons.FirstOrDefault(w =>
+            w.FormKey.PluginName == formKey.PluginName &&
             w.FormKey.FormId == formKey.FormId);
         return Task.FromResult(weapon);
     }
@@ -147,3 +204,5 @@ public class WeaponsService : IWeaponsService
         return _ammo.ToList();
     }
 }
+
+    

@@ -12,7 +12,6 @@ public class MapperViewModel : ViewModelBase
 {
     private readonly IOrchestrator _orchestrator;
     private readonly IWeaponsService _weaponsService;
-    private readonly IRobCoIniGenerator _iniGenerator;
     private readonly IConfigService _configService;
     private ObservableCollection<WeaponMappingViewModel> _weaponMappings = new();
     private WeaponMappingViewModel? _selectedMapping;
@@ -20,11 +19,10 @@ public class MapperViewModel : ViewModelBase
     private ObservableCollection<AmmoViewModel> _ammoCandidates = new();
     private AmmoViewModel? _selectedAmmo;
 
-    public MapperViewModel(IOrchestrator orchestrator, IWeaponsService weaponsService, IRobCoIniGenerator iniGenerator, IConfigService configService)
+    public MapperViewModel(IOrchestrator orchestrator, IWeaponsService weaponsService, IConfigService configService)
     {
         _orchestrator = orchestrator;
         _weaponsService = weaponsService;
-        _iniGenerator = iniGenerator;
         _configService = configService;
 
         GenerateMappingsCommand = new AsyncRelayCommand(GenerateMappings, () => !IsProcessing);
@@ -166,12 +164,34 @@ public class MapperViewModel : ViewModelBase
             }
             foreach (var weapon in weapons)
             {
+                var ammoName = string.Empty;
+                var ammoFormKey = "N/A";
+                if (weapon.DefaultAmmo != null)
+                {
+                    ammoFormKey = $"{weapon.DefaultAmmo.PluginName}:{weapon.DefaultAmmo.FormId:X8}";
+                    if (!string.IsNullOrEmpty(weapon.DefaultAmmoName))
+                        ammoName = weapon.DefaultAmmoName;
+                }
+
+                // fallback: try to find ammo name in extracted ammo list
+                if (string.IsNullOrEmpty(ammoName))
+                {
+                    var allAmmo = _weaponsService.GetAllAmmo();
+                    var key = weapon.DefaultAmmo != null ? $"{weapon.DefaultAmmo.PluginName}:{weapon.DefaultAmmo.FormId:X8}" : string.Empty;
+                    var found = allAmmo.FirstOrDefault(a => $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}".Equals(key, StringComparison.OrdinalIgnoreCase));
+                    if (found != null && !string.IsNullOrEmpty(found.Name))
+                        ammoName = found.Name;
+                }
+
+                if (string.IsNullOrEmpty(ammoName) && ammoFormKey != "N/A")
+                    ammoName = ammoFormKey; // final fallback show formkey
+
                 WeaponMappings.Add(new WeaponMappingViewModel
                 {
                     WeaponName = weapon.Name,
                     WeaponFormKey = weapon.FormKey.ToString(),
-                    AmmoName = "自動マッピング未実装",
-                    AmmoFormKey = "N/A",
+                    AmmoName = ammoName,
+                    AmmoFormKey = ammoFormKey,
                     Strategy = "Default"
                 });
             }
@@ -215,7 +235,7 @@ public class MapperViewModel : ViewModelBase
             }
 
             var outputPath = _configService.GetOutputPath();
-            await _iniGenerator.GenerateIniAsync(outputPath, mappings, progress);
+            await _orchestrator.GenerateIniAsync(outputPath, mappings, progress);
         }
         finally
         {

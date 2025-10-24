@@ -51,12 +51,15 @@ public class OrchestratorService : IOrchestrator
         return true;
     }
 
-    public async Task<bool> GenerateIniAsync(string outputPath, IProgress<string>? progress = null)
+    public async Task<bool> GenerateIniAsync(string outputPath, List<WeaponMapping> mappings, IProgress<string>? progress = null)
     {
         progress?.Report("INIファイルを生成しています...");
         await Task.Delay(500); // Simulate ini generation
         
-        var mappings = new List<WeaponMapping>(); // TODO: Get actual mappings
+        // Use provided mappings (coming from UI or another caller)
+        if (mappings == null)
+            mappings = new List<WeaponMapping>();
+
         await _iniGenerator.GenerateIniAsync(outputPath, mappings, progress);
         
         progress?.Report($"INIファイル生成完了: {outputPath}");

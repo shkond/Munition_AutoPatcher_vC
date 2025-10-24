@@ -51,6 +51,42 @@ internal class Program
             }
             Console.WriteLine("---------------------------------");
 
+            // DIAGNOSTIC: enumerate ammo by scanning weapons and resolving their Ammo FormLink via LinkCache
+            try
+            {
+                var weaponList = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides().ToList();
+                var resolvedAmmo = new System.Collections.Generic.List<(string Key, string Name)>();
+                for (int i = 0; i < Math.Min(50, weaponList.Count); i++)
+                {
+                    try
+                    {
+                        var w = weaponList[i];
+                        var link = w.Ammo;
+                        if (!link.IsNull && link.TryResolve(env.LinkCache, out var ammoRec))
+                        {
+                            var key = $"{ammoRec.FormKey.ModKey.FileName}:{ammoRec.FormKey.ID:X8}";
+                            var name = ammoRec.Name?.String ?? ammoRec.EditorID ?? "<no name>";
+                            resolvedAmmo.Add((key, name));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Weapon {i}] ammo-resolve error: {ex.Message}");
+                    }
+                }
+
+                Console.WriteLine($"Resolved ammo entries from weapons: {resolvedAmmo.Count}");
+                for (int i = 0; i < Math.Min(20, resolvedAmmo.Count); i++)
+                {
+                    var a = resolvedAmmo[i];
+                    Console.WriteLine($"[AmmoSample {i}] {a.Key} - Name='{a.Name}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GameEnvironment weapon->ammo diagnostic failed: " + ex.Message);
+            }
+
             var allWeapons = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides().ToList();
             Console.WriteLine($"\nロードオーダー全体から {allWeapons.Count} 個のユニークな武器レコードを検出しました。");
 
