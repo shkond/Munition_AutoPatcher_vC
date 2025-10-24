@@ -16,6 +16,7 @@ artifacts/
 artifacts/*.ini
 TestResults/
 coverage/
+config/config.json
 
 # NuGet / packages
 *.nupkg
