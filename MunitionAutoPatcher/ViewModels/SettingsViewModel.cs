@@ -16,6 +16,9 @@ public class SettingsViewModel : ViewModelBase
     private string _outputPath = @"C:\Games\Fallout4\Data\RobCoPatcher.ini";
     private bool _autoMapByName = true;
     private bool _autoMapByType = true;
+    private bool _excludeFallout4Esm = true;
+    private bool _excludeDlcEsms = true;
+    private bool _excludeCcEsl = true;
     private bool _isProcessing;
 
     public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator)
@@ -54,6 +57,42 @@ public class SettingsViewModel : ViewModelBase
         set => SetProperty(ref _autoMapByType, value);
     }
 
+    public bool ExcludeFallout4Esm
+    {
+        get => _excludeFallout4Esm;
+        set
+        {
+            if (SetProperty(ref _excludeFallout4Esm, value))
+            {
+                _configService.SetExcludeFallout4Esm(value);
+            }
+        }
+    }
+
+    public bool ExcludeDlcEsms
+    {
+        get => _excludeDlcEsms;
+        set
+        {
+            if (SetProperty(ref _excludeDlcEsms, value))
+            {
+                _configService.SetExcludeDlcEsms(value);
+            }
+        }
+    }
+
+    public bool ExcludeCcEsl
+    {
+        get => _excludeCcEsl;
+        set
+        {
+            if (SetProperty(ref _excludeCcEsl, value))
+            {
+                _configService.SetExcludeCcEsl(value);
+            }
+        }
+    }
+
     public bool IsProcessing
     {
         get => _isProcessing;
@@ -68,6 +107,9 @@ public class SettingsViewModel : ViewModelBase
     {
         GameDataPath = _configService.GetGameDataPath();
         OutputPath = _configService.GetOutputPath();
+        ExcludeFallout4Esm = _configService.GetExcludeFallout4Esm();
+        ExcludeDlcEsms = _configService.GetExcludeDlcEsms();
+        ExcludeCcEsl = _configService.GetExcludeCcEsl();
     }
 
     private void BrowseGameData()

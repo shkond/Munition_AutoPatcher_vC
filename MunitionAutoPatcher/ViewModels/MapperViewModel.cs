@@ -110,6 +110,10 @@ public class MapperViewModel : ViewModelBase
             try
             {
                 var pluginFilter = "Munitions - An Ammo Expansion"; // match with or without extension
+                // read exclusion flags from config
+                var excludeFallout = _configService.GetExcludeFallout4Esm();
+                var excludeDlc = _configService.GetExcludeDlcEsms();
+                var excludeCc = _configService.GetExcludeCcEsl();
                 var allAmmo = _weaponsService.GetAllAmmo();
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var a in allAmmo)
@@ -117,6 +121,12 @@ public class MapperViewModel : ViewModelBase
                     if (a == null) continue;
                     if (string.IsNullOrEmpty(a.FormKey.PluginName)) continue;
                     var pn = a.FormKey.PluginName;
+                    var pnLower = pn.Trim().ToLowerInvariant();
+                    // Exclude based on user settings
+                    if ((excludeFallout && pnLower == "fallout4.esm") ||
+                        (excludeDlc && pnLower.StartsWith("dlc") && pnLower.EndsWith(".esm")) ||
+                        (excludeCc && pnLower.StartsWith("cc") && pnLower.EndsWith(".esl")))
+                        continue;
                     var pnNorm = pn.EndsWith(".esp", StringComparison.OrdinalIgnoreCase) || pn.EndsWith(".esl", StringComparison.OrdinalIgnoreCase)
                         ? pn[..pn.LastIndexOf('.')]
                         : pn;
@@ -143,6 +153,12 @@ public class MapperViewModel : ViewModelBase
                         if (fa == null) continue;
                         if (string.IsNullOrEmpty(fa.PluginName)) continue;
                         var pn = fa.PluginName;
+                        var pnLower = pn.Trim().ToLowerInvariant();
+                        // Exclude based on user settings
+                        if ((excludeFallout && pnLower == "fallout4.esm") ||
+                            (excludeDlc && pnLower.StartsWith("dlc") && pnLower.EndsWith(".esm")) ||
+                            (excludeCc && pnLower.StartsWith("cc") && pnLower.EndsWith(".esl")))
+                            continue;
                         var pnNorm = pn.EndsWith(".esp", StringComparison.OrdinalIgnoreCase) || pn.EndsWith(".esl", StringComparison.OrdinalIgnoreCase)
                             ? pn[..pn.LastIndexOf('.')]
                             : pn;
@@ -162,10 +178,28 @@ public class MapperViewModel : ViewModelBase
             {
                 // ignore
             }
+            // Read exclusion flags for weapon filtering
+            var excludeFalloutWeapons = _configService.GetExcludeFallout4Esm();
+            var excludeDlcWeapons = _configService.GetExcludeDlcEsms();
+            var excludeCcWeapons = _configService.GetExcludeCcEsl();
+
             foreach (var weapon in weapons)
             {
                 var ammoName = string.Empty;
                 var ammoFormKey = "N/A";
+                // Exclude entire weapon row if its plugin is excluded by settings
+                try
+                {
+                    var wpnPn = weapon.FormKey?.PluginName ?? string.Empty;
+                    var wpnPnLower = wpnPn.Trim().ToLowerInvariant();
+                    if ((excludeFalloutWeapons && wpnPnLower == "fallout4.esm") ||
+                        (excludeDlcWeapons && wpnPnLower.StartsWith("dlc") && wpnPnLower.EndsWith(".esm")) ||
+                        (excludeCcWeapons && wpnPnLower.StartsWith("cc") && wpnPnLower.EndsWith(".esl")))
+                    {
+                        continue; // skip this weapon entirely
+                    }
+                }
+                catch { }
                 if (weapon.DefaultAmmo != null)
                 {
                     ammoFormKey = $"{weapon.DefaultAmmo.PluginName}:{weapon.DefaultAmmo.FormId:X8}";
@@ -189,7 +223,7 @@ public class MapperViewModel : ViewModelBase
                 WeaponMappings.Add(new WeaponMappingViewModel
                 {
                     WeaponName = weapon.Name,
-                    WeaponFormKey = weapon.FormKey.ToString(),
+                    WeaponFormKey = weapon.FormKey?.ToString() ?? "Unknown",
                     AmmoName = ammoName,
                     AmmoFormKey = ammoFormKey,
                     Strategy = "Default"

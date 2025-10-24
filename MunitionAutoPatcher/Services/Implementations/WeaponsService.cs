@@ -5,6 +5,7 @@ using Mutagen.Bethesda;
 using Mutagen.Bethesda.Environments;
 
 using System.Linq;
+using System.Text;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -20,6 +21,32 @@ public class WeaponsService : IWeaponsService
     public WeaponsService(ILoadOrderService loadOrderService)
     {
         _loadOrderService = loadOrderService;
+    }
+
+    // Try to repair common UTF-8 <-> Latin1 mojibake by reinterpreting the string
+    // If the string contains suspicious characters (e.g. Ã, Â, å) attempt ISO-8859-1 -> UTF8 conversion.
+    private static string FixMojibake(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+            return s;
+
+        if (s.IndexOf('Ã') >= 0 || s.IndexOf('Â') >= 0 || s.IndexOf('å') >= 0 || s.IndexOf('æ') >= 0)
+        {
+            try
+            {
+                var bytes = Encoding.GetEncoding("ISO-8859-1").GetBytes(s);
+                var fixedStr = Encoding.UTF8.GetString(bytes);
+                // If it produced something readable, return it; otherwise fall through
+                if (!string.IsNullOrWhiteSpace(fixedStr))
+                    return fixedStr;
+            }
+            catch
+            {
+                // ignore and return original
+            }
+        }
+
+        return s;
     }
 
     public async Task<List<WeaponData>> ExtractWeaponsAsync(IProgress<string>? progress = null)
@@ -64,8 +91,8 @@ public class WeaponsService : IWeaponsService
                                 FormId = weaponGetter.FormKey.ID
                             },
                             EditorId = weaponGetter.EditorID ?? string.Empty,
-                            Name = weaponGetter.Name?.String ?? string.Empty,
-                            Description = weaponGetter.Description?.String ?? string.Empty,
+                            Name = FixMojibake(weaponGetter.Name?.String ?? string.Empty),
+                            Description = FixMojibake(weaponGetter.Description?.String ?? string.Empty),
                             WeaponType = "Unknown",
                             Damage = weaponGetter.BaseDamage,
                             FireRate = weaponGetter.AnimationAttackSeconds > 0
@@ -85,7 +112,7 @@ public class WeaponsService : IWeaponsService
                                     PluginName = ammoRecord.FormKey.ModKey.FileName,
                                     FormId = ammoRecord.FormKey.ID
                                 };
-                                weaponData.DefaultAmmoName = ammoRecord.Name?.String ?? string.Empty;
+                                weaponData.DefaultAmmoName = FixMojibake(ammoRecord.Name?.String ?? string.Empty);
 
                                 var key = $"{weaponData.DefaultAmmo.PluginName}:{weaponData.DefaultAmmo.FormId:X8}";
                                 if (!seen.Contains(key))
@@ -98,7 +125,7 @@ public class WeaponsService : IWeaponsService
                                             PluginName = weaponData.DefaultAmmo.PluginName,
                                             FormId = weaponData.DefaultAmmo.FormId
                                         },
-                                        Name = weaponData.DefaultAmmoName,
+                                        Name = FixMojibake(weaponData.DefaultAmmoName),
                                         EditorId = ammoRecord.EditorID ?? string.Empty,
                                         Damage = 0,
                                         AmmoType = string.Empty

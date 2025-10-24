@@ -18,6 +18,10 @@ public class ConfigService : IConfigService
         public string GameDataPath { get; set; } = string.Empty;
         public string OutputPath { get; set; } = string.Empty;
         public StrategyConfig Strategy { get; set; } = new StrategyConfig();
+        // UI exclusion defaults: exclude Fallout4.esm and DLC esms and cc esl by default
+        public bool ExcludeFallout4Esm { get; set; } = true;
+        public bool ExcludeDlcEsms { get; set; } = true;
+        public bool ExcludeCcEsl { get; set; } = true;
     }
 
     public ConfigService()
@@ -127,6 +131,45 @@ public class ConfigService : IConfigService
     {
         EnsureLoaded();
         _loaded!.OutputPath = path;
+        _ = SaveAllAsync();
+    }
+
+    public bool GetExcludeFallout4Esm()
+    {
+        EnsureLoaded();
+        return _loaded!.ExcludeFallout4Esm;
+    }
+
+    public void SetExcludeFallout4Esm(bool v)
+    {
+        EnsureLoaded();
+        _loaded!.ExcludeFallout4Esm = v;
+        _ = SaveAllAsync();
+    }
+
+    public bool GetExcludeDlcEsms()
+    {
+        EnsureLoaded();
+        return _loaded!.ExcludeDlcEsms;
+    }
+
+    public void SetExcludeDlcEsms(bool v)
+    {
+        EnsureLoaded();
+        _loaded!.ExcludeDlcEsms = v;
+        _ = SaveAllAsync();
+    }
+
+    public bool GetExcludeCcEsl()
+    {
+        EnsureLoaded();
+        return _loaded!.ExcludeCcEsl;
+    }
+
+    public void SetExcludeCcEsl(bool v)
+    {
+        EnsureLoaded();
+        _loaded!.ExcludeCcEsl = v;
         _ = SaveAllAsync();
     }
 

@@ -13,4 +13,11 @@ public interface IConfigService
     void SetGameDataPath(string path);
     string GetOutputPath();
     void SetOutputPath(string path);
+    // Exclusion flags for UI filtering
+    bool GetExcludeFallout4Esm();
+    void SetExcludeFallout4Esm(bool v);
+    bool GetExcludeDlcEsms();
+    void SetExcludeDlcEsms(bool v);
+    bool GetExcludeCcEsl();
+    void SetExcludeCcEsl(bool v);
 }

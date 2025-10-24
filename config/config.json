@@ -7,5 +7,8 @@
     "AutoMapByType": true,
     "AllowManualOverride": true,
     "CustomRules": {}
-  }
+  },
+  "ExcludeFallout4Esm": true,
+  "ExcludeDlcEsms": true,
+  "ExcludeCcEsl": true
 }
