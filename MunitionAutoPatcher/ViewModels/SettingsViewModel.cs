@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using System.Windows;
 using System.Collections.ObjectModel;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Commands;
@@ -15,6 +16,7 @@ public class SettingsViewModel : ViewModelBase
     private readonly IConfigService _configService;
     private readonly IOrchestrator _orchestrator;
     private readonly MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor _omodExtractor;
+    private readonly MunitionAutoPatcher.Services.Interfaces.IRobCoIniGenerator _iniGenerator;
     private string _gameDataPath = @"C:\Games\Fallout4\Data";
     private string _outputPath = @"C:\Games\Fallout4\Data\RobCoPatcher.ini";
     private bool _autoMapByName = true;
@@ -26,16 +28,18 @@ public class SettingsViewModel : ViewModelBase
     private bool _isProcessing;
     private OmodCandidate? _selectedOmodCandidate;
 
-    public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator, MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor omodExtractor)
+    public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator, MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor omodExtractor, MunitionAutoPatcher.Services.Interfaces.IRobCoIniGenerator iniGenerator)
     {
         _configService = configService;
         _orchestrator = orchestrator;
         _omodExtractor = omodExtractor;
+        _iniGenerator = iniGenerator;
 
         BrowseGameDataCommand = new RelayCommand(BrowseGameData);
         BrowseOutputPathCommand = new RelayCommand(BrowseOutputPath);
     StartExtractionCommand = new AsyncRelayCommand(StartExtraction, () => !IsProcessing);
     ExtractOmodsCommand = new AsyncRelayCommand(StartOmodExtraction, () => !IsProcessing);
+    GenerateIniFromSelectedCommand = new AsyncRelayCommand(GenerateIniFromSelected, () => !IsProcessing && SelectedOmodCandidate != null);
         
         LoadSettings();
         OmodCandidates = new ObservableCollection<OmodCandidate>();
@@ -129,8 +133,17 @@ public class SettingsViewModel : ViewModelBase
     public OmodCandidate? SelectedOmodCandidate
     {
         get => _selectedOmodCandidate;
-        set => SetProperty(ref _selectedOmodCandidate, value);
+        set
+        {
+            if (SetProperty(ref _selectedOmodCandidate, value))
+            {
+                // Notify command availability changed
+                (GenerateIniFromSelectedCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
     }
+
+    public ICommand GenerateIniFromSelectedCommand { get; }
 
     private void LoadSettings()
     {
@@ -222,5 +235,111 @@ public class SettingsViewModel : ViewModelBase
         {
             IsProcessing = false;
         }
+    }
+
+    private async Task GenerateIniFromSelected()
+    {
+        if (SelectedOmodCandidate == null)
+            return;
+
+        // Ask user for ammo FormKey via dialog on UI thread
+        string initial = SelectedOmodCandidate.CandidateAmmo != null ? SelectedOmodCandidate.CandidateAmmo.ToString() : string.Empty;
+        string prompt = "生成する INI に設定する弾薬の FormKey を入力してください (形式: PluginName:FormID(hex))";
+
+        string? input = null;
+        var dlgResult = false;
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var dlg = new MunitionAutoPatcher.Views.InputDialog(prompt, initial)
+            {
+                Owner = Application.Current.MainWindow
+            };
+            var res = dlg.ShowDialog();
+            if (res == true)
+            {
+                dlgResult = true;
+                input = dlg.ResponseText?.Trim();
+            }
+        });
+
+        if (!dlgResult || string.IsNullOrEmpty(input))
+        {
+            if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
+                mainVm.AddLog("INI 生成がキャンセルされました。弾薬 FormKey が指定されていません。");
+            return;
+        }
+
+        // Parse input into FormKey
+        MunitionAutoPatcher.Models.FormKey ammoFk;
+        try
+        {
+            ammoFk = MunitionAutoPatcher.Models.FormKey.Parse(input);
+        }
+        catch (Exception ex)
+        {
+            if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm2)
+            {
+                mainVm2.AddLog($"無効な FormKey: {ex.Message}");
+            }
+            return;
+        }
+
+        // Build mapping
+        var mapping = new MunitionAutoPatcher.Models.WeaponMapping
+        {
+            WeaponFormKey = SelectedOmodCandidate.CandidateFormKey,
+            WeaponName = SelectedOmodCandidate.CandidateEditorId,
+            AmmoFormKey = ammoFk,
+            AmmoName = string.Empty,
+            Strategy = SelectedOmodCandidate.SuggestedTarget,
+            IsManualMapping = true
+        };
+
+        // Choose output path under artifacts/RobCo_Patcher by default
+        var repoRoot = FindRepoRoot();
+        var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher", SelectedOmodCandidate.SourcePlugin ?? "");
+        if (!System.IO.Directory.Exists(artifactsDir))
+            System.IO.Directory.CreateDirectory(artifactsDir);
+        var defaultFile = System.IO.Path.Combine(artifactsDir, (SelectedOmodCandidate.SourcePlugin ?? "generated") + ".esp.ini");
+
+        var sfd = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "RobCo INI を保存",
+            Filter = "INI ファイル (*.ini)|*.ini",
+            FileName = System.IO.Path.GetFileName(defaultFile),
+            InitialDirectory = System.IO.Path.GetDirectoryName(defaultFile)
+        };
+
+        var saveOk = sfd.ShowDialog() == true;
+        if (!saveOk)
+            return;
+
+        var outputPath = sfd.FileName;
+        var progress = new Progress<string>(msg =>
+        {
+            if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm3)
+                mainVm3.AddLog(msg);
+        });
+
+        // Generate INI asynchronously
+        var mappings = new List<MunitionAutoPatcher.Models.WeaponMapping> { mapping };
+        await _iniGenerator.GenerateIniAsync(outputPath, mappings, progress);
+    }
+
+    private string FindRepoRoot()
+    {
+        try
+        {
+            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                var solutionPath = System.IO.Path.Combine(dir.FullName, "MunitionAutoPatcher.sln");
+                if (System.IO.File.Exists(solutionPath))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+        }
+        catch { }
+        return AppContext.BaseDirectory;
     }
 }
