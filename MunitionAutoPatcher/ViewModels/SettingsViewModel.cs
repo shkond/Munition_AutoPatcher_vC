@@ -12,6 +12,7 @@ public class SettingsViewModel : ViewModelBase
 {
     private readonly IConfigService _configService;
     private readonly IOrchestrator _orchestrator;
+    private readonly MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor _omodExtractor;
     private string _gameDataPath = @"C:\Games\Fallout4\Data";
     private string _outputPath = @"C:\Games\Fallout4\Data\RobCoPatcher.ini";
     private bool _autoMapByName = true;
@@ -22,14 +23,16 @@ public class SettingsViewModel : ViewModelBase
     private bool _preferEditorIdForDisplay = false;
     private bool _isProcessing;
 
-    public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator)
+    public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator, MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor omodExtractor)
     {
         _configService = configService;
         _orchestrator = orchestrator;
+        _omodExtractor = omodExtractor;
 
         BrowseGameDataCommand = new RelayCommand(BrowseGameData);
         BrowseOutputPathCommand = new RelayCommand(BrowseOutputPath);
-        StartExtractionCommand = new AsyncRelayCommand(StartExtraction, () => !IsProcessing);
+    StartExtractionCommand = new AsyncRelayCommand(StartExtraction, () => !IsProcessing);
+    ExtractOmodsCommand = new AsyncRelayCommand(StartOmodExtraction, () => !IsProcessing);
         
         LoadSettings();
     }
@@ -115,6 +118,7 @@ public class SettingsViewModel : ViewModelBase
     public ICommand BrowseGameDataCommand { get; }
     public ICommand BrowseOutputPathCommand { get; }
     public ICommand StartExtractionCommand { get; }
+    public ICommand ExtractOmodsCommand { get; }
 
     private void LoadSettings()
     {
@@ -174,6 +178,27 @@ public class SettingsViewModel : ViewModelBase
             });
 
             await _orchestrator.ExtractWeaponsAsync(progress);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private async Task StartOmodExtraction()
+    {
+        IsProcessing = true;
+        try
+        {
+            var progress = new Progress<string>(msg =>
+            {
+                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
+                {
+                    mainVm.AddLog(msg);
+                }
+            });
+
+            await _omodExtractor.ExtractCandidatesAsync(progress);
         }
         finally
         {

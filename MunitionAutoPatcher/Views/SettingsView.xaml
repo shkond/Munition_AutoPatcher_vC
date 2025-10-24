@@ -65,6 +65,11 @@
                         IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
                         Padding="10,5" 
                         Margin="0,5"/>
+                    <Button Content="OMOD 抽出" 
+                            Command="{Binding ExtractOmodsCommand}"
+                            IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
+                            Padding="10,5"
+                            Margin="0,5"/>
                 <ProgressBar Height="20" 
                              IsIndeterminate="True" 
                              Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVisibilityConverter}}"
