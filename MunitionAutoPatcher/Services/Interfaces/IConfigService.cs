@@ -20,4 +20,6 @@ public interface IConfigService
     void SetExcludeDlcEsms(bool v);
     bool GetExcludeCcEsl();
     void SetExcludeCcEsl(bool v);
+    bool GetPreferEditorIdForDisplay();
+    void SetPreferEditorIdForDisplay(bool v);
 }

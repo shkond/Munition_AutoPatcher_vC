@@ -10,6 +10,8 @@ public class AmmoViewModel : ViewModelBase
     private string _categoryName = string.Empty;
     private float _damage;
     private string _ammoType = string.Empty;
+    private string _editorId = string.Empty;
+    private string _displayName = string.Empty;
 
     public string Name
     {
@@ -29,6 +31,12 @@ public class AmmoViewModel : ViewModelBase
         set => SetProperty(ref _categoryName, value);
     }
 
+    public string EditorId
+    {
+        get => _editorId;
+        set => SetProperty(ref _editorId, value);
+    }
+
     public float Damage
     {
         get => _damage;
@@ -41,5 +49,9 @@ public class AmmoViewModel : ViewModelBase
         set => SetProperty(ref _ammoType, value);
     }
 
-    public string DisplayName => string.IsNullOrEmpty(Name) ? FormKey : $"{Name} ({FormKey})";
+    public string DisplayName
+    {
+        get => _displayName;
+        set => SetProperty(ref _displayName, value);
+    }
 }

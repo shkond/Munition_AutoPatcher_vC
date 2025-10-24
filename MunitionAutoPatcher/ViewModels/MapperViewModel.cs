@@ -115,6 +115,7 @@ public class MapperViewModel : ViewModelBase
                 var excludeDlc = _configService.GetExcludeDlcEsms();
                 var excludeCc = _configService.GetExcludeCcEsl();
                 var allAmmo = _weaponsService.GetAllAmmo();
+                    var preferEditor = _configService.GetPreferEditorIdForDisplay();
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var a in allAmmo)
                 {
@@ -134,12 +135,22 @@ public class MapperViewModel : ViewModelBase
                     var key = $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}";
                     if (seen.Add(key))
                     {
+                        var name = a.Name ?? string.Empty;
+                        var editor = a.EditorId ?? string.Empty;
+                        var display = string.Empty;
+                        if (preferEditor && !string.IsNullOrEmpty(editor))
+                            display = !string.IsNullOrEmpty(name) ? $"{editor} — {name}" : editor;
+                        else
+                            display = !string.IsNullOrEmpty(name) ? $"{name} ({key})" : (!string.IsNullOrEmpty(editor) ? $"{editor} ({key})" : key);
+
                         AmmoCandidates.Add(new AmmoViewModel
                         {
-                            Name = a.Name ?? string.Empty,
+                            Name = name,
+                            EditorId = editor,
                             FormKey = key,
                             Damage = a.Damage,
-                            AmmoType = a.AmmoType ?? string.Empty
+                            AmmoType = a.AmmoType ?? string.Empty,
+                            DisplayName = display
                         });
                     }
                 }
@@ -165,10 +176,13 @@ public class MapperViewModel : ViewModelBase
                         if (!string.Equals(pnNorm, pluginFilter, StringComparison.OrdinalIgnoreCase)) continue;
                         if (seen2.Add(fa.FormId))
                         {
+                            var key2 = $"{fa.PluginName}:{fa.FormId:X8}";
                             AmmoCandidates.Add(new AmmoViewModel
                             {
                                 Name = string.Empty,
-                                FormKey = $"{fa.PluginName}:{fa.FormId:X8}",
+                                EditorId = string.Empty,
+                                FormKey = key2,
+                                DisplayName = key2
                             });
                         }
                     }
@@ -183,6 +197,7 @@ public class MapperViewModel : ViewModelBase
             var excludeDlcWeapons = _configService.GetExcludeDlcEsms();
             var excludeCcWeapons = _configService.GetExcludeCcEsl();
 
+            var preferEditorForWeapons = _configService.GetPreferEditorIdForDisplay();
             foreach (var weapon in weapons)
             {
                 var ammoName = string.Empty;
@@ -220,9 +235,18 @@ public class MapperViewModel : ViewModelBase
                 if (string.IsNullOrEmpty(ammoName) && ammoFormKey != "N/A")
                     ammoName = ammoFormKey; // final fallback show formkey
 
+                // Determine weapon display name based on preference
+                var wname = weapon.Name ?? string.Empty;
+                var weditor = weapon.EditorId ?? string.Empty;
+                string weaponDisplay;
+                if (preferEditorForWeapons && !string.IsNullOrEmpty(weditor))
+                    weaponDisplay = !string.IsNullOrEmpty(wname) ? $"{weditor} — {wname}" : weditor;
+                else
+                    weaponDisplay = !string.IsNullOrEmpty(wname) ? wname : (!string.IsNullOrEmpty(weditor) ? weditor : (weapon.FormKey?.ToString() ?? "Unknown"));
+
                 WeaponMappings.Add(new WeaponMappingViewModel
                 {
-                    WeaponName = weapon.Name,
+                    WeaponName = weaponDisplay,
                     WeaponFormKey = weapon.FormKey?.ToString() ?? "Unknown",
                     AmmoName = ammoName,
                     AmmoFormKey = ammoFormKey,

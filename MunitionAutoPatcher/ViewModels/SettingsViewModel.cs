@@ -19,6 +19,7 @@ public class SettingsViewModel : ViewModelBase
     private bool _excludeFallout4Esm = true;
     private bool _excludeDlcEsms = true;
     private bool _excludeCcEsl = true;
+    private bool _preferEditorIdForDisplay = false;
     private bool _isProcessing;
 
     public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator)
@@ -93,6 +94,18 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
+    public bool PreferEditorIdForDisplay
+    {
+        get => _preferEditorIdForDisplay;
+        set
+        {
+            if (SetProperty(ref _preferEditorIdForDisplay, value))
+            {
+                _configService.SetPreferEditorIdForDisplay(value);
+            }
+        }
+    }
+
     public bool IsProcessing
     {
         get => _isProcessing;
@@ -110,6 +123,7 @@ public class SettingsViewModel : ViewModelBase
         ExcludeFallout4Esm = _configService.GetExcludeFallout4Esm();
         ExcludeDlcEsms = _configService.GetExcludeDlcEsms();
         ExcludeCcEsl = _configService.GetExcludeCcEsl();
+        PreferEditorIdForDisplay = _configService.GetPreferEditorIdForDisplay();
     }
 
     private void BrowseGameData()

@@ -22,6 +22,8 @@ public class ConfigService : IConfigService
         public bool ExcludeFallout4Esm { get; set; } = true;
         public bool ExcludeDlcEsms { get; set; } = true;
         public bool ExcludeCcEsl { get; set; } = true;
+        // Prefer EditorID display when available (default: false)
+        public bool PreferEditorIdForDisplay { get; set; } = false;
     }
 
     public ConfigService()
@@ -170,6 +172,19 @@ public class ConfigService : IConfigService
     {
         EnsureLoaded();
         _loaded!.ExcludeCcEsl = v;
+        _ = SaveAllAsync();
+    }
+
+    public bool GetPreferEditorIdForDisplay()
+    {
+        EnsureLoaded();
+        return _loaded!.PreferEditorIdForDisplay;
+    }
+
+    public void SetPreferEditorIdForDisplay(bool v)
+    {
+        EnsureLoaded();
+        _loaded!.PreferEditorIdForDisplay = v;
         _ = SaveAllAsync();
     }
 

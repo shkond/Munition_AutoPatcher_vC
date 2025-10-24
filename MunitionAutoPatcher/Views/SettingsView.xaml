@@ -52,6 +52,7 @@
                 <CheckBox Content="Fallout4.esm を除外" IsChecked="{Binding ExcludeFallout4Esm}" Margin="0,3"/>
                 <CheckBox Content="DLC*.esm を除外" IsChecked="{Binding ExcludeDlcEsms}" Margin="0,3"/>
                 <CheckBox Content="cc*.esl を除外" IsChecked="{Binding ExcludeCcEsl}" Margin="0,3"/>
+                <CheckBox Content="EditorID を優先表示" IsChecked="{Binding PreferEditorIdForDisplay}" Margin="0,8"/>
             </StackPanel>
         </GroupBox>
 
