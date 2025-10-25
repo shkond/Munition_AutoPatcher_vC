@@ -487,6 +487,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             if (idObj is uint u2) id = u2;
                                             else if (idObj != null) id = Convert.ToUInt32(idObj);
                                             if (string.IsNullOrEmpty(plugin) || id == 0) continue;
+                                            // Skip records originating from excluded plugins
+                                            try
+                                            {
+                                                if (excluded.Contains(plugin))
+                                                    continue;
+                                            }
+                                            catch { }
                                             var key = $"{plugin}:{id:X8}";
                                             if (!reverseMap.TryGetValue(key, out var list))
                                             {
@@ -522,6 +529,23 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                 try
                                 {
                                     var sourceRec = entry.Record;
+                                    // Skip source records from excluded plugins to keep exclusion consistent
+                                    try
+                                    {
+                                        var fkPropSrc = sourceRec.GetType().GetProperty("FormKey");
+                                        if (fkPropSrc != null)
+                                        {
+                                            var fkSrc = fkPropSrc.GetValue(sourceRec);
+                                            if (fkSrc != null)
+                                            {
+                                                var mkSrc = fkSrc.GetType().GetProperty("ModKey")?.GetValue(fkSrc);
+                                                var srcPlugin = mkSrc?.GetType().GetProperty("FileName")?.GetValue(mkSrc)?.ToString() ?? string.Empty;
+                                                if (!string.IsNullOrEmpty(srcPlugin) && excluded.Contains(srcPlugin))
+                                                    continue;
+                                            }
+                                        }
+                                    }
+                                    catch { }
                                     // Inspect properties of the source record to find ammo-like references
                                     var sprops = sourceRec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
                                     foreach (var sp in sprops)
@@ -542,8 +566,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             else if (idObj != null) id = Convert.ToUInt32(idObj);
                                             if (string.IsNullOrEmpty(plugin) || id == 0) continue;
 
-                                            // First try LinkCache.TryResolve where available
-                                            var resolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(sval, linkCache);
+                                            // First try LinkCache.TryResolve where available (use local helper method)
+                                            var resolved = TryResolveViaLinkCache(sval, linkCache);
                                             bool isAmmo = false;
                                             string resolvedTypeName = string.Empty;
                                             object? resolvedGetter = null;
@@ -661,12 +685,34 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             {
                 try
                 {
-                    var p0 = m.GetParameters()[0].ParameterType;
-                    if (!p0.IsAssignableFrom(linkLike.GetType())) continue;
-                    // Prepare arguments: [linkLike, out resolved]
+                    MethodInfo invokeMethod = m;
+
+                    // Handle generic TryResolve<T> definitions by trying to infer T from linkLike
+                    if (m.IsGenericMethodDefinition)
+                    {
+                        var linkType = linkLike.GetType();
+                        if (linkType.IsGenericType)
+                        {
+                            var genArg = linkType.GetGenericArguments().FirstOrDefault();
+                            if (genArg != null)
+                            {
+                                try { invokeMethod = m.MakeGenericMethod(genArg); } catch { continue; }
+                            }
+                            else continue;
+                        }
+                        else continue;
+                    }
+
+                    var p0 = invokeMethod.GetParameters()[0].ParameterType;
+                    var linkTypeActual = linkLike.GetType();
+
+                    bool compatible = p0 == linkTypeActual || p0.IsAssignableFrom(linkTypeActual) || linkTypeActual.IsAssignableFrom(p0);
+                    if (!compatible) continue;
+
                     var args = new object?[] { linkLike, null };
-                    var ok = (bool?)m.Invoke(linkCache, args);
-                    if (ok == true)
+                    var okObj = invokeMethod.Invoke(linkCache, args);
+                    var ok = okObj as bool? ?? (okObj is bool b && b);
+                    if (ok)
                     {
                         return args[1];
                     }

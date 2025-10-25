@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Linq;
 
 namespace MunitionAutoPatcher.Services.Implementations
 {
@@ -19,11 +20,38 @@ namespace MunitionAutoPatcher.Services.Implementations
                 {
                     try
                     {
-                        var p0 = m.GetParameters()[0].ParameterType;
-                        if (!p0.IsAssignableFrom(linkLike.GetType())) continue;
+                        MethodInfo invokeMethod = m;
+
+                        // If the method is generic (e.g. TryResolve<T>), try to construct a closed generic using the generic argument
+                        if (m.IsGenericMethodDefinition)
+                        {
+                            // Attempt to infer the generic type argument from linkLike (e.g. FormLink<T>)
+                            var linkType = linkLike.GetType();
+                            if (linkType.IsGenericType)
+                            {
+                                var genArg = linkType.GetGenericArguments().FirstOrDefault();
+                                if (genArg != null)
+                                {
+                                    try { invokeMethod = m.MakeGenericMethod(genArg); } catch { continue; }
+                                }
+                                else continue;
+                            }
+                            else continue;
+                        }
+
+                        var p0 = invokeMethod.GetParameters()[0].ParameterType;
+                        var linkTypeActual = linkLike.GetType();
+
+                        // Try multiple compatibility checks for the first parameter type
+                        bool compatible = p0 == linkTypeActual || p0.IsAssignableFrom(linkTypeActual) || linkTypeActual.IsAssignableFrom(p0);
+                        if (!compatible)
+                            continue;
+
+                        // Prepare args array for invocation: [linkLike, out resolved]
                         var args = new object?[] { linkLike, null };
-                        var ok = (bool?)m.Invoke(linkCache, args);
-                        if (ok == true)
+                        var okObj = invokeMethod.Invoke(linkCache, args);
+                        var ok = okObj as bool? ?? (okObj is bool b && b);
+                        if (ok)
                         {
                             return args[1];
                         }
