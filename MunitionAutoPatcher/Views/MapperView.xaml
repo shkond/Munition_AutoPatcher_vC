@@ -83,7 +83,7 @@
                     <TabItem Header="OMOD 候補">
                         <StackPanel Margin="6">
                             <Button Content="選択中の OMOD をマッピングに追加" Command="{Binding AddOmodToMappingsCommand}" Margin="0,0,0,6"/>
-                            <DataGrid ItemsSource="{Binding OmodCandidates}" SelectedItem="{Binding SelectedOmod}" AutoGenerateColumns="False" IsReadOnly="True" Height="220">
+                            <DataGrid ItemsSource="{Binding FilteredOmodCandidates}" SelectedItem="{Binding SelectedOmod}" AutoGenerateColumns="False" IsReadOnly="True" Height="220">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="種類" Binding="{Binding CandidateType}" Width="80" />
                                     <DataGridTextColumn Header="候補 EditorID" Binding="{Binding CandidateEditorId}" Width="150" />

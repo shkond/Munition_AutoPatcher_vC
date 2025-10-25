@@ -21,6 +21,7 @@ public class MapperViewModel : ViewModelBase
     private AmmoViewModel? _selectedAmmo;
     private ObservableCollection<MunitionAutoPatcher.Models.OmodCandidate> _omodCandidates = new();
     private MunitionAutoPatcher.Models.OmodCandidate? _selectedOmodCandidate;
+    private ObservableCollection<MunitionAutoPatcher.Models.OmodCandidate> _filteredOmodCandidates = new();
 
     public MapperViewModel(IOrchestrator orchestrator, IWeaponsService weaponsService, IConfigService configService, MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor omodExtractor)
     {
@@ -53,6 +54,8 @@ public class MapperViewModel : ViewModelBase
             SetProperty(ref _selectedMapping, value);
             // SelectedMapping changed -> reevaluate ApplyMappingCommand
             (ApplyMappingCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            // Update filtered OMOD list based on currently selected weapon
+            UpdateFilteredOmodsForSelectedMapping();
         }
     }
 
@@ -110,6 +113,12 @@ public class MapperViewModel : ViewModelBase
             SetProperty(ref _selectedOmodCandidate, value);
             (AddOmodToMappingsCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
+    }
+
+    public ObservableCollection<MunitionAutoPatcher.Models.OmodCandidate> FilteredOmodCandidates
+    {
+        get => _filteredOmodCandidates;
+        set => SetProperty(ref _filteredOmodCandidates, value);
     }
 
     private async Task GenerateMappings()
@@ -310,11 +319,38 @@ public class MapperViewModel : ViewModelBase
             OmodCandidates.Clear();
             foreach (var r in results)
                 OmodCandidates.Add(r);
+
+            // Refresh filtered OMODs according to currently selected mapping
+            UpdateFilteredOmodsForSelectedMapping();
         }
         finally
         {
             IsProcessing = false;
         }
+    }
+
+    private void UpdateFilteredOmodsForSelectedMapping()
+    {
+        try
+        {
+            FilteredOmodCandidates.Clear();
+            // If no mapping selected, show all candidates
+            if (SelectedMapping == null)
+            {
+                foreach (var c in OmodCandidates)
+                    FilteredOmodCandidates.Add(c);
+                return;
+            }
+
+            var targetKey = SelectedMapping.WeaponFormKey ?? string.Empty;
+            foreach (var c in OmodCandidates)
+            {
+                var baseKey = c.BaseWeapon != null ? c.BaseWeapon.ToString() : (c.CandidateFormKey != null ? c.CandidateFormKey.ToString() : string.Empty);
+                if (string.Equals(baseKey, targetKey, StringComparison.OrdinalIgnoreCase))
+                    FilteredOmodCandidates.Add(c);
+            }
+        }
+        catch { }
     }
 
     private void AddSelectedOmodToMappings()

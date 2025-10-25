@@ -18,6 +18,8 @@ public class ConfigService : IConfigService
         public string GameDataPath { get; set; } = string.Empty;
         public string OutputPath { get; set; } = string.Empty;
         public StrategyConfig Strategy { get; set; } = new StrategyConfig();
+        // List of plugin filenames to exclude from automatic detection (e.g. large multi-feature mods)
+        public System.Collections.Generic.List<string> ExcludedPlugins { get; set; } = new System.Collections.Generic.List<string>() { "Dank_ECO.esp" };
         // UI exclusion defaults: exclude Fallout4.esm and DLC esms and cc esl by default
         public bool ExcludeFallout4Esm { get; set; } = true;
         public bool ExcludeDlcEsms { get; set; } = true;
@@ -204,6 +206,19 @@ public class ConfigService : IConfigService
     {
         EnsureLoaded();
         _loaded!.PreferEditorIdForDisplay = v;
+        _ = SaveAllAsync();
+    }
+
+    public System.Collections.Generic.IEnumerable<string> GetExcludedPlugins()
+    {
+        EnsureLoaded();
+        return _loaded!.ExcludedPlugins ?? new System.Collections.Generic.List<string>();
+    }
+
+    public void SetExcludedPlugins(System.Collections.Generic.IEnumerable<string> plugins)
+    {
+        EnsureLoaded();
+        _loaded!.ExcludedPlugins = new System.Collections.Generic.List<string>(plugins ?? System.Array.Empty<string>());
         _ = SaveAllAsync();
     }
 
