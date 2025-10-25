@@ -339,7 +339,10 @@ public class SettingsViewModel : ViewModelBase
                 dir = dir.Parent;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            try { if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"SettingsViewModel.FindRepoRoot error: {ex.Message}"); } catch { }
+        }
         return AppContext.BaseDirectory;
     }
 }

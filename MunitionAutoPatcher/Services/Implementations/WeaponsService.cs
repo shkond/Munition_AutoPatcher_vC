@@ -159,7 +159,15 @@ public class WeaponsService : IWeaponsService
                             if (IsLikelyMojibake(weaponData.Description) && weaponGetter.Description != null)
                                 AppendTranslationsDump(weaponGetter.Description, weaponData.FormKey, "WeaponDesc");
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            try
+                            {
+                                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                                    mainVm.AddLog($"WeaponsService: translation dump error: {ex.Message}");
+                            }
+                            catch { }
+                        }
 
                         // Try to resolve ammunition via the record's FormLink using env.LinkCache
                         try
@@ -206,7 +214,15 @@ public class WeaponsService : IWeaponsService
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            try
+                            {
+                                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                                    mainVm.AddLog($"WeaponsService: ammo resolve error: {ex.Message}");
+                            }
+                            catch { }
+                        }
 
                         _weapons.Add(weaponData);
                         weaponCount++;
@@ -224,7 +240,7 @@ public class WeaponsService : IWeaponsService
 
                 progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
                 progress?.Report($"弾薬抽出(MO2 LinkCache 経由)完了: {_ammo.Count}個の弾薬を収集しました");
-                try { WriteRecordsLog(); } catch { /* non-fatal for extraction */ }
+                try { WriteRecordsLog(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: WriteRecordsLog error: {ex.Message}"); } catch { } /* non-fatal for extraction */ }
                 return _weapons;
             }
             catch
@@ -260,7 +276,10 @@ public class WeaponsService : IWeaponsService
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: ammo fallback scan error: {ex.Message}"); } catch { }
+                }
             }
 
             progress?.Report($"弾薬抽出(武器参照から)完了: {_ammo.Count}個の弾薬を収集しました");
@@ -353,7 +372,10 @@ public class WeaponsService : IWeaponsService
                 dir = dir.Parent;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService.FindRepoRoot error: {ex.Message}"); } catch { }
+        }
         return AppContext.BaseDirectory;
     }
 

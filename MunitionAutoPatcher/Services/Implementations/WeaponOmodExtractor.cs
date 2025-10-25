@@ -74,7 +74,15 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            try
+                            {
+                                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                                    mainVm.AddLog($"WeaponOmodExtractor: COBJ created-object scan error: {ex.Message}");
+                            }
+                            catch { }
+                        }
 
                         results.Add(new OmodCandidate
                     {
@@ -138,10 +146,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
                         if (items == null) continue;
 
-                        foreach (var rec in items)
-                        {
-                            try
-                            {
+                                foreach (var rec in items)
+                                {
+                                    try
+                                    {
                                 if (rec == null) continue;
 
                                 // Try to get record FormKey if present
@@ -163,7 +171,15 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                         }
                                     }
                                 }
-                                catch { }
+                                catch (Exception ex)
+                                {
+                                    try
+                                    {
+                                        if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                                            mainVm.AddLog($"WeaponOmodExtractor: reflection property scan error: {ex.Message}");
+                                    }
+                                    catch { }
+                                }
 
                                 // Inspect public properties for nested FormKey/FormLink fields
                                 var props = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
@@ -216,7 +232,15 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                     catch { }
                                 }
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                try
+                                {
+                                    if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                                        mainVm.AddLog($"WeaponOmodExtractor: record enumeration error: {ex.Message}");
+                                }
+                                catch { }
+                            }
                         }
                     }
                 }
@@ -285,7 +309,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 dir = dir.Parent;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponOmodExtractor.FindRepoRoot error: {ex.Message}"); } catch { }
+        }
         return AppContext.BaseDirectory;
     }
 }

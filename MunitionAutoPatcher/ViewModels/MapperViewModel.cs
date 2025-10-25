@@ -213,9 +213,14 @@ public class MapperViewModel : ViewModelBase
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                try
+                {
+                    if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
+                        mainVm.AddLog($"MapperViewModel: ammo candidate build error: {ex.Message}");
+                }
+                catch { }
             }
             // Read exclusion flags for weapon filtering
             var excludeFalloutWeapons = _configService.GetExcludeFallout4Esm();
@@ -239,7 +244,10 @@ public class MapperViewModel : ViewModelBase
                         continue; // skip this weapon entirely
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: weapon exclude check error: {ex.Message}"); } catch { }
+                }
                 if (weapon.DefaultAmmo != null)
                 {
                     ammoFormKey = $"{weapon.DefaultAmmo.PluginName}:{weapon.DefaultAmmo.FormId:X8}";
@@ -359,7 +367,10 @@ public class MapperViewModel : ViewModelBase
                         IsManualMapping = vm.IsManualMapping
                     });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: mapping parse error: {ex.Message}"); } catch { }
+                }
             }
 
             var outputPath = _configService.GetOutputPath();

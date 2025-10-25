@@ -110,10 +110,16 @@ public class LoadOrderService : ILoadOrderService
             var loadOrder = await GetLoadOrderAsync();
             return loadOrder != null && loadOrder.Count > 0;
         }
-        catch
-        {
-            return false;
-        }
+            catch (Exception ex)
+            {
+                try
+                {
+                    if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                        mainVm.AddLog($"LoadOrderService.ValidateLoadOrderAsync error: {ex.Message}");
+                }
+                catch { }
+                return false;
+            }
     }
 
     public string GetGameDataPath()

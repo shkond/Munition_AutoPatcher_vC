@@ -53,9 +53,16 @@ public partial class App : Application
             Console.WriteLine("デバッガをアタッチしてください。アタッチ後、Enterキーを押すと処理を続行します...");
             Console.ReadLine();
         }
-        catch
+        catch (Exception ex)
         {
-            // Console may not be available in some launch contexts (e.g., GUI-only hosts). Ignore failures.
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"App startup debug console show failed: {ex.Message}");
+                else
+                    Console.WriteLine($"App startup debug console show failed: {ex.Message}");
+            }
+            catch { Console.WriteLine($"App startup debug console show failed: {ex.Message}"); }
         }
 #endif
 
@@ -85,7 +92,7 @@ public partial class App : Application
     protected override async void OnExit(ExitEventArgs e)
     {
 #if DEBUG
-        try { DebugConsole.Hide(); } catch { }
+    try { DebugConsole.Hide(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"App exit debug console hide failed: {ex.Message}"); } catch { } }
 #endif
         await _host.StopAsync();
         _host.Dispose();

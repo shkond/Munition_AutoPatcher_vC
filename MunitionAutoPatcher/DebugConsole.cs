@@ -38,8 +38,16 @@ public static class DebugConsole
             var reader = new StreamReader(stdin, Console.InputEncoding ?? Encoding.UTF8);
             Console.SetIn(reader);
         }
-        catch
+        catch (Exception ex)
         {
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"DebugConsole.Show redirection error: {ex.Message}");
+                else
+                    Console.WriteLine($"DebugConsole.Show redirection error: {ex.Message}");
+            }
+            catch { Console.WriteLine($"DebugConsole.Show redirection error: {ex.Message}"); }
             // Ignore redirection errors; AllocConsole still provides a visible console window.
         }
     }
@@ -56,7 +64,17 @@ public static class DebugConsole
             Console.SetError(TextWriter.Null);
             Console.SetIn(TextReader.Null);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"DebugConsole.Hide error: {ex.Message}");
+                else
+                    Console.WriteLine($"DebugConsole.Hide error: {ex.Message}");
+            }
+            catch { Console.WriteLine($"DebugConsole.Hide error: {ex.Message}"); }
+        }
 
         FreeConsole();
     }
