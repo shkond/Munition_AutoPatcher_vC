@@ -51,8 +51,9 @@ public class LoadOrderService : ILoadOrderService
                     return _loadOrder;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                AppLogger.Log("LoadOrderService: GameEnvironment detection failed, falling back to data-folder import", ex);
                 // If GameEnvironment is not available (not running under MO2 or detection failed),
                 // fall back to the explicit data-folder based approach below.
             }
@@ -110,14 +111,16 @@ public class LoadOrderService : ILoadOrderService
             var loadOrder = await GetLoadOrderAsync();
             return loadOrder != null && loadOrder.Count > 0;
         }
-            catch (Exception ex)
+        	catch (Exception ex)
             {
                 try
                 {
-                    if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                        mainVm.AddLog($"LoadOrderService.ValidateLoadOrderAsync error: {ex.Message}");
+                    AppLogger.Log($"LoadOrderService.ValidateLoadOrderAsync error: {ex.Message}", ex);
                 }
-                catch { }
+                catch (Exception ex2)
+                {
+                    AppLogger.Log("LoadOrderService: failed to log ValidateLoadOrderAsync error", ex2);
+                }
                 return false;
             }
     }

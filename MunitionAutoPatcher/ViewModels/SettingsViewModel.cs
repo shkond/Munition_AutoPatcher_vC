@@ -293,7 +293,7 @@ public class SettingsViewModel : ViewModelBase
             }
             NewExcludedPlugin = string.Empty;
         }
-        catch { }
+    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in SettingsViewModel.AddExcludedPlugin", ex); }
     }
 
     private void RemoveExcludedPlugin()
@@ -310,7 +310,7 @@ public class SettingsViewModel : ViewModelBase
             }
             SelectedExcludedPlugin = null;
         }
-        catch { }
+    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in SettingsViewModel.RemoveExcludedPlugin", ex); }
     }
 
     private async Task GenerateIniFromSelected()
@@ -417,7 +417,7 @@ public class SettingsViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            try { if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"SettingsViewModel.FindRepoRoot error: {ex.Message}"); } catch { }
+            try { if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"SettingsViewModel.FindRepoRoot error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("SettingsViewModel: failed to add log to UI in FindRepoRoot", ex2); }
         }
         return AppContext.BaseDirectory;
     }

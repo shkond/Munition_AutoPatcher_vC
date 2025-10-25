@@ -229,7 +229,7 @@ public class MapperViewModel : ViewModelBase
                     if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
                         mainVm.AddLog($"MapperViewModel: ammo candidate build error: {ex.Message}");
                 }
-                catch { }
+                catch (Exception inner) { AppLogger.Log("MapperViewModel: failed to add log to UI in ammo candidate build catch", inner); }
             }
             // Read exclusion flags for weapon filtering
             var excludeFalloutWeapons = _configService.GetExcludeFallout4Esm();
@@ -255,7 +255,7 @@ public class MapperViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
-                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: weapon exclude check error: {ex.Message}"); } catch { }
+                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: weapon exclude check error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("MapperViewModel: failed to add log to UI", ex2); }
                 }
                 if (weapon.DefaultAmmo != null)
                 {
@@ -350,7 +350,7 @@ public class MapperViewModel : ViewModelBase
                     FilteredOmodCandidates.Add(c);
             }
         }
-        catch { }
+    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in MapperViewModel.UpdateFilteredOmodsForSelectedMapping", ex); }
     }
 
     private void AddSelectedOmodToMappings()
@@ -405,7 +405,7 @@ public class MapperViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
-                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: mapping parse error: {ex.Message}"); } catch { }
+                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: mapping parse error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("MapperViewModel: failed to add log to UI in mapping parse catch", ex2); }
                 }
             }
 

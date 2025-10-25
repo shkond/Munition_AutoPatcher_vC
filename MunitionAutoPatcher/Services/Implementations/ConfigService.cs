@@ -65,7 +65,7 @@ public class ConfigService : IConfigService
                 if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                     mainVm.AddLog($"ConfigService.FindRepoRoot error: {ex.Message}");
             }
-            catch { }
+            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in FindRepoRoot", ex2); }
         }
         return null;
     }
@@ -94,7 +94,7 @@ public class ConfigService : IConfigService
                 if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                     mainVm.AddLog($"ConfigService.EnsureLoaded error: {ex.Message}");
             }
-            catch { }
+            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in EnsureLoaded", ex2); }
         }
     }
 
@@ -122,7 +122,7 @@ public class ConfigService : IConfigService
                 if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                     mainVm.AddLog($"ConfigService.SaveConfigAsync error: {ex.Message}");
             }
-            catch { }
+            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in SaveConfigAsync", ex2); }
         }
     }
 
@@ -238,7 +238,7 @@ public class ConfigService : IConfigService
                 if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                     mainVm.AddLog($"ConfigService.SaveAllAsync error: {ex.Message}");
             }
-            catch { }
+            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in SaveAllAsync", ex2); }
         }
     }
 }

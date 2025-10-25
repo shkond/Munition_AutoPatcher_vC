@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Linq;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Windows;
 
 // Combined resolver: tries instance TryResolve on the link-like object, then FormKey->Resolve/TryResolve,
 // then falls back to LinkCache.TryResolve variants (including generic TryResolve<T>) with caching.
@@ -42,13 +43,13 @@ namespace MunitionAutoPatcher.Services.Implementations
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"LinkCacheHelper: instance TryResolve invocation failed: {ex.Message}");
+                        AppLogger.Log($"LinkCacheHelper: instance TryResolve invocation failed: {ex.Message}", ex);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"LinkCacheHelper: instance TryResolve discovery failed: {ex.Message}");
+                AppLogger.Log($"LinkCacheHelper: instance TryResolve discovery failed: {ex.Message}", ex);
             }
 
             // 2) Try to extract a FormKey-like property and use linkCache.Resolve(formKey) or linkCache.TryResolve(formKey, out resolved)
@@ -61,7 +62,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"LinkCacheHelper: FormKey extraction failed: {ex.Message}");
+                AppLogger.Log($"LinkCacheHelper: FormKey extraction failed: {ex.Message}", ex);
                 formKeyObj = null;
             }
 
@@ -85,7 +86,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"LinkCacheHelper: linkCache.Resolve(formKey) invocation failed: {ex.Message}");
+                            AppLogger.Log($"LinkCacheHelper: linkCache.Resolve(formKey) invocation failed: {ex.Message}", ex);
                             /* ignore and try TryResolve */
                         }
                     }
@@ -106,7 +107,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                             {
                                 // attempt to close generic on the formKey object's type if possible
                                 var genArg = formKeyObj.GetType();
-                                try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { Debug.WriteLine($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}"); continue; }
+                                try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}", ex); continue; }
                             }
 
                             var p0 = invoke.GetParameters()[0].ParameterType;
@@ -120,13 +121,13 @@ namespace MunitionAutoPatcher.Services.Implementations
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"LinkCacheHelper: TryResolve(formKey) candidate invocation failed: {ex.Message}");
+                            AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) candidate invocation failed: {ex.Message}", ex);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"LinkCacheHelper: FormKey-based resolution failed: {ex.Message}");
+                    AppLogger.Log($"LinkCacheHelper: FormKey-based resolution failed: {ex.Message}", ex);
                 }
             }
 
@@ -153,7 +154,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                                 var genArg = linkType.GetGenericArguments().FirstOrDefault();
                                 if (genArg != null)
                                 {
-                                    try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { Debug.WriteLine($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(linkLike): {ex.Message}"); continue; }
+                            try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(linkLike): {ex.Message}", ex); continue; }
                                 }
                                 else continue;
                             }
@@ -174,11 +175,14 @@ namespace MunitionAutoPatcher.Services.Implementations
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"LinkCacheHelper: TryResolve(linkLike) candidate invocation failed: {ex.Message}");
+                        AppLogger.Log($"LinkCacheHelper: TryResolve(linkLike) candidate invocation failed: {ex.Message}", ex);
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLogger.Log("LinkCacheHelper: unexpected error in TryResolve fallback loop", ex);
+            }
 
             // 4) As a last resort: try any public instance method on linkCache that accepts a single parameter compatible with linkLike or formKeyObj
             try
@@ -200,10 +204,16 @@ namespace MunitionAutoPatcher.Services.Implementations
                         var r = m.Invoke(linkCache, new object?[] { arg });
                         if (r != null) return r;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log($"LinkCacheHelper: fallback single-arg method invocation failed: {ex.Message}", ex);
+                    }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLogger.Log("LinkCacheHelper: unexpected error in fallback single-arg discovery", ex);
+            }
 
             return null;
         }
@@ -219,5 +229,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                 return true;
             return false;
         }
+
+        // LinkCacheHelper previously had an internal Log helper; use shared AppLogger instead.
     }
 }
