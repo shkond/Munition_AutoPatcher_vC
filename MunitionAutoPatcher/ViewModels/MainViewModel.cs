@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using MunitionAutoPatcher.Commands;
 using MunitionAutoPatcher.Services.Interfaces;
+using MunitionAutoPatcher;
 
 namespace MunitionAutoPatcher.ViewModels;
 
@@ -82,5 +83,14 @@ public class MainViewModel : ViewModelBase
         var timestamp = DateTime.Now.ToString("HH:mm:ss");
         LogMessages.Add($"[{timestamp}] {message}");
         StatusMessage = message;
+        // Persist UI-visible logs to the central AppLogger so they are written to disk
+        try
+        {
+            AppLogger.Log(message);
+        }
+        catch
+        {
+            // Never allow logging failures to affect UI; AppLogger itself is best-effort.
+        }
     }
 }

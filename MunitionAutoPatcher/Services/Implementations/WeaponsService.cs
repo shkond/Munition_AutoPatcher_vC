@@ -166,7 +166,7 @@ public class WeaponsService : IWeaponsService
                                 if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                                     mainVm.AddLog($"WeaponsService: translation dump error: {ex.Message}");
                             }
-                            catch { }
+                            catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in translation dump catch", ex2); }
                         }
 
                         // Try to resolve ammunition via the record's FormLink using env.LinkCache
@@ -221,7 +221,7 @@ public class WeaponsService : IWeaponsService
                                 if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                                     mainVm.AddLog($"WeaponsService: ammo resolve error: {ex.Message}");
                             }
-                            catch { }
+                            catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in ammo resolve catch", ex2); }
                         }
 
                         _weapons.Add(weaponData);
@@ -240,7 +240,7 @@ public class WeaponsService : IWeaponsService
 
                 progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
                 progress?.Report($"弾薬抽出(MO2 LinkCache 経由)完了: {_ammo.Count}個の弾薬を収集しました");
-                try { WriteRecordsLog(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: WriteRecordsLog error: {ex.Message}"); } catch { } /* non-fatal for extraction */ }
+                try { WriteRecordsLog(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: WriteRecordsLog error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in WriteRecordsLog catch", ex2); } /* non-fatal for extraction */ }
                 return _weapons;
             }
             catch
@@ -278,12 +278,12 @@ public class WeaponsService : IWeaponsService
                 }
                 catch (Exception ex)
                 {
-                    try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: ammo fallback scan error: {ex.Message}"); } catch { }
+                    try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: ammo fallback scan error: {ex.Message}"); } catch (Exception inner) { AppLogger.Log("WeaponsService: failed to add log to UI in ammo fallback scan catch", inner); }
                 }
             }
 
             progress?.Report($"弾薬抽出(武器参照から)完了: {_ammo.Count}個の弾薬を収集しました");
-            try { WriteRecordsLog(); } catch { }
+            try { WriteRecordsLog(); } catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponsService.WriteRecordsLog", ex); }
             return _weapons;
         }
         catch (Exception ex)
@@ -372,9 +372,9 @@ public class WeaponsService : IWeaponsService
                 dir = dir.Parent;
             }
         }
-        catch (Exception ex)
+                catch (Exception ex)
         {
-            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService.FindRepoRoot error: {ex.Message}"); } catch { }
+            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService.FindRepoRoot error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in FindRepoRoot", ex2); }
         }
         return AppContext.BaseDirectory;
     }

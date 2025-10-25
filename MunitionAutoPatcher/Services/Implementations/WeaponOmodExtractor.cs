@@ -41,7 +41,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
             // 1) Enumerate all ConstructibleObject records and record those that create objects (CreatedObject will usually be a weapon/item)
             var cobjs = env.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides();
-            foreach (var cobj in cobjs)
+                    foreach (var cobj in cobjs)
             {
                 try
                 {
@@ -58,7 +58,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                             continue;
                         }
                     }
-                    catch { }
+                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: iterating COBJs", ex); }
 
                     // Record the created object's FormKey as a candidate. Resolution to a Weapon record (to inspect Ammo) may be done later.
                         // Try to resolve the created object to a weapon or ammo record by scanning the env PriorityOrder collections.
@@ -102,7 +102,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                 if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                                     mainVm.AddLog($"WeaponOmodExtractor: COBJ created-object scan error: {ex.Message}");
                             }
-                            catch { }
+                            catch (Exception ex2) { AppLogger.Log("WeaponOmodExtractor: failed to add log to UI in COBJ created-object scan catch", ex2); }
                         }
 
                         results.Add(new OmodCandidate
@@ -117,7 +117,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                             SuggestedTarget = "CreatedWeapon"
                     });
                 }
-                catch { }
+                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: processing COBJ candidate", ex); }
             }
 
                 // 2) ObjectMod record enumeration omitted: Mutagen's API varies across versions and
@@ -149,7 +149,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                         {
                             collection = m.Invoke(priority, null);
                         }
-                        catch { continue; }
+                        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: invoking collection method", ex); continue; }
 
                         if (collection == null) continue;
 
@@ -163,44 +163,44 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                             else if (collection is System.Collections.IEnumerable en)
                                 items = en;
                         }
-                        catch { items = null; }
+                        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: obtaining items from collection", ex); items = null; }
 
                         if (items == null) continue;
 
                                 foreach (var rec in items)
                                 {
-                                    try
-                                    {
+                                            try
+                                        {
                                 if (rec == null) continue;
 
                                 // Try to get record FormKey if present
                                 string recPlugin = string.Empty;
                                 uint recId = 0;
-                                try
-                                {
-                                    var fkProp = rec.GetType().GetProperty("FormKey");
-                                    if (fkProp != null)
-                                    {
-                                        var fk = fkProp.GetValue(rec);
-                                        if (fk != null)
-                                        {
-                                            var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
-                                            var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
-                                            recPlugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                            if (idObj is uint u) recId = u;
-                                            else if (idObj != null) recId = Convert.ToUInt32(idObj);
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    try
-                                    {
-                                        if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                                            mainVm.AddLog($"WeaponOmodExtractor: reflection property scan error: {ex.Message}");
-                                    }
-                                    catch { }
-                                }
+                                            try
+                                            {
+                                                var fkProp = rec.GetType().GetProperty("FormKey");
+                                                if (fkProp != null)
+                                                {
+                                                    var fk = fkProp.GetValue(rec);
+                                                    if (fk != null)
+                                                    {
+                                                        var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
+                                                        var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
+                                                        recPlugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
+                                                        if (idObj is uint u) recId = u;
+                                                        else if (idObj != null) recId = Convert.ToUInt32(idObj);
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                try
+                                                {
+                                                    if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                                                        mainVm.AddLog($"WeaponOmodExtractor: reflection property scan error: {ex.Message}");
+                                                }
+                                                catch (Exception ex2) { AppLogger.Log("WeaponOmodExtractor: failed to add log to UI in reflection property scan catch", ex2); }
+                                            }
 
                                 // Inspect public properties for nested FormKey/FormLink fields
                                 var props = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
@@ -231,7 +231,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                         {
                                             // We found a record that references a weapon. Record as a candidate.
                                             var recEditorId = string.Empty;
-                                            try { recEditorId = rec.GetType().GetProperty("EditorID")?.GetValue(rec)?.ToString() ?? string.Empty; } catch { }
+                                            try { recEditorId = rec.GetType().GetProperty("EditorID")?.GetValue(rec)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read EditorID via reflection", ex); }
 
                                             // Try to detect whether this record modifies ammo: scan its other properties for Ammo/Projectile FormLinks
                                             FormKey? detectedAmmoKey = null;
@@ -279,14 +279,14 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                                         }
                                                                     }
                                                                 }
-                                                                catch { }
+                                                                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: inner property detection", ex); }
                                                             }
                                                         }
                                                     }
-                                                    catch { }
+                                                    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: iterating properties q", ex); }
                                                 }
                                             }
-                                            catch { }
+                                            catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: scanning allProps", ex); }
 
                                             // If this record originates from an excluded plugin, skip adding it as a candidate.
                                             if (excluded.Contains(recPlugin ?? string.Empty))
@@ -313,7 +313,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             }
                                         }
                                     }
-                                    catch { }
+                                    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: iterating rec items", ex); }
                                 }
                             }
                             catch (Exception ex)
@@ -323,7 +323,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                     if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
                                         mainVm.AddLog($"WeaponOmodExtractor: record enumeration error: {ex.Message}");
                                 }
-                                catch { }
+                                catch (Exception ex2) { AppLogger.Log("WeaponOmodExtractor: failed to add log to UI in record enumeration", ex2); }
                             }
                         }
                     }
@@ -371,13 +371,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                 ammoMap[key] = a;
                                             }
                                         }
-                                        catch { }
+                                        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: building ammoMap entries", ex); }
                                     }
                                 }
                             }
                         }
                     }
-                    catch { ammoMap = null; }
+                    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: building ammoMap", ex); ammoMap = null; }
 
                     // Populate candidate names/ids
                     foreach (var c in results)
@@ -390,7 +390,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                 var bk = $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}";
                                 if (weaponMap.TryGetValue(bk, out var wgetter))
                                 {
-                                    try { c.BaseWeaponEditorId = wgetter.EditorID ?? string.Empty; } catch { }
+                                    try { c.BaseWeaponEditorId = wgetter.EditorID ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read BaseWeapon.EditorID", ex); }
                                     // If candidate has no ammo, try to read from the weapon's Ammo link
                                     try
                                     {
@@ -411,13 +411,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                     var key = $"{plugin}:{id:X8}";
                                                     if (ammoMap != null && ammoMap.TryGetValue(key, out var ammoGetter))
                                                     {
-                                                        try { c.CandidateAmmoName = ammoGetter.GetType().GetProperty("EditorID")?.GetValue(ammoGetter)?.ToString() ?? string.Empty; } catch { }
+                                                        try { c.CandidateAmmoName = ammoGetter.GetType().GetProperty("EditorID")?.GetValue(ammoGetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ammoGetter.EditorID", ex); }
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    catch { }
+                                    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: error while inspecting ammo link on weapon getter", ex); }
                                 }
                             }
 
@@ -427,14 +427,14 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                 var ak = $"{c.CandidateAmmo.PluginName}:{c.CandidateAmmo.FormId:X8}";
                                 if (ammoMap.TryGetValue(ak, out var ag))
                                 {
-                                    try { c.CandidateAmmoName = ag.GetType().GetProperty("EditorID")?.GetValue(ag)?.ToString() ?? string.Empty; } catch { }
+                                    try { c.CandidateAmmoName = ag.GetType().GetProperty("EditorID")?.GetValue(ag)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ag.EditorID", ex); }
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: resolving candidate names", ex); }
                     }
                 }
-                catch { }
+                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: resolution pass", ex); }
                 // 2) ObjectMod enumeration is not performed here (API surface differs per Mutagen version); subject to future enhancement.
 
                 // 3) Precise detection pass (TryResolve + reverse-reference map)
@@ -451,7 +451,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                         foreach (var m in methods2)
                         {
                             object? collection = null;
-                            try { collection = m.Invoke(priority2, null); } catch { continue; }
+                            try { collection = m.Invoke(priority2, null); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: invoking collection method failed", ex); continue; }
                             if (collection == null) continue;
 
                             var winMethod = collection.GetType().GetMethod("WinningOverrides");
@@ -461,7 +461,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                 if (winMethod != null) items2 = winMethod.Invoke(collection, null) as System.Collections.IEnumerable;
                                 else if (collection is System.Collections.IEnumerable en) items2 = en;
                             }
-                            catch { items2 = null; }
+                            catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: obtaining items from collection failed", ex); items2 = null; }
                             if (items2 == null) continue;
 
                             foreach (var rec in items2)
@@ -493,7 +493,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                 if (excluded.Contains(plugin))
                                                     continue;
                                             }
-                                            catch { }
+                                            catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: excluded plugin check failed", ex); }
                                             var key = $"{plugin}:{id:X8}";
                                             if (!reverseMap.TryGetValue(key, out var list))
                                             {
@@ -502,18 +502,18 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             }
                                             list.Add((rec, p.Name, val));
                                         }
-                                        catch { }
+                                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: iterating sp properties", ex); }
                                     }
                                 }
-                                catch { }
+                                catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: iterating refs for base weapon", ex); }
                             }
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: building reverse reference map", ex); }
 
                     // Try to get LinkCache if available for typed TryResolve
                     object? linkCache = null;
-                    try { linkCache = env.GetType().GetProperty("LinkCache")?.GetValue(env); } catch { linkCache = null; }
+                    try { linkCache = env.GetType().GetProperty("LinkCache")?.GetValue(env); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to obtain LinkCache via reflection", ex); linkCache = null; }
 
                     // Now, for each candidate that has a BaseWeapon, check reverseMap entries for that weapon.
                     foreach (var c in results)
@@ -545,7 +545,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             }
                                         }
                                     }
-                                    catch { }
+                                    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed while checking sourceRec.FormKey or excluded plugins", ex); }
                                     // Inspect properties of the source record to find ammo-like references
                                     var sprops = sourceRec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
                                     foreach (var sp in sprops)
@@ -566,8 +566,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             else if (idObj != null) id = Convert.ToUInt32(idObj);
                                             if (string.IsNullOrEmpty(plugin) || id == 0) continue;
 
-                                            // First try LinkCache.TryResolve where available (use local helper method)
-                                            var resolved = TryResolveViaLinkCache(sval, linkCache);
+                                            // First try LinkCache.TryResolve where available (use central helper)
+                                            var resolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(sval, linkCache);
                                             bool isAmmo = false;
                                             string resolvedTypeName = string.Empty;
                                             object? resolvedGetter = null;
@@ -586,7 +586,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             {
                                                 isAmmo = true;
                                                 resolvedGetter = ammoGetterObj;
-                                                try { resolvedTypeName = ammoGetterObj.GetType().Name ?? string.Empty; } catch { }
+                                                try { resolvedTypeName = ammoGetterObj.GetType().Name ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ammoGetter object type name", ex); }
                                             }
 
                                             if (isAmmo)
@@ -598,7 +598,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                 c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
                                                 if (resolvedGetter != null)
                                                 {
-                                                    try { c.CandidateAmmoName = resolvedGetter.GetType().GetProperty("EditorID")?.GetValue(resolvedGetter)?.ToString() ?? string.Empty; } catch { }
+                                                    try { c.CandidateAmmoName = resolvedGetter.GetType().GetProperty("EditorID")?.GetValue(resolvedGetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read resolvedGetter.EditorID", ex); }
                                                 }
                                                 else
                                                 {
@@ -609,19 +609,19 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                 break;
                                             }
                                         }
-                                        catch { }
+                                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: scanning properties for ammo refs", ex); }
                                     }
                                     if (c.ConfirmedAmmoChange) break;
                                 }
-                                catch { }
+                                catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: iterating reverse-reference entries for candidate", ex); }
                             }
                         }
-                        catch { }
+                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: processing reverse-reference entries", ex); }
                     }
                 }
                 catch (Exception ex)
                 {
-                    try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponOmodExtractor: precise detection pass error: {ex.Message}"); } catch { }
+                    try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponOmodExtractor: precise detection pass error: {ex.Message}"); } catch (Exception inner) { AppLogger.Log("WeaponOmodExtractor: failed to add log to UI in precise detection pass catch", inner); }
                 }
 
             // 4) Write CSV for debugging into artifacts
@@ -671,58 +671,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         return s.Replace("\"", "\\\"").Replace(',', ';');
     }
 
-    // Try to resolve a FormLink-like value via the Mutagen LinkCache using reflection.
-    // Returns the resolved getter object (e.g. Ammo getter) or null when resolution failed / not available.
-    private object? TryResolveViaLinkCache(object? linkLike, object? linkCache)
-    {
-        if (linkLike == null || linkCache == null) return null;
-        try
-        {
-            var lcType = linkCache.GetType();
-            var methods = lcType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                .Where(m => m.Name == "TryResolve" && m.GetParameters().Length == 2);
-            foreach (var m in methods)
-            {
-                try
-                {
-                    MethodInfo invokeMethod = m;
-
-                    // Handle generic TryResolve<T> definitions by trying to infer T from linkLike
-                    if (m.IsGenericMethodDefinition)
-                    {
-                        var linkType = linkLike.GetType();
-                        if (linkType.IsGenericType)
-                        {
-                            var genArg = linkType.GetGenericArguments().FirstOrDefault();
-                            if (genArg != null)
-                            {
-                                try { invokeMethod = m.MakeGenericMethod(genArg); } catch { continue; }
-                            }
-                            else continue;
-                        }
-                        else continue;
-                    }
-
-                    var p0 = invokeMethod.GetParameters()[0].ParameterType;
-                    var linkTypeActual = linkLike.GetType();
-
-                    bool compatible = p0 == linkTypeActual || p0.IsAssignableFrom(linkTypeActual) || linkTypeActual.IsAssignableFrom(p0);
-                    if (!compatible) continue;
-
-                    var args = new object?[] { linkLike, null };
-                    var okObj = invokeMethod.Invoke(linkCache, args);
-                    var ok = okObj as bool? ?? (okObj is bool b && b);
-                    if (ok)
-                    {
-                        return args[1];
-                    }
-                }
-                catch { }
-            }
-        }
-        catch { }
-        return null;
-    }
+    // (Removed) use the shared LinkCacheHelper.TryResolveViaLinkCache from Services/Implementations/LinkCacheHelper.cs
 
     private string FindRepoRoot()
     {
@@ -739,7 +688,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         }
         catch (Exception ex)
         {
-            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponOmodExtractor.FindRepoRoot error: {ex.Message}"); } catch { }
+            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponOmodExtractor.FindRepoRoot error: {ex.Message}"); } catch (Exception inner) { AppLogger.Log("WeaponOmodExtractor.FindRepoRoot: failed to add log to UI", inner); }
         }
         return AppContext.BaseDirectory;
     }

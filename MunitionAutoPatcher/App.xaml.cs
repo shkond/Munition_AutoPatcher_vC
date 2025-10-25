@@ -92,7 +92,7 @@ public partial class App : Application
     protected override async void OnExit(ExitEventArgs e)
     {
 #if DEBUG
-    try { DebugConsole.Hide(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"App exit debug console hide failed: {ex.Message}"); } catch { } }
+    try { DebugConsole.Hide(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"App exit debug console hide failed: {ex.Message}"); } catch (Exception inner) { AppLogger.Log("App.xaml.OnExit: failed to add log to UI on debug console hide", inner); } }
 #endif
         await _host.StopAsync();
         _host.Dispose();
