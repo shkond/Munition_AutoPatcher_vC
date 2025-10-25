@@ -89,6 +89,8 @@
                                     <DataGridTextColumn Header="候補 EditorID" Binding="{Binding CandidateEditorId}" Width="150" />
                                     <DataGridTextColumn Header="FormKey" Binding="{Binding CandidateFormKey}" Width="140" />
                                     <DataGridTextColumn Header="候補弾薬" Binding="{Binding CandidateAmmo}" Width="140" />
+                                            <DataGridCheckBoxColumn Header="弾薬変更 確認" Binding="{Binding ConfirmedAmmoChange}" Width="80" />
+                                            <DataGridTextColumn Header="確認理由" Binding="{Binding ConfirmReason}" Width="200" />
                                     <DataGridTextColumn Header="プラグイン" Binding="{Binding SourcePlugin}" Width="120" />
                                     <DataGridTextColumn Header="SuggestedTarget" Binding="{Binding SuggestedTarget}" Width="100" />
                                 </DataGrid.Columns>

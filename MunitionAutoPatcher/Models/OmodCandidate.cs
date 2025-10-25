@@ -13,4 +13,8 @@ public class OmodCandidate
     public string SourcePlugin { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
     public string SuggestedTarget { get; set; } = string.Empty; // e.g. "OMOD", "CreatedWeapon", "Weapon"
+    // Determined by precise detection pass: whether this candidate actually changes the ammo used by the base weapon
+    public bool ConfirmedAmmoChange { get; set; } = false;
+    // Human-readable reason / evidence why the change was confirmed (e.g. "Resolved ObjectMod.Property -> Ammo")
+    public string ConfirmReason { get; set; } = string.Empty;
 }
