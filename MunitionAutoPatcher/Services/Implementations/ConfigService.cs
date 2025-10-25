@@ -56,7 +56,15 @@ public class ConfigService : IConfigService
                 dir = dir.Parent;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"ConfigService.FindRepoRoot error: {ex.Message}");
+            }
+            catch { }
+        }
         return null;
     }
 
@@ -76,9 +84,15 @@ public class ConfigService : IConfigService
                 _loaded = new ConfigFile();
             }
         }
-        catch
+        catch (Exception ex)
         {
             _loaded = new ConfigFile();
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"ConfigService.EnsureLoaded error: {ex.Message}");
+            }
+            catch { }
         }
     }
 
@@ -99,9 +113,14 @@ public class ConfigService : IConfigService
             var txt = JsonSerializer.Serialize(_loaded, options);
             await File.WriteAllTextAsync(_configFile, txt);
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore write errors for now
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"ConfigService.SaveConfigAsync error: {ex.Message}");
+            }
+            catch { }
         }
     }
 
@@ -197,9 +216,14 @@ public class ConfigService : IConfigService
             var txt = JsonSerializer.Serialize(_loaded, options);
             await File.WriteAllTextAsync(_configFile, txt);
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"ConfigService.SaveAllAsync error: {ex.Message}");
+            }
+            catch { }
         }
     }
 }

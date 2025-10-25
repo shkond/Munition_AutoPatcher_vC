@@ -13,21 +13,28 @@ public class MapperViewModel : ViewModelBase
     private readonly IOrchestrator _orchestrator;
     private readonly IWeaponsService _weaponsService;
     private readonly IConfigService _configService;
+    private readonly MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor _omodExtractor;
     private ObservableCollection<WeaponMappingViewModel> _weaponMappings = new();
     private WeaponMappingViewModel? _selectedMapping;
     private bool _isProcessing;
     private ObservableCollection<AmmoViewModel> _ammoCandidates = new();
     private AmmoViewModel? _selectedAmmo;
+    private ObservableCollection<MunitionAutoPatcher.Models.OmodCandidate> _omodCandidates = new();
+    private MunitionAutoPatcher.Models.OmodCandidate? _selectedOmodCandidate;
 
-    public MapperViewModel(IOrchestrator orchestrator, IWeaponsService weaponsService, IConfigService configService)
+    public MapperViewModel(IOrchestrator orchestrator, IWeaponsService weaponsService, IConfigService configService, MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor omodExtractor)
     {
         _orchestrator = orchestrator;
         _weaponsService = weaponsService;
         _configService = configService;
 
+        _omodExtractor = omodExtractor;
+
         GenerateMappingsCommand = new AsyncRelayCommand(GenerateMappings, () => !IsProcessing);
         GenerateIniCommand = new AsyncRelayCommand(GenerateIni, () => !IsProcessing && WeaponMappings.Any());
-    ApplyMappingCommand = new RelayCommand(() => ApplySelectedAmmo(), () => SelectedMapping != null && SelectedAmmo != null);
+        ExtractOmodsCommand = new AsyncRelayCommand(ExtractOmods, () => !IsProcessing);
+        AddOmodToMappingsCommand = new RelayCommand(() => AddSelectedOmodToMappings(), () => SelectedOmod != null);
+        ApplyMappingCommand = new RelayCommand(() => ApplySelectedAmmo(), () => SelectedMapping != null && SelectedAmmo != null);
 
         // Ammo candidates will be populated when GenerateMappings runs (after extraction)
     }
@@ -86,6 +93,24 @@ public class MapperViewModel : ViewModelBase
 
     public ICommand GenerateMappingsCommand { get; }
     public ICommand GenerateIniCommand { get; }
+    public ICommand ExtractOmodsCommand { get; }
+    public RelayCommand? AddOmodToMappingsCommand { get; }
+
+    public ObservableCollection<MunitionAutoPatcher.Models.OmodCandidate> OmodCandidates
+    {
+        get => _omodCandidates;
+        set => SetProperty(ref _omodCandidates, value);
+    }
+
+    public MunitionAutoPatcher.Models.OmodCandidate? SelectedOmod
+    {
+        get => _selectedOmodCandidate;
+        set
+        {
+            SetProperty(ref _selectedOmodCandidate, value);
+            (AddOmodToMappingsCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
+    }
 
     private async Task GenerateMappings()
     {
@@ -188,9 +213,14 @@ public class MapperViewModel : ViewModelBase
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                try
+                {
+                    if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
+                        mainVm.AddLog($"MapperViewModel: ammo candidate build error: {ex.Message}");
+                }
+                catch { }
             }
             // Read exclusion flags for weapon filtering
             var excludeFalloutWeapons = _configService.GetExcludeFallout4Esm();
@@ -214,7 +244,10 @@ public class MapperViewModel : ViewModelBase
                         continue; // skip this weapon entirely
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: weapon exclude check error: {ex.Message}"); } catch { }
+                }
                 if (weapon.DefaultAmmo != null)
                 {
                     ammoFormKey = $"{weapon.DefaultAmmo.PluginName}:{weapon.DefaultAmmo.FormId:X8}";
@@ -260,6 +293,51 @@ public class MapperViewModel : ViewModelBase
         }
     }
 
+    private async Task ExtractOmods()
+    {
+        IsProcessing = true;
+        try
+        {
+            var progress = new Progress<string>(msg =>
+            {
+                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
+                {
+                    mainVm.AddLog(msg);
+                }
+            });
+
+            var results = await _omodExtractor.ExtractCandidatesAsync(progress);
+            OmodCandidates.Clear();
+            foreach (var r in results)
+                OmodCandidates.Add(r);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private void AddSelectedOmodToMappings()
+    {
+        if (SelectedOmod == null) return;
+
+        var cand = SelectedOmod;
+        var weaponName = !string.IsNullOrEmpty(cand.BaseWeaponEditorId) ? cand.BaseWeaponEditorId : cand.CandidateEditorId;
+        var weaponFormKey = cand.BaseWeapon != null ? cand.BaseWeapon.ToString() : cand.CandidateFormKey.ToString();
+        var ammoFormKey = cand.CandidateAmmo != null ? cand.CandidateAmmo.ToString() : string.Empty;
+        var ammoName = cand.CandidateAmmoName ?? string.Empty;
+
+        WeaponMappings.Add(new WeaponMappingViewModel
+        {
+            WeaponName = weaponName,
+            WeaponFormKey = weaponFormKey,
+            AmmoName = ammoName,
+            AmmoFormKey = string.IsNullOrEmpty(ammoFormKey) ? "" : ammoFormKey,
+            Strategy = cand.SuggestedTarget ?? "OMOD",
+            IsManualMapping = true
+        });
+    }
+
     private async Task GenerateIni()
     {
         IsProcessing = true;
@@ -289,7 +367,10 @@ public class MapperViewModel : ViewModelBase
                         IsManualMapping = vm.IsManualMapping
                     });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: mapping parse error: {ex.Message}"); } catch { }
+                }
             }
 
             var outputPath = _configService.GetOutputPath();

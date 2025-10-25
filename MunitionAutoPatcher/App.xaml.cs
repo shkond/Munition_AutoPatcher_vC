@@ -24,6 +24,7 @@ public partial class App : Application
                 services.AddSingleton<IConfigService, ConfigService>();
                 services.AddSingleton<ILoadOrderService, LoadOrderService>();
                 services.AddSingleton<IWeaponsService, WeaponsService>();
+                services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
                 services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
                 services.AddSingleton<IOrchestrator, OrchestratorService>();
 
@@ -40,6 +41,9 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Ensure support for legacy code page encodings (Shift-JIS, etc.) used by some game plugins.
+        // Call once at startup so Encoding.GetEncoding(...) works for code pages.
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 #if DEBUG
         // In Debug builds, pause at startup to allow attaching a debugger (useful when launching via MO2)
         try
@@ -49,9 +53,16 @@ public partial class App : Application
             Console.WriteLine("デバッガをアタッチしてください。アタッチ後、Enterキーを押すと処理を続行します...");
             Console.ReadLine();
         }
-        catch
+        catch (Exception ex)
         {
-            // Console may not be available in some launch contexts (e.g., GUI-only hosts). Ignore failures.
+            try
+            {
+                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                    mainVm.AddLog($"App startup debug console show failed: {ex.Message}");
+                else
+                    Console.WriteLine($"App startup debug console show failed: {ex.Message}");
+            }
+            catch { Console.WriteLine($"App startup debug console show failed: {ex.Message}"); }
         }
 #endif
 
@@ -81,7 +92,7 @@ public partial class App : Application
     protected override async void OnExit(ExitEventArgs e)
     {
 #if DEBUG
-        try { DebugConsole.Hide(); } catch { }
+    try { DebugConsole.Hide(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"App exit debug console hide failed: {ex.Message}"); } catch { } }
 #endif
         await _host.StopAsync();
         _host.Dispose();

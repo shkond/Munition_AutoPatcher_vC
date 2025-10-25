@@ -25,6 +25,10 @@
                     Command="{Binding GenerateIniCommand}"
                     IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
                     Padding="10,5"/>
+        <Button Content="OMOD 抽出" 
+            Command="{Binding ExtractOmodsCommand}"
+            IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
+            Padding="10,5" Margin="10,0,0,0"/>
             <ProgressBar Width="200" 
                          Height="20" 
                          IsIndeterminate="True" 
@@ -58,19 +62,40 @@
 
             <!-- Details pane: ammo selector limited to specific plugin -->
             <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                <TextBlock Text="選択中のマッピング" FontWeight="Bold" Margin="0,0,0,10"/>
-                <TextBlock Text="武器:"/>
-                <TextBlock Text="{Binding SelectedMapping.WeaponName}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                <TabControl>
+                    <TabItem Header="マッピング詳細">
+                        <StackPanel Margin="6">
+                            <TextBlock Text="選択中のマッピング" FontWeight="Bold" Margin="0,0,0,10"/>
+                            <TextBlock Text="武器:"/>
+                            <TextBlock Text="{Binding SelectedMapping.WeaponName}" TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                <TextBlock Text="弾薬候補 (Munitions - An Ammo Expansion.esl)"/>
-                <ComboBox ItemsSource="{Binding AmmoCandidates}"
-                          SelectedItem="{Binding SelectedAmmo}"
-                          DisplayMemberPath="DisplayName"
-                          Margin="0,5,0,10"/>
+                            <TextBlock Text="弾薬候補 (Munitions - An Ammo Expansion.esl)"/>
+                            <ComboBox ItemsSource="{Binding AmmoCandidates}"
+                                      SelectedItem="{Binding SelectedAmmo}"
+                                      DisplayMemberPath="DisplayName"
+                                      Margin="0,5,0,10"/>
 
-                <Button Content="適用 (選択弾薬をマッピングに反映)"
-                        Command="{Binding ApplyMappingCommand}"
-                        IsEnabled="{Binding SelectedAmmo, Converter={StaticResource InverseBoolConverter}}"/>
+                            <Button Content="適用 (選択弾薬をマッピングに反映)"
+                                    Command="{Binding ApplyMappingCommand}"
+                                    IsEnabled="{Binding SelectedAmmo, Converter={StaticResource InverseBoolConverter}}"/>
+                        </StackPanel>
+                    </TabItem>
+                    <TabItem Header="OMOD 候補">
+                        <StackPanel Margin="6">
+                            <Button Content="選択中の OMOD をマッピングに追加" Command="{Binding AddOmodToMappingsCommand}" Margin="0,0,0,6"/>
+                            <DataGrid ItemsSource="{Binding OmodCandidates}" SelectedItem="{Binding SelectedOmod}" AutoGenerateColumns="False" IsReadOnly="True" Height="220">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="種類" Binding="{Binding CandidateType}" Width="80" />
+                                    <DataGridTextColumn Header="候補 EditorID" Binding="{Binding CandidateEditorId}" Width="150" />
+                                    <DataGridTextColumn Header="FormKey" Binding="{Binding CandidateFormKey}" Width="140" />
+                                    <DataGridTextColumn Header="候補弾薬" Binding="{Binding CandidateAmmo}" Width="140" />
+                                    <DataGridTextColumn Header="プラグイン" Binding="{Binding SourcePlugin}" Width="120" />
+                                    <DataGridTextColumn Header="SuggestedTarget" Binding="{Binding SuggestedTarget}" Width="100" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
             </StackPanel>
         </Grid>
     </Grid>
