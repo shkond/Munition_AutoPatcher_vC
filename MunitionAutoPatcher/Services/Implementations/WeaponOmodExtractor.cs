@@ -11,10 +11,12 @@ namespace MunitionAutoPatcher.Services.Implementations;
 public class WeaponOmodExtractor : IWeaponOmodExtractor
 {
     private readonly ILoadOrderService _loadOrderService;
+    private readonly IConfigService _configService;
 
-    public WeaponOmodExtractor(ILoadOrderService loadOrderService)
+    public WeaponOmodExtractor(ILoadOrderService loadOrderService, IConfigService configService)
     {
         _loadOrderService = loadOrderService;
+        _configService = configService;
     }
 
     public async Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress = null)
@@ -33,6 +35,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             {
                 using var env = GameEnvironment.Typical.Fallout4(Fallout4Release.Fallout4);
 
+                // Load excluded plugins from config (blacklist). Candidates from these plugins will be skipped.
+                var excluded = new System.Collections.Generic.HashSet<string>(_configService.GetExcludedPlugins() ?? System.Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+                int skippedByExcluded = 0;
+
             // 1) Enumerate all ConstructibleObject records and record those that create objects (CreatedObject will usually be a weapon/item)
             var cobjs = env.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides();
             foreach (var cobj in cobjs)
@@ -41,6 +47,18 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 {
                     var created = cobj.CreatedObject;
                     if (created.IsNull) continue;
+
+                    // Skip candidates coming from excluded plugins
+                    try
+                    {
+                        var srcPlugin = cobj.FormKey.ModKey.FileName;
+                        if (excluded.Contains(srcPlugin))
+                        {
+                            skippedByExcluded++;
+                            continue;
+                        }
+                    }
+                    catch { }
 
                     // Record the created object's FormKey as a candidate. Resolution to a Weapon record (to inspect Ammo) may be done later.
                         // Try to resolve the created object to a weapon or ammo record by scanning the env PriorityOrder collections.
@@ -65,6 +83,9 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                         createdAmmoKey = new FormKey { PluginName = ammoLink.FormKey.ModKey.FileName, FormId = ammoLink.FormKey.ID };
                                     }
                                 }
+
+                                        if (skippedByExcluded > 0)
+                                            progress?.Report($"{skippedByExcluded} 件のレコードが除外プラグイン設定のためスキップされました。");
                                 if (createdAmmoKey != null)
                                 {
                                     // We have an ammo FormKey but resolving the actual Ammo record via PriorityOrder.Ammo()
@@ -267,21 +288,29 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             }
                                             catch { }
 
-                                            var candidate = new OmodCandidate
+                                            // If this record originates from an excluded plugin, skip adding it as a candidate.
+                                            if (excluded.Contains(recPlugin ?? string.Empty))
                                             {
-                                                CandidateType = m.Name, // method name (e.g. "ObjectMod", "ConstructibleObject", ...)
-                                                CandidateFormKey = new Models.FormKey { PluginName = recPlugin ?? string.Empty, FormId = recId },
-                                                CandidateEditorId = recEditorId,
-                                                BaseWeapon = new Models.FormKey { PluginName = plugin, FormId = id },
-                                                BaseWeaponEditorId = weapons.FirstOrDefault(w => w.FormKey.ModKey.FileName == plugin && w.FormKey.ID == id)?.EditorID ?? string.Empty,
-                                                CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
-                                                CandidateAmmoName = string.Empty,
-                                                SourcePlugin = recPlugin ?? string.Empty,
-                                                Notes = $"Reference found in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
-                                                SuggestedTarget = "Reference"
-                                            };
+                                                skippedByExcluded++;
+                                            }
+                                            else
+                                            {
+                                                var candidate = new OmodCandidate
+                                                {
+                                                    CandidateType = m.Name, // method name (e.g. "ObjectMod", "ConstructibleObject", ...)
+                                                    CandidateFormKey = new Models.FormKey { PluginName = recPlugin ?? string.Empty, FormId = recId },
+                                                    CandidateEditorId = recEditorId,
+                                                    BaseWeapon = new Models.FormKey { PluginName = plugin, FormId = id },
+                                                    BaseWeaponEditorId = weapons.FirstOrDefault(w => w.FormKey.ModKey.FileName == plugin && w.FormKey.ID == id)?.EditorID ?? string.Empty,
+                                                    CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
+                                                    CandidateAmmoName = string.Empty,
+                                                    SourcePlugin = recPlugin ?? string.Empty,
+                                                    Notes = $"Reference found in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
+                                                    SuggestedTarget = "Reference"
+                                                };
 
-                                            results.Add(candidate);
+                                                results.Add(candidate);
+                                            }
                                         }
                                     }
                                     catch { }
@@ -582,13 +611,17 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 var fileName = $"weapon_omods_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
                 var path = System.IO.Path.Combine(artifactsDir, fileName);
                 using var sw = new System.IO.StreamWriter(path, false, Encoding.UTF8);
-                sw.WriteLine("CandidateType,BaseWeapon,BaseEditorId,CandidateFormKey,CandidateEditorId,CandidateAmmo,SourcePlugin,Notes,SuggestedTarget");
+                // Add ConfirmedAmmoChange and ConfirmReason and CandidateAmmoName to CSV
+                sw.WriteLine("CandidateType,BaseWeapon,BaseEditorId,CandidateFormKey,CandidateEditorId,CandidateAmmo,CandidateAmmoName,SourcePlugin,Notes,SuggestedTarget,ConfirmedAmmoChange,ConfirmReason");
                 foreach (var c in results)
                 {
                     var baseKey = c.BaseWeapon != null ? $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}" : string.Empty;
                     var candKey = c.CandidateFormKey != null ? $"{c.CandidateFormKey.PluginName}:{c.CandidateFormKey.FormId:X8}" : string.Empty;
                     var ammoKey = c.CandidateAmmo != null ? $"{c.CandidateAmmo.PluginName}:{c.CandidateAmmo.FormId:X8}" : string.Empty;
-                    sw.WriteLine($"{c.CandidateType},{baseKey},{Escape(c.BaseWeaponEditorId)},{candKey},{Escape(c.CandidateEditorId)},{ammoKey},{c.SourcePlugin},{Escape(c.Notes)},{c.SuggestedTarget}");
+                    var ammoName = c.CandidateAmmoName ?? string.Empty;
+                    var confirmed = c.ConfirmedAmmoChange ? "true" : "false";
+                    var reason = c.ConfirmReason ?? string.Empty;
+                    sw.WriteLine($"{c.CandidateType},{baseKey},{Escape(c.BaseWeaponEditorId)},{candKey},{Escape(c.CandidateEditorId)},{ammoKey},{Escape(ammoName)},{c.SourcePlugin},{Escape(c.Notes)},{c.SuggestedTarget},{confirmed},{Escape(reason)}");
                 }
                 sw.Flush();
                 progress?.Report($"OMOD 抽出 CSV を生成しました: {path}");

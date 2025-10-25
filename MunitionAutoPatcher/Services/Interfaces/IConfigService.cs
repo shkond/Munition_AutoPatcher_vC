@@ -22,4 +22,7 @@ public interface IConfigService
     void SetExcludeCcEsl(bool v);
     bool GetPreferEditorIdForDisplay();
     void SetPreferEditorIdForDisplay(bool v);
+    // Excluded plugins list (configurable blacklist)
+    System.Collections.Generic.IEnumerable<string> GetExcludedPlugins();
+    void SetExcludedPlugins(System.Collections.Generic.IEnumerable<string> plugins);
 }

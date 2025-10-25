@@ -27,6 +27,11 @@ public class SettingsViewModel : ViewModelBase
     private bool _preferEditorIdForDisplay = false;
     private bool _isProcessing;
     private OmodCandidate? _selectedOmodCandidate;
+    private ObservableCollection<string> _excludedPlugins = new();
+    private string _newExcludedPlugin = string.Empty;
+    private string? _selectedExcludedPlugin;
+    public ICommand AddExcludedPluginCommand { get; }
+    public ICommand RemoveExcludedPluginCommand { get; }
 
     public SettingsViewModel(IConfigService configService, IOrchestrator orchestrator, MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor omodExtractor, MunitionAutoPatcher.Services.Interfaces.IRobCoIniGenerator iniGenerator)
     {
@@ -37,12 +42,17 @@ public class SettingsViewModel : ViewModelBase
 
         BrowseGameDataCommand = new RelayCommand(BrowseGameData);
         BrowseOutputPathCommand = new RelayCommand(BrowseOutputPath);
+        AddExcludedPluginCommand = new RelayCommand(AddExcludedPlugin, () => !string.IsNullOrWhiteSpace(NewExcludedPlugin));
+        RemoveExcludedPluginCommand = new RelayCommand(RemoveExcludedPlugin, () => !string.IsNullOrWhiteSpace(SelectedExcludedPlugin));
     StartExtractionCommand = new AsyncRelayCommand(StartExtraction, () => !IsProcessing);
     ExtractOmodsCommand = new AsyncRelayCommand(StartOmodExtraction, () => !IsProcessing);
     GenerateIniFromSelectedCommand = new AsyncRelayCommand(GenerateIniFromSelected, () => !IsProcessing && SelectedOmodCandidate != null);
         
         LoadSettings();
         OmodCandidates = new ObservableCollection<OmodCandidate>();
+        // Load excluded plugins into observable collection
+        foreach (var p in _configService.GetExcludedPlugins() ?? System.Array.Empty<string>())
+            _excludedPlugins.Add(p);
     }
 
     public string GameDataPath
@@ -129,6 +139,36 @@ public class SettingsViewModel : ViewModelBase
     public ICommand ExtractOmodsCommand { get; }
 
     public ObservableCollection<OmodCandidate> OmodCandidates { get; }
+
+    public ObservableCollection<string> ExcludedPlugins
+    {
+        get => _excludedPlugins;
+        set => SetProperty(ref _excludedPlugins, value);
+    }
+
+    public string NewExcludedPlugin
+    {
+        get => _newExcludedPlugin;
+        set
+        {
+            if (SetProperty(ref _newExcludedPlugin, value))
+            {
+                (AddExcludedPluginCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string? SelectedExcludedPlugin
+    {
+        get => _selectedExcludedPlugin;
+        set
+        {
+            if (SetProperty(ref _selectedExcludedPlugin, value))
+            {
+                (RemoveExcludedPluginCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     public OmodCandidate? SelectedOmodCandidate
     {
@@ -235,6 +275,42 @@ public class SettingsViewModel : ViewModelBase
         {
             IsProcessing = false;
         }
+    }
+
+    private void AddExcludedPlugin()
+    {
+        try
+        {
+            var v = (NewExcludedPlugin ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(v)) return;
+            // Normalize to filename form
+            if (!v.EndsWith(".esp", StringComparison.OrdinalIgnoreCase) && !v.EndsWith(".esl", StringComparison.OrdinalIgnoreCase) && !v.EndsWith(".esm", StringComparison.OrdinalIgnoreCase))
+                v = v + ".esp";
+            if (!_excludedPlugins.Contains(v, StringComparer.OrdinalIgnoreCase))
+            {
+                _excludedPlugins.Add(v);
+                _configService.SetExcludedPlugins(_excludedPlugins);
+            }
+            NewExcludedPlugin = string.Empty;
+        }
+        catch { }
+    }
+
+    private void RemoveExcludedPlugin()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(SelectedExcludedPlugin)) return;
+            var toRemove = SelectedExcludedPlugin;
+            var match = _excludedPlugins.FirstOrDefault(p => string.Equals(p, toRemove, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                _excludedPlugins.Remove(match);
+                _configService.SetExcludedPlugins(_excludedPlugins);
+            }
+            SelectedExcludedPlugin = null;
+        }
+        catch { }
     }
 
     private async Task GenerateIniFromSelected()
