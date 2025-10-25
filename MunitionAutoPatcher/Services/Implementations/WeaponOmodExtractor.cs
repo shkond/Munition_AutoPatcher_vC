@@ -212,6 +212,61 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                             var recEditorId = string.Empty;
                                             try { recEditorId = rec.GetType().GetProperty("EditorID")?.GetValue(rec)?.ToString() ?? string.Empty; } catch { }
 
+                                            // Try to detect whether this record modifies ammo: scan its other properties for Ammo/Projectile FormLinks
+                                            FormKey? detectedAmmoKey = null;
+                                            try
+                                            {
+                                                var allProps = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                                                foreach (var q in allProps)
+                                                {
+                                                    try
+                                                    {
+                                                        // Skip the property that pointed to the weapon itself (p)
+                                                        if (q.Name == p.Name) continue;
+
+                                                        // If property name suggests ammo/ projectile, inspect deeper
+                                                        var lname = q.Name.ToLowerInvariant();
+                                                        if (!lname.Contains("ammo") && !lname.Contains("projectile") && !lname.Contains("bullet"))
+                                                        {
+                                                            // still inspect: some FormLink fields don't have obvious names
+                                                        }
+
+                                                        var qval = q.GetValue(rec);
+                                                        if (qval == null) continue;
+
+                                                        var fkPropQ = qval.GetType().GetProperty("FormKey");
+                                                        if (fkPropQ != null)
+                                                        {
+                                                            var fkq = fkPropQ.GetValue(qval);
+                                                            if (fkq != null)
+                                                            {
+                                                                try
+                                                                {
+                                                                    var mkq = fkq.GetType().GetProperty("ModKey")?.GetValue(fkq);
+                                                                    var idObjq = fkq.GetType().GetProperty("ID")?.GetValue(fkq);
+                                                                    var pluginq = mkq?.GetType().GetProperty("FileName")?.GetValue(mkq)?.ToString() ?? string.Empty;
+                                                                    uint idq = 0;
+                                                                    if (idObjq is uint uuq) idq = uuq;
+                                                                    else if (idObjq != null) idq = Convert.ToUInt32(idObjq);
+                                                                    if (!string.IsNullOrEmpty(pluginq) && idq != 0)
+                                                                    {
+                                                                        // Heuristic: if the referenced Form is not the weapon itself, consider as ammo candidate
+                                                                        if (!(string.Equals(pluginq, plugin, StringComparison.OrdinalIgnoreCase) && idq == id))
+                                                                        {
+                                                                            detectedAmmoKey = new FormKey { PluginName = pluginq, FormId = idq };
+                                                                            break;
+                                                                        }
+                                                                    }
+                                                                }
+                                                                catch { }
+                                                            }
+                                                        }
+                                                    }
+                                                    catch { }
+                                                }
+                                            }
+                                            catch { }
+
                                             var candidate = new OmodCandidate
                                             {
                                                 CandidateType = m.Name, // method name (e.g. "ObjectMod", "ConstructibleObject", ...)
@@ -219,10 +274,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                 CandidateEditorId = recEditorId,
                                                 BaseWeapon = new Models.FormKey { PluginName = plugin, FormId = id },
                                                 BaseWeaponEditorId = weapons.FirstOrDefault(w => w.FormKey.ModKey.FileName == plugin && w.FormKey.ID == id)?.EditorID ?? string.Empty,
-                                                CandidateAmmo = null,
+                                                CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
                                                 CandidateAmmoName = string.Empty,
                                                 SourcePlugin = recPlugin ?? string.Empty,
-                                                Notes = $"Reference found in {m.Name}.{p.Name} -> {plugin}:{id:X8}",
+                                                Notes = $"Reference found in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
                                                 SuggestedTarget = "Reference"
                                             };
 
