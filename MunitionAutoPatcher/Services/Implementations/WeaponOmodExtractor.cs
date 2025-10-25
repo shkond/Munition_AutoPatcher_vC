@@ -249,6 +249,109 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     // Non-fatal; reflection scanning is best-effort
                     progress?.Report($"注意: 逆参照スキャン中に例外が発生しました（無視します）: {ex.Message}");
                 }
+
+                // Resolution pass: when running under GameEnvironment we can resolve names via PriorityOrder/LinkCache
+                try
+                {
+                    var priority = env.LoadOrder.PriorityOrder;
+                    // Build weapon map
+                    var weaponGetters = priority.Weapon().WinningOverrides().ToList();
+                    var weaponMap = weaponGetters.ToDictionary(w => ($"{w.FormKey.ModKey.FileName}:{w.FormKey.ID:X8}"), w => w);
+
+                    // Try to build ammo map if Ammo() extension exists
+                    Dictionary<string, object>? ammoMap = null;
+                    try
+                    {
+                        var ammoMethod = priority.GetType().GetMethod("Ammo");
+                        if (ammoMethod != null)
+                        {
+                            var ammoCollection = ammoMethod.Invoke(priority, null);
+                            var win = ammoCollection?.GetType().GetMethod("WinningOverrides");
+                            if (win != null)
+                            {
+                                var ammoList = win.Invoke(ammoCollection, null) as System.Collections.IEnumerable;
+                                if (ammoList != null)
+                                {
+                                    ammoMap = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                                    foreach (var a in ammoList)
+                                    {
+                                        try
+                                        {
+                                            var plugin = a.GetType().GetProperty("FormKey")?.GetValue(a)?.GetType().GetProperty("ModKey")?.GetValue(a.GetType().GetProperty("FormKey")?.GetValue(a))?.GetType().GetProperty("FileName")?.GetValue(a.GetType().GetProperty("FormKey")?.GetValue(a))?.ToString();
+                                            var idObj = a.GetType().GetProperty("FormKey")?.GetValue(a)?.GetType().GetProperty("ID")?.GetValue(a.GetType().GetProperty("FormKey")?.GetValue(a));
+                                            uint id = 0;
+                                            if (idObj is uint uu) id = uu;
+                                            else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                            if (!string.IsNullOrEmpty(plugin) && id != 0)
+                                            {
+                                                var key = $"{plugin}:{id:X8}";
+                                                ammoMap[key] = a;
+                                            }
+                                        }
+                                        catch { }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { ammoMap = null; }
+
+                    // Populate candidate names/ids
+                    foreach (var c in results)
+                    {
+                        try
+                        {
+                            // Resolve BaseWeapon editor id
+                            if (c.BaseWeapon != null && string.IsNullOrEmpty(c.BaseWeaponEditorId))
+                            {
+                                var bk = $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}";
+                                if (weaponMap.TryGetValue(bk, out var wgetter))
+                                {
+                                    try { c.BaseWeaponEditorId = wgetter.EditorID ?? string.Empty; } catch { }
+                                    // If candidate has no ammo, try to read from the weapon's Ammo link
+                                    try
+                                    {
+                                        var ammoLink = wgetter.GetType().GetProperty("Ammo")?.GetValue(wgetter);
+                                        if (ammoLink != null)
+                                        {
+                                            var fk = ammoLink.GetType().GetProperty("FormKey")?.GetValue(ammoLink);
+                                            if (fk != null)
+                                            {
+                                                var plugin = fk.GetType().GetProperty("ModKey")?.GetValue(fk)?.GetType().GetProperty("FileName")?.GetValue(fk.GetType().GetProperty("ModKey")?.GetValue(fk))?.ToString() ?? string.Empty;
+                                                var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
+                                                uint id = 0;
+                                                if (idObj is uint uu) id = uu;
+                                                else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                                if (!string.IsNullOrEmpty(plugin) && id != 0)
+                                                {
+                                                    c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
+                                                    var key = $"{plugin}:{id:X8}";
+                                                    if (ammoMap != null && ammoMap.TryGetValue(key, out var ammoGetter))
+                                                    {
+                                                        try { c.CandidateAmmoName = ammoGetter.GetType().GetProperty("EditorID")?.GetValue(ammoGetter)?.ToString() ?? string.Empty; } catch { }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            // Resolve CandidateAmmoName
+                            if (c.CandidateAmmo != null && string.IsNullOrEmpty(c.CandidateAmmoName) && ammoMap != null)
+                            {
+                                var ak = $"{c.CandidateAmmo.PluginName}:{c.CandidateAmmo.FormId:X8}";
+                                if (ammoMap.TryGetValue(ak, out var ag))
+                                {
+                                    try { c.CandidateAmmoName = ag.GetType().GetProperty("EditorID")?.GetValue(ag)?.ToString() ?? string.Empty; } catch { }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
             // 2) ObjectMod enumeration is not performed here (API surface differs per Mutagen version); subject to future enhancement.
 
             // 3) (Reference scanning via LinkCache was skipped to avoid version-specific API complexity.)
