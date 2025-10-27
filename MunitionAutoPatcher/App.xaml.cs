@@ -82,7 +82,20 @@ public partial class App : Application
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
         var mainViewModel = _host.Services.GetRequiredService<MainViewModel>();
-        
+        // Log the Mutagen assembly information for diagnostics (useful when running under MO2)
+        try
+        {
+            var geType = typeof(Mutagen.Bethesda.Environments.GameEnvironment);
+            var asm = geType.Assembly.GetName();
+            var msg = $"Mutagen assembly loaded: {asm.Name} v{asm.Version}";
+            AppLogger.Log(msg);
+            try { mainViewModel.AddLog(msg); } catch { }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("Failed to detect Mutagen assembly at startup", ex);
+        }
+
         mainWindow.DataContext = mainViewModel;
         mainWindow.Show();
 

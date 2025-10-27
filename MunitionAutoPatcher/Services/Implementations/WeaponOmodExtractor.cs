@@ -58,7 +58,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                             continue;
                         }
                     }
-                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: iterating COBJs", ex); }
+                    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: iterating COBJs", ex); }
 
                     // Record the created object's FormKey as a candidate. Resolution to a Weapon record (to inspect Ammo) may be done later.
                         // Try to resolve the created object to a weapon or ammo record by scanning the env PriorityOrder collections.
@@ -515,6 +515,88 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     object? linkCache = null;
                     try { linkCache = env.GetType().GetProperty("LinkCache")?.GetValue(env); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to obtain LinkCache via reflection", ex); linkCache = null; }
 
+                    // Diagnostic dump for specific problematic plugins (helps investigate missing candidates)
+                    try
+                    {
+                        var repoRoot = FindRepoRoot();
+                        var artifactsDirDiag = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
+                        if (!System.IO.Directory.Exists(artifactsDirDiag))
+                            System.IO.Directory.CreateDirectory(artifactsDirDiag);
+
+                        var diagFile = System.IO.Path.Combine(artifactsDirDiag, $"noveske_diagnostic_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+                        using var dsw = new System.IO.StreamWriter(diagFile, false, Encoding.UTF8);
+                        dsw.WriteLine("WeaponFormKey,EditorId,ReverseRefCount,ReverseSourcePlugins,ConfirmedCandidatesCount");
+
+                        // gather weapons list from earlier (weapons variable exists in outer scope where reflection scan built it)
+                        try
+                        {
+                            var weaponsList = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides().ToList();
+                            foreach (var w in weaponsList.Where(w => string.Equals(w.FormKey.ModKey.FileName, "noveskeRecceL.esp", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                try
+                                {
+                                    var wk = $"{w.FormKey.ModKey.FileName}:{w.FormKey.ID:X8}";
+                                    var editor = w.EditorID ?? string.Empty;
+                                    int refCount = 0;
+                                    var srcPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                    if (reverseMap.TryGetValue(wk, out var lst))
+                                    {
+                                        refCount = lst.Count;
+                                        foreach (var t in lst)
+                                        {
+                                            try
+                                            {
+                                                var fkPropSrc = t.Record.GetType().GetProperty("FormKey");
+                                                if (fkPropSrc != null)
+                                                {
+                                                    var fkSrc = fkPropSrc.GetValue(t.Record);
+                                                    if (fkSrc != null)
+                                                    {
+                                                        var mkSrc = fkSrc.GetType().GetProperty("ModKey")?.GetValue(fkSrc);
+                                                        var srcPlugin = mkSrc?.GetType().GetProperty("FileName")?.GetValue(mkSrc)?.ToString() ?? string.Empty;
+                                                        if (!string.IsNullOrEmpty(srcPlugin)) srcPlugins.Add(srcPlugin);
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception) { }
+                                        }
+                                    }
+
+                                    // count confirmed candidates that reference this base weapon
+                                    var confirmed = results.Count(r => r.BaseWeapon != null && string.Equals(r.BaseWeapon.PluginName, w.FormKey.ModKey.FileName, StringComparison.OrdinalIgnoreCase) && r.BaseWeapon.FormId == w.FormKey.ID && r.ConfirmedAmmoChange);
+
+                                    dsw.WriteLine($"{wk},{Escape(editor)},{refCount},\"{Escape(string.Join(";", srcPlugins))}\",{confirmed}");
+                                }
+                                catch (Exception) { }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("WeaponOmodExtractor: failed to write diagnostic weapons list", ex);
+                        }
+
+                        dsw.Flush();
+                        progress?.Report($"OMOD diagnostic を生成しました: {diagFile}");
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log("WeaponOmodExtractor: failed to write noveske diagnostic", ex);
+                    }
+
+                        // Detector selection: pick a version-adaptive detector (currently fallback)
+                        MunitionAutoPatcher.Services.Interfaces.IAmmunitionChangeDetector detector = new MunitionAutoPatcher.Services.Implementations.ReflectionFallbackDetector();
+                        try
+                        {
+                            var mutAsm = typeof(Mutagen.Bethesda.Environments.GameEnvironment).Assembly.GetName();
+                            detector = MunitionAutoPatcher.Services.Implementations.DetectorFactory.GetDetector(mutAsm);
+                            AppLogger.Log($"WeaponOmodExtractor: selected detector {detector.Name}");
+                            progress?.Report($"Detector selected: {detector.Name}");
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("WeaponOmodExtractor: failed to select detector, using fallback", ex);
+                        }
+
                     // Now, for each candidate that has a BaseWeapon, check reverseMap entries for that weapon.
                     foreach (var c in results)
                     {
@@ -546,6 +628,54 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                         }
                                     }
                                     catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed while checking sourceRec.FormKey or excluded plugins", ex); }
+                                    // First, attempt to use a version-adaptive detector if available. The detector
+                                    // can sometimes deterministically say this rec changes ammo for the base weapon.
+                                    try
+                                    {
+                                        // Attempt to obtain the original weapon's Ammo link (if present)
+                                        object? originalAmmoLinkObj = null;
+                                        try
+                                        {
+                                            var priorityForDetector = env.LoadOrder.PriorityOrder;
+                                            var weaponGetter = priorityForDetector.Weapon().WinningOverrides().FirstOrDefault(w => w.FormKey.ModKey.FileName == c.BaseWeapon.PluginName && w.FormKey.ID == c.BaseWeapon.FormId);
+                                            if (weaponGetter != null)
+                                                originalAmmoLinkObj = weaponGetter.GetType().GetProperty("Ammo")?.GetValue(weaponGetter);
+                                        }
+                                        catch { }
+
+                                        try
+                                        {
+                                            if (detector != null && detector.DoesOmodChangeAmmo(sourceRec, originalAmmoLinkObj, out var newAmmoLinkObj))
+                                            {
+                                                try
+                                                {
+                                                    var fk = newAmmoLinkObj?.GetType().GetProperty("FormKey")?.GetValue(newAmmoLinkObj);
+                                                    if (fk != null)
+                                                    {
+                                                        var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
+                                                        var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
+                                                        var plugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
+                                                        uint id = 0;
+                                                        if (idObj is uint uu) id = uu;
+                                                        else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                                        if (!string.IsNullOrEmpty(plugin) && id != 0)
+                                                        {
+                                                            c.ConfirmedAmmoChange = true;
+                                                            c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
+                                                            try { c.CandidateAmmoName = newAmmoLinkObj?.GetType().GetProperty("EditorID")?.GetValue(newAmmoLinkObj)?.ToString() ?? string.Empty; } catch { }
+                                                            c.ConfirmReason = $"Detector {detector.Name} reported change";
+                                                            // Stop processing this candidate (confirmed)
+                                                            if (c.ConfirmedAmmoChange) break;
+                                                        }
+                                                    }
+                                                }
+                                                catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector result processing failed", ex); }
+                                            }
+                                        }
+                                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector invocation failed", ex); }
+                                    }
+                                    catch { }
+
                                     // Inspect properties of the source record to find ammo-like references
                                     var sprops = sourceRec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
                                     foreach (var sp in sprops)
@@ -649,6 +779,34 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 }
                 sw.Flush();
                 progress?.Report($"OMOD 抽出 CSV を生成しました: {path}");
+
+                // 出力フィルタ: SourcePlugin が noveskeRecceL.esp の候補のみを別ファイルに出力
+                try
+                {
+                    var noveskeFile = System.IO.Path.Combine(artifactsDir, $"weapon_omods_noveskeRecceL_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+                    using var nsw = new System.IO.StreamWriter(noveskeFile, false, Encoding.UTF8);
+                    nsw.WriteLine("CandidateType,BaseWeapon,BaseEditorId,CandidateFormKey,CandidateEditorId,CandidateAmmo,CandidateAmmoName,SourcePlugin,Notes,SuggestedTarget,ConfirmedAmmoChange,ConfirmReason");
+                    foreach (var c in results.Where(r => string.Equals(r.SourcePlugin, "noveskeRecceL.esp", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try
+                        {
+                            var baseKey = c.BaseWeapon != null ? $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}" : string.Empty;
+                            var candKey = c.CandidateFormKey != null ? $"{c.CandidateFormKey.PluginName}:{c.CandidateFormKey.FormId:X8}" : string.Empty;
+                            var ammoKey = c.CandidateAmmo != null ? $"{c.CandidateAmmo.PluginName}:{c.CandidateAmmo.FormId:X8}" : string.Empty;
+                            var ammoName = c.CandidateAmmoName ?? string.Empty;
+                            var confirmed = c.ConfirmedAmmoChange ? "true" : "false";
+                            var reason = c.ConfirmReason ?? string.Empty;
+                            nsw.WriteLine($"{c.CandidateType},{baseKey},{Escape(c.BaseWeaponEditorId)},{candKey},{Escape(c.CandidateEditorId)},{ammoKey},{Escape(ammoName)},{c.SourcePlugin},{Escape(c.Notes)},{c.SuggestedTarget},{confirmed},{Escape(reason)}");
+                        }
+                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed writing noveske-specific row", ex); }
+                    }
+                    nsw.Flush();
+                    progress?.Report($"noveskeRecceL 向け候補CSV を生成しました: {noveskeFile}");
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log("WeaponOmodExtractor: failed to write noveske-specific CSV", ex);
+                }
             }
             catch (Exception ex)
             {
