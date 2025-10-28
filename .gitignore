@@ -10,6 +10,9 @@
 *.user
 *.userosscache
 
+#serena
+.serena/
+.serena/*
 
 # Generated artifacts / test outputs
 artifacts/

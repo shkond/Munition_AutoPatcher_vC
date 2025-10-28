@@ -22,52 +22,52 @@ public class ReflectionFallbackDetector : IAmmunitionChangeDetector
             var props = omod.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (var p in props)
             {
-                try
-                {
-                    // Heuristic: property with FormLink-like shape (has FormKey property)
-                    var val = p.GetValue(omod);
-                    if (val == null) continue;
-                    var fkProp = val.GetType().GetProperty("FormKey");
-                    if (fkProp == null) continue;
-
-                    // If this property name looks like ammo/projectile, treat as candidate
-                    var lname = p.Name.ToLowerInvariant();
-                    if (!lname.Contains("ammo") && !lname.Contains("projectile") && !lname.Contains("bullet") && !lname.Contains("ammunition"))
+                    try
                     {
-                        // still consider it — some authors use uncommon names
-                    }
+                        // Heuristic: property with FormLink-like shape (has FormKey property)
+                        var val = p.GetValue(omod);
+                        if (val == null) continue;
+                        var fkProp = val.GetType().GetProperty("FormKey");
+                        if (fkProp == null) continue;
 
-                    // Extract FormKey info if possible
-                    var fk = fkProp.GetValue(val);
-                    if (fk == null) continue;
-
-                    // If we have an original link, compare FormKeys if possible
-                    if (originalAmmoLink != null)
-                    {
-                        try
+                        // If this property name looks like ammo/projectile, treat as candidate
+                        var lname = p.Name.ToLowerInvariant();
+                        if (!lname.Contains("ammo") && !lname.Contains("projectile") && !lname.Contains("bullet") && !lname.Contains("ammunition"))
                         {
-                            var origFkProp = originalAmmoLink.GetType().GetProperty("FormKey");
-                            if (origFkProp != null)
+                            // still consider it — some authors use uncommon names
+                        }
+
+                        // Extract FormKey info if possible
+                        var fk = fkProp.GetValue(val);
+                        if (fk == null) continue;
+
+                        // If we have an original link, compare FormKeys if possible
+                        if (originalAmmoLink != null)
+                        {
+                            try
                             {
-                                var origFk = origFkProp.GetValue(originalAmmoLink);
-                                if (origFk != null && fk.ToString() == origFk.ToString())
+                                var origFkProp = originalAmmoLink.GetType().GetProperty("FormKey");
+                                if (origFkProp != null)
                                 {
-                                    // same -> not a change
-                                    continue;
+                                    var origFk = origFkProp.GetValue(originalAmmoLink);
+                                    if (origFk != null && fk.ToString() == origFk.ToString())
+                                    {
+                                        // same -> not a change
+                                        continue;
+                                    }
                                 }
                             }
+                            catch (Exception ex) { AppLogger.Log("ReflectionFallbackDetector: failed comparing original FormKey", ex); }
                         }
-                        catch { }
-                    }
 
-                    // Otherwise, consider this a new ammo link
-                    newAmmoLink = val;
-                    return true;
-                }
-                catch { /* swallow and continue */ }
+                        // Otherwise, consider this a new ammo link
+                        newAmmoLink = val;
+                        return true;
+                    }
+                    catch (Exception ex) { AppLogger.Log("ReflectionFallbackDetector: property inspection failed", ex); /* swallow and continue */ }
             }
         }
-        catch { }
+    catch (Exception ex) { AppLogger.Log("ReflectionFallbackDetector: top-level reflection inspection failed", ex); }
 
         return false;
     }

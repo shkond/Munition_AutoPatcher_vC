@@ -63,7 +63,7 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
                                     }
                                 }
                             }
-                            catch { }
+                            catch (Exception ex) { AppLogger.Log("MutagenV51Detector: failing to read property during detection", ex); }
                         }
 
                         newAmmoLink = val;

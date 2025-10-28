@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using System.Text;
 using MunitionAutoPatcher.Commands;
 using MunitionAutoPatcher.Services.Interfaces;
 
@@ -315,7 +316,29 @@ public class MapperViewModel : ViewModelBase
                 }
             });
 
-            var results = await _omodExtractor.ExtractCandidatesAsync(progress);
+            // Diagnostic: write entry marker so we can detect repeated UI triggers
+            try
+            {
+                var dir = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
+                while (dir != null)
+                {
+                    var sln = System.IO.Path.Combine(dir.FullName, "MunitionAutoPatcher.sln");
+                    if (System.IO.File.Exists(sln)) break;
+                    dir = dir.Parent;
+                }
+                var artifactsDir = dir != null ? System.IO.Path.Combine(dir.FullName, "artifacts", "RobCo_Patcher") : System.IO.Path.Combine(System.AppContext.BaseDirectory, "artifacts", "RobCo_Patcher");
+                if (!System.IO.Directory.Exists(artifactsDir)) System.IO.Directory.CreateDirectory(artifactsDir);
+                var entryPath = System.IO.Path.Combine(artifactsDir, $"extract_command_entry_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
+                using (var w = new System.IO.StreamWriter(entryPath, false, Encoding.UTF8))
+                {
+                    w.WriteLine($"MapperViewModel.ExtractOmods entry at {DateTime.Now:O}");
+                }
+                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm) mm.AddLog($"Extract command entry marker written: {entryPath}");
+            }
+            catch (Exception ex) { AppLogger.Log("MapperViewModel: failed to write extract entry marker", ex); }
+
+            // Run the heavy extraction logic on a thread-pool thread to avoid blocking the UI thread.
+            var results = await Task.Run(async () => await _omodExtractor.ExtractCandidatesAsync(progress));
             OmodCandidates.Clear();
             foreach (var r in results)
                 OmodCandidates.Add(r);
@@ -325,6 +348,27 @@ public class MapperViewModel : ViewModelBase
         }
         finally
         {
+            // Diagnostic: write exit marker to indicate the command returned
+            try
+            {
+                var dir2 = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
+                while (dir2 != null)
+                {
+                    var sln = System.IO.Path.Combine(dir2.FullName, "MunitionAutoPatcher.sln");
+                    if (System.IO.File.Exists(sln)) break;
+                    dir2 = dir2.Parent;
+                }
+                var artifactsDir2 = dir2 != null ? System.IO.Path.Combine(dir2.FullName, "artifacts", "RobCo_Patcher") : System.IO.Path.Combine(System.AppContext.BaseDirectory, "artifacts", "RobCo_Patcher");
+                if (!System.IO.Directory.Exists(artifactsDir2)) System.IO.Directory.CreateDirectory(artifactsDir2);
+                var exitPath = System.IO.Path.Combine(artifactsDir2, $"extract_command_exit_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
+                using (var w2 = new System.IO.StreamWriter(exitPath, false, Encoding.UTF8))
+                {
+                    w2.WriteLine($"MapperViewModel.ExtractOmods exit at {DateTime.Now:O}");
+                }
+                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm2) mm2.AddLog($"Extract command exit marker written: {exitPath}");
+            }
+            catch (Exception ex) { AppLogger.Log("MapperViewModel: failed to write extract exit marker", ex); }
+
             IsProcessing = false;
         }
     }
