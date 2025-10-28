@@ -5,6 +5,7 @@ using Mutagen.Bethesda;
 using Mutagen.Bethesda.Environments;
 using System.Text;
 using System.Reflection;
+using MunitionAutoPatcher.Utilities;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -24,9 +25,9 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         progress?.Report("OMOD/COBJ の候補を抽出しています...");
 
         // Diagnostic: mark start of extraction
-        try
-        {
-            var repoRootStart = FindRepoRoot();
+            try
+            {
+                var repoRootStart = RepoUtils.FindRepoRoot();
             var artifactsDirStart = System.IO.Path.Combine(repoRootStart, "artifacts", "RobCo_Patcher");
             if (!System.IO.Directory.Exists(artifactsDirStart)) System.IO.Directory.CreateDirectory(artifactsDirStart);
             var startMarker = System.IO.Path.Combine(artifactsDirStart, $"extract_start_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
@@ -535,7 +536,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                         // Diagnostic: reverse-reference map built (or attempted)
                         try
                         {
-                            var repoRootRm = FindRepoRoot();
+                            var repoRootRm = RepoUtils.FindRepoRoot();
                             var artifactsDirRm = System.IO.Path.Combine(repoRootRm, "artifacts", "RobCo_Patcher");
                             if (!System.IO.Directory.Exists(artifactsDirRm)) System.IO.Directory.CreateDirectory(artifactsDirRm);
                             var rmMarker = System.IO.Path.Combine(artifactsDirRm, $"reverse_map_built_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
@@ -555,7 +556,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     // Diagnostic dump for specific problematic plugins (helps investigate missing candidates)
                     try
                     {
-                        var repoRoot = FindRepoRoot();
+                        var repoRoot = RepoUtils.FindRepoRoot();
                         var artifactsDirDiag = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
                         if (!System.IO.Directory.Exists(artifactsDirDiag))
                             System.IO.Directory.CreateDirectory(artifactsDirDiag);
@@ -633,7 +634,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                             // Diagnostic: detector selected
                             try
                             {
-                                var repoRootDet = FindRepoRoot();
+                                var repoRootDet = RepoUtils.FindRepoRoot();
                                 var artifactsDirDet = System.IO.Path.Combine(repoRootDet, "artifacts", "RobCo_Patcher");
                                 if (!System.IO.Directory.Exists(artifactsDirDet)) System.IO.Directory.CreateDirectory(artifactsDirDet);
                                 var detMarker = System.IO.Path.Combine(artifactsDirDet, $"detector_selected_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
@@ -812,7 +813,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 // Diagnostic: detection pass completed (or aborted)
                 try
                 {
-                    var repoRootDetPass = FindRepoRoot();
+                    var repoRootDetPass = RepoUtils.FindRepoRoot();
                     var artifactsDirDetPass = System.IO.Path.Combine(repoRootDetPass, "artifacts", "RobCo_Patcher");
                     if (!System.IO.Directory.Exists(artifactsDirDetPass)) System.IO.Directory.CreateDirectory(artifactsDirDetPass);
                     var passMarker = System.IO.Path.Combine(artifactsDirDetPass, $"detection_pass_complete_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
@@ -851,7 +852,11 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                         refCount = lst.Count;
                                 }
                             }
-                            catch { /* best-effort; don't let diagnostics break extraction */ }
+                            catch (Exception ex)
+                            {
+                                // Non-fatal diagnostic collection error; log for later analysis but continue.
+                                AppLogger.Log("WeaponOmodExtractor: non-fatal error while computing reverse-ref count for diagnostics", ex);
+                            }
 
                             var detName = selectedDetectorName;
 
@@ -899,9 +904,17 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                                     else
                                                                         createdEditor = string.Empty;
                                                                 }
-                                                                catch { createdEditor = string.Empty; }
+                                                                catch (Exception ex)
+                                                                {
+                                                                    AppLogger.Log("WeaponOmodExtractor: failed to resolve CreatedObject EditorID via LinkCache", ex);
+                                                                    createdEditor = string.Empty;
+                                                                }
                                                             }
-                                                            catch { createdEditor = string.Empty; }
+                                                            catch (Exception ex)
+                                                            {
+                                                                AppLogger.Log("WeaponOmodExtractor: failed while attempting to determine CreatedObject editor name", ex);
+                                                                createdEditor = string.Empty;
+                                                            }
 
                                                             if (!string.IsNullOrEmpty(createdKey) && reverseMap != null && reverseMap.TryGetValue(createdKey, out var srcs))
                                                             {
@@ -922,7 +935,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                                             }
                                                                         }
                                                                     }
-                                                                    catch { }
+                                                                    catch (Exception ex)
+                                                                    {
+                                                                        AppLogger.Log("WeaponOmodExtractor: failed while enumerating reverse-map source record FormKey properties", ex);
+                                                                    }
                                                                 }
                                                                 createdRefs = string.Join(";", srcPlugins);
                                                             }
@@ -951,7 +967,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                                         }
                                                                     }
                                                                 }
-                                                                catch { }
+                                                                catch (Exception ex)
+                                                                {
+                                                                    AppLogger.Log("WeaponOmodExtractor: failed while scanning COBJ properties for FormKey-like entries", ex);
+                                                                }
                                                             }
                                                             createdProps = string.Join(";", refsList);
                                                         }
@@ -1000,7 +1019,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 {
                     if (zeroRefRows != null && zeroRefRows.Count > 0)
                     {
-                        var repoRootZ = FindRepoRoot();
+                        var repoRootZ = RepoUtils.FindRepoRoot();
                         var artifactsDirZ = System.IO.Path.Combine(repoRootZ, "artifacts", "RobCo_Patcher");
                         if (!System.IO.Directory.Exists(artifactsDirZ)) System.IO.Directory.CreateDirectory(artifactsDirZ);
                         var diagPathAll = System.IO.Path.Combine(artifactsDirZ, $"zero_ref_details_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
@@ -1022,7 +1041,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             // 4) Write CSV for debugging into artifacts
             try
             {
-                var repoRoot = FindRepoRoot();
+                var repoRoot = RepoUtils.FindRepoRoot();
                 var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
                 if (!System.IO.Directory.Exists(artifactsDir))
                     System.IO.Directory.CreateDirectory(artifactsDir);
@@ -1083,7 +1102,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             // Diagnostic marker: write a small file so we can confirm the method actually completed at runtime.
             try
             {
-                var repoRoot = FindRepoRoot();
+                var repoRoot = RepoUtils.FindRepoRoot();
                 var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
                 if (!System.IO.Directory.Exists(artifactsDir))
                     System.IO.Directory.CreateDirectory(artifactsDir);
@@ -1118,23 +1137,5 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
     // (Removed) use the shared LinkCacheHelper.TryResolveViaLinkCache from Services/Implementations/LinkCacheHelper.cs
 
-    private string FindRepoRoot()
-    {
-        try
-        {
-            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                var solutionPath = System.IO.Path.Combine(dir.FullName, "MunitionAutoPatcher.sln");
-                if (System.IO.File.Exists(solutionPath))
-                    return dir.FullName;
-                dir = dir.Parent;
-            }
-        }
-        catch (Exception ex)
-        {
-            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponOmodExtractor.FindRepoRoot error: {ex.Message}"); } catch (Exception inner) { AppLogger.Log("WeaponOmodExtractor.FindRepoRoot: failed to add log to UI", inner); }
-        }
-        return AppContext.BaseDirectory;
-    }
+    // RepoUtils.FindRepoRoot provides repository root lookup
 }

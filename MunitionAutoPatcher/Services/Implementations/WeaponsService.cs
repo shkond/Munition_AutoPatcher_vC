@@ -234,19 +234,22 @@ public class WeaponsService : IWeaponsService
                     }
                     catch (Exception ex)
                     {
+                        // Record details so the root cause is available in artifacts/ logs and Debug output
+                        AppLogger.Log("WeaponsService: failed while parsing a weapon record", ex);
                         progress?.Report($"警告: 武器の解析に失敗しました: {ex.Message}");
                     }
                 }
 
                 progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
                 progress?.Report($"弾薬抽出(MO2 LinkCache 経由)完了: {_ammo.Count}個の弾薬を収集しました");
-                try { WriteRecordsLog(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: WriteRecordsLog error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in WriteRecordsLog catch", ex2); } /* non-fatal for extraction */ }
+                try { WriteRecordsLog(); } catch (Exception ex) { AppLogger.Log("WeaponsService: WriteRecordsLog failed", ex); /* non-fatal for extraction */ }
                 return _weapons;
-            }
-            catch
-            {
-                // Could not use GameEnvironment (not running under MO2 or API unavailable) - fall back to provided loadOrder
-            }
+                }
+                catch (Exception ex)
+                {
+                    // GameEnvironment not available or initialization failed; log and fall back to data-folder based enumeration.
+                    AppLogger.Log("WeaponsService: GameEnvironment detection failed, falling back to non-MO2 enumeration", ex);
+                }
 
             progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
             // Build an ammo list by scanning the weapons' DefaultAmmo entries (fallback)
@@ -318,7 +321,7 @@ public class WeaponsService : IWeaponsService
     {
         try
         {
-            var repoRoot = FindRepoRoot();
+            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
             var artifactsDir = Path.Combine(repoRoot, "artifacts");
             if (!Directory.Exists(artifactsDir))
                 Directory.CreateDirectory(artifactsDir);
@@ -332,10 +335,14 @@ public class WeaponsService : IWeaponsService
             sw.WriteLine("WeaponName\tEditorID\tFormKey\tDefaultAmmoName\tDefaultAmmoFormKey\tDamage\tFireRate");
             foreach (var w in _weapons)
             {
-                var formKeyStr = w.FormKey != null ? $"{w.FormKey.PluginName}:{w.FormKey.FormId:X8}" : string.Empty;
-                var defaultAmmoName = w.DefaultAmmoName ?? string.Empty;
-                var defaultAmmoKey = w.DefaultAmmo != null ? $"{w.DefaultAmmo.PluginName}:{w.DefaultAmmo.FormId:X8}" : string.Empty;
-                sw.WriteLine($"{w.Name}\t{w.EditorId}\t{formKeyStr}\t{defaultAmmoName}\t{defaultAmmoKey}\t{w.Damage.ToString(CultureInfo.InvariantCulture)}\t{w.FireRate.ToString(CultureInfo.InvariantCulture)}");
+                try
+                {
+                    var formKeyStr = w.FormKey != null ? $"{w.FormKey.PluginName}:{w.FormKey.FormId:X8}" : string.Empty;
+                    var defaultAmmoName = w.DefaultAmmoName ?? string.Empty;
+                    var defaultAmmoKey = w.DefaultAmmo != null ? $"{w.DefaultAmmo.PluginName}:{w.DefaultAmmo.FormId:X8}" : string.Empty;
+                    sw.WriteLine($"{w.Name}\t{w.EditorId}\t{formKeyStr}\t{defaultAmmoName}\t{defaultAmmoKey}\t{w.Damage.ToString(CultureInfo.InvariantCulture)}\t{w.FireRate.ToString(CultureInfo.InvariantCulture)}");
+                }
+                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write weapon row to records log", ex); }
             }
 
             sw.WriteLine();
@@ -343,48 +350,32 @@ public class WeaponsService : IWeaponsService
             sw.WriteLine("AmmoName\tEditorID\tFormKey\tDamage\tAmmoType");
             foreach (var a in _ammo)
             {
-                var aKey = a.FormKey != null ? $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}" : string.Empty;
-                sw.WriteLine($"{a.Name}\t{a.EditorId}\t{aKey}\t{a.Damage.ToString(CultureInfo.InvariantCulture)}\t{a.AmmoType}");
+                try
+                {
+                    var aKey = a.FormKey != null ? $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}" : string.Empty;
+                    sw.WriteLine($"{a.Name}\t{a.EditorId}\t{aKey}\t{a.Damage.ToString(CultureInfo.InvariantCulture)}\t{a.AmmoType}");
+                }
+                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write ammo row to records log", ex); }
             }
 
             sw.Flush();
-            Console.WriteLine($"[WeaponsService] Records log written to: {path}");
+            AppLogger.Log($"WeaponsService: records log written to: {path}");
         }
         catch (Exception ex)
         {
-            // Do not throw — logging is only for diagnostics
-            Console.WriteLine($"[WeaponsService] Failed to write records log: {ex.Message}");
+            // Do not throw — logging is only for diagnostics. Persist details for investigation.
+            AppLogger.Log("WeaponsService: failed to write records log", ex);
         }
     }
 
-    // Walk up from the base directory to find the repository root (where MunitionAutoPatcher.sln lives).
-    // If not found, fall back to the application base directory.
-    private string FindRepoRoot()
-    {
-        try
-        {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                var solutionPath = Path.Combine(dir.FullName, "MunitionAutoPatcher.sln");
-                if (File.Exists(solutionPath))
-                    return dir.FullName;
-                dir = dir.Parent;
-            }
-        }
-                catch (Exception ex)
-        {
-            try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService.FindRepoRoot error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in FindRepoRoot", ex2); }
-        }
-        return AppContext.BaseDirectory;
-    }
+        // RepoUtils.FindRepoRoot provides repository root lookup
 
     // Append all translation entries from an ITranslatedStringGetter to a diagnostic file.
     private void AppendTranslationsDump(ITranslatedStringGetter t, Models.FormKey? formKey, string tag)
     {
         try
         {
-            var repoRoot = FindRepoRoot();
+            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
             var artifactsDir = Path.Combine(repoRoot, "artifacts");
             if (!Directory.Exists(artifactsDir))
                 Directory.CreateDirectory(artifactsDir);
@@ -401,11 +392,11 @@ public class WeaponsService : IWeaponsService
             }
             sw.WriteLine();
             sw.Flush();
-            Console.WriteLine($"[WeaponsService] Translations dump appended to: {path}");
+            AppLogger.Log($"WeaponsService: translations dump appended to: {path}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WeaponsService] Failed to append translations dump: {ex.Message}");
+            AppLogger.Log("WeaponsService: failed to append translations dump", ex);
         }
     }
 }

@@ -27,7 +27,7 @@ public static class DetectorFactory
             {
                 var v = mutagenAssembly.Version;
                 // If we detect Mutagen v0.51, return a tuned detector
-                if (v.Major == 0 && v.Minor == 51)
+                    if (v.Major == 0 && v.Minor == 51)
                 {
                     try
                     {
@@ -36,6 +36,16 @@ public static class DetectorFactory
                     }
                     catch (Exception ex)
                     {
+                        // Persist a marker so it's obvious in artifacts that the optimized detector failed and a fallback was used.
+                        try
+                        {
+                            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+                            var artifactsDir = System.IO.Path.Combine(repoRoot ?? string.Empty, "artifacts");
+                            try { System.IO.Directory.CreateDirectory(artifactsDir); } catch { }
+                            var marker = System.IO.Path.Combine(artifactsDir, $"detector_fallback_marker_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                            try { System.IO.File.WriteAllText(marker, $"MutagenV51Detector construction failed: {ex}\n"); } catch { }
+                        }
+                        catch { }
                         AppLogger.Log("DetectorFactory: failed to construct MutagenV51Detector, falling back", ex);
                     }
                 }

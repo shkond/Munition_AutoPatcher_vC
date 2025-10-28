@@ -31,7 +31,7 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
             {
                 var props = omod.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 // Prefer properties which contain ammo-like names
-                foreach (var p in props.OrderByDescending(p => IsAmmoLikeName(p.Name)))
+                    foreach (var p in props.OrderByDescending(p => IsAmmoLikeName(p.Name)))
                 {
                     try
                     {
@@ -69,19 +69,27 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
                         newAmmoLink = val;
                         return true;
                     }
-                    catch { /* swallow and continue */ }
+                    catch (Exception ex)
+                    {
+                        // Log the property-level error but continue scanning other properties.
+                        AppLogger.Log($"MutagenV51Detector: error inspecting property '{p.Name}' on type {omod.GetType().FullName}", ex);
+                    }
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            AppLogger.Log("MutagenV51Detector: fast-path detection failed, falling back to reflection detector", ex);
+        }
 
         // Fallback to the resilient reflection detector
         try
         {
             return _fallback.DoesOmodChangeAmmo(omod, originalAmmoLink, out newAmmoLink);
         }
-        catch
+        catch (Exception ex)
         {
+            AppLogger.Log("MutagenV51Detector: reflection fallback detector threw an exception", ex);
             newAmmoLink = null;
             return false;
         }
@@ -101,6 +109,10 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
             var t = p.PropertyType;
             return t.GetProperty("FormKey") != null;
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"MutagenV51Detector.IsLikelyFormLinkProperty: failed for property {p.Name}", ex);
+            return false;
+        }
     }
 }

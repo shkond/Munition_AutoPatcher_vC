@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.IO;
 using System.Windows;
+using MunitionAutoPatcher.Utilities;
 
 namespace MunitionAutoPatcher
 {
@@ -35,10 +36,6 @@ namespace MunitionAutoPatcher
             // 2) Forward to UI MainViewModel.AddLog when available (best-effort)
             try
             {
-                // If we're already in the middle of forwarding to the UI, skip to avoid recursion.
-                if (_isForwardingToUi.Value)
-                    goto persist;
-
                 var app = Application.Current;
                 if (app?.MainWindow?.DataContext is ViewModels.MainViewModel mainVm)
                 {
@@ -46,8 +43,23 @@ namespace MunitionAutoPatcher
                     var text = ex == null ? $"[{ts}] {message}" : $"[{ts}] {message} - {ex.Message}";
                     try
                     {
+                        if (_isForwardingToUi.Value)
+                            goto persist;
                         _isForwardingToUi.Value = true;
-                        mainVm.AddLog(text);
+
+                        var dispatcher = app.Dispatcher;
+                        if (dispatcher == null || dispatcher.CheckAccess())
+                        {
+                            // We're already on the UI thread or dispatcher is unavailable: call directly
+                            mainVm.AddLog(text);
+                        }
+                        else
+                        {
+                            // Dispatch asynchronously to avoid deadlocks; swallow exceptions from UI callback
+                            dispatcher.BeginInvoke(new Action(() => {
+                                try { mainVm.AddLog(text); } catch { /* swallow */ }
+                            }));
+                        }
                     }
                     finally
                     {
@@ -65,7 +77,7 @@ namespace MunitionAutoPatcher
             // 3) Persist to artifacts log file for MO2/CI analysis (best-effort)
             try
             {
-                var repoRoot = FindRepoRoot();
+                var repoRoot = RepoUtils.FindRepoRoot();
                 var artifactsDir = Path.Combine(repoRoot, "artifacts");
                 try { Directory.CreateDirectory(artifactsDir); } catch { /* best-effort */ }
                 var logPath = Path.Combine(artifactsDir, "munition_autopatcher_ui.log");
@@ -90,21 +102,6 @@ namespace MunitionAutoPatcher
             }
         }
 
-        private static string FindRepoRoot()
-        {
-            try
-            {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    var solutionPath = Path.Combine(dir.FullName, "MunitionAutoPatcher.sln");
-                    if (File.Exists(solutionPath))
-                        return dir.FullName;
-                    dir = dir.Parent;
-                }
-            }
-            catch { }
-            return AppContext.BaseDirectory;
-        }
+        // Repo root lookup centralized in MunitionAutoPatcher.Utilities.RepoUtils
     }
 }

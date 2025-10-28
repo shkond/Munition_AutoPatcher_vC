@@ -98,8 +98,8 @@ public class LoadOrderService : ILoadOrderService
         }
         catch (Exception ex)
         {
-            // Log error - TODO: Add proper logging
-            Console.WriteLine($"Failed to load plugin load order: {ex.Message}");
+            // Record the full exception into the centralized logger so troubleshooting data is persisted.
+            try { AppLogger.Log($"LoadOrderService: failed to load plugin load order", ex); } catch { }
             return null;
         }
     }
