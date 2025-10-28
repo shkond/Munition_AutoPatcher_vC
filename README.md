@@ -99,6 +99,57 @@ dotnet run --project MunitionAutoPatcher/MunitionAutoPatcher.csproj
 
 または Visual Studio で F5 キーを押して実行します。
 
+## CI / Continuous Integration
+
+このリポジトリを CI パイプライン（例: GitHub Actions）で扱う際の推奨コマンドと注意点を示します。
+
+- 推奨コマンド（ビルド / テスト / 公開）:
+
+```bash
+# 依存復元
+dotnet restore
+
+# ソリューションを Release ビルド
+dotnet build MunitionAutoPatcher.sln -c Release
+
+# テスト（プロジェクト単位、--no-build は事前にビルド済みの場合に有用）
+dotnet test tests/AutoTests/AutoTests.csproj -c Release --no-build --verbosity normal
+
+# 形式整形（任意）
+dotnet format
+
+# 発行（パッケージ化が必要な場合）
+dotnet publish MunitionAutoPatcher/MunitionAutoPatcher.csproj -c Release -r win-x64 --self-contained false
+```
+
+注意: 本プロジェクトは WPF (.NET on Windows) を使っているため、GUI に依存するテストや実行は Linux ランナー上で失敗する可能性があります。フルテストを CI 上で実行する場合は `runs-on: windows-latest` を使うことを推奨します。
+
+簡単な GitHub Actions の例:
+
+```yaml
+name: CI
+on: [push, pull_request]
+jobs:
+   build:
+      runs-on: windows-latest
+      steps:
+         - uses: actions/checkout@v4
+         - name: Setup .NET
+            uses: actions/setup-dotnet@v3
+            with:
+               dotnet-version: '8.0.x'
+         - name: Restore
+            run: dotnet restore
+         - name: Build
+            run: dotnet build MunitionAutoPatcher.sln -c Release --no-restore
+         - name: Test
+            run: dotnet test tests/AutoTests/AutoTests.csproj -c Release --no-build --verbosity normal
+```
+
+ポイント:
+- WPF やプラットフォーム固有ライブラリ（Mutagen 等）を使うため、Windows ランナーでのテスト実行が最も互換性が高いです。
+- ヘッドレス環境で GUI に依存するテストを実行する必要がある場合は、該当テストをカテゴリーやタグで分離し、CI ではスキップするか専用ジョブを用意してください。
+
 ## 使用方法
 
 1. **設定画面**:

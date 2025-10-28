@@ -88,13 +88,10 @@ public class ConfigService : IConfigService
         }
         catch (Exception ex)
         {
-            _loaded = new ConfigFile();
-            try
-            {
-                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                    mainVm.AddLog($"ConfigService.EnsureLoaded error: {ex.Message}");
-            }
-            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in EnsureLoaded", ex2); }
+            // Loading the config failed — do NOT silently overwrite the user's configuration.
+            AppLogger.Log($"ConfigService: failed to load config file '{_configFile}'", ex);
+            // Surface the error to the caller so it can decide how to proceed (avoids silently creating defaults).
+            throw;
         }
     }
 
@@ -117,12 +114,9 @@ public class ConfigService : IConfigService
         }
         catch (Exception ex)
         {
-            try
-            {
-                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                    mainVm.AddLog($"ConfigService.SaveConfigAsync error: {ex.Message}");
-            }
-            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in SaveConfigAsync", ex2); }
+            AppLogger.Log($"ConfigService: failed to save config file '{_configFile}'", ex);
+            // Surface failure to caller so UI can notify user or retry.
+            throw;
         }
     }
 
@@ -233,12 +227,8 @@ public class ConfigService : IConfigService
         }
         catch (Exception ex)
         {
-            try
-            {
-                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                    mainVm.AddLog($"ConfigService.SaveAllAsync error: {ex.Message}");
-            }
-            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in SaveAllAsync", ex2); }
+            AppLogger.Log($"ConfigService: failed to persist configuration to '{_configFile}'", ex);
+            throw;
         }
     }
 }

@@ -16,15 +16,28 @@ namespace MunitionAutoPatcher.Services.Implementations
         private static readonly ConcurrentDictionary<Type, PropertyInfo?> s_formKeyProp = new();
         private static readonly ConcurrentDictionary<Type, MethodInfo?[]> s_linkCacheTryResolveMethods = new();
         private static readonly ConcurrentDictionary<Type, MethodInfo?> s_linkCacheResolveByKey = new();
+        private static readonly System.Threading.AsyncLocal<HashSet<string>?> s_currentResolutionKeys = new();
 
         // Attempts multiple strategies to resolve a link-like value against a Mutagen LinkCache.
         // Returns the resolved object or null if not resolved.
         public static object? TryResolveViaLinkCache(object? linkLike, object? linkCache)
         {
-            if (linkLike == null || linkCache == null) return null;
+            // Guard against null inputs: callers may pass null when a given link isn't present.
+            if (linkLike == null || linkCache == null)
+                return null;
 
-            // 1) Prefer calling an instance-level TryResolve on the link-like object: linkLike.TryResolve(linkCache, out resolved)
+            var key = $"{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(linkLike)}|{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(linkCache)}|{linkLike.GetType().FullName}|{linkCache.GetType().FullName}";
+            var set = s_currentResolutionKeys.Value ??= new HashSet<string>();
+            if (!set.Add(key))
+            {
+                AppLogger.Log($"LinkCacheHelper: re-entrant resolution detected for key {key}; aborting to avoid cycle.");
+                return null;
+            }
+
             try
+            {
+                // 1) Prefer calling an instance-level TryResolve on the link-like object: linkLike.TryResolve(linkCache, out resolved)
+                try
             {
                 var t = linkLike.GetType();
                 var inst = s_instanceTryResolve.GetOrAdd(t, tt =>
@@ -102,15 +115,15 @@ namespace MunitionAutoPatcher.Services.Implementations
                     {
                         try
                         {
-                            var invoke = m;
-                            if (m.IsGenericMethodDefinition)
-                            {
+                                 MethodInfo invoke = m!;
+                                 if (m!.IsGenericMethodDefinition)
+                                 {
                                 // attempt to close generic on the formKey object's type if possible
                                 var genArg = formKeyObj.GetType();
                                 try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}", ex); continue; }
                             }
 
-                            var p0 = invoke.GetParameters()[0].ParameterType;
+                                 var p0 = invoke.GetParameters()![0]!.ParameterType;
                             if (!p0.IsAssignableFrom(formKeyObj.GetType()) && p0 != typeof(object))
                                 continue;
 
@@ -145,8 +158,8 @@ namespace MunitionAutoPatcher.Services.Implementations
                 {
                     try
                     {
-                        MethodInfo invoke = m;
-                        if (m.IsGenericMethodDefinition)
+                            MethodInfo invoke = m!;
+                             if (m!.IsGenericMethodDefinition)
                         {
                             var linkType = linkLike.GetType();
                             if (linkType.IsGenericType)
@@ -161,7 +174,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                             else continue;
                         }
 
-                        var p0 = invoke.GetParameters()[0].ParameterType;
+                             var p0 = invoke.GetParameters()![0]!.ParameterType;
                         var linkTypeActual = linkLike.GetType();
 
                         bool compatible = p0 == linkTypeActual || p0.IsAssignableFrom(linkTypeActual) || linkTypeActual.IsAssignableFrom(p0);
@@ -214,8 +227,13 @@ namespace MunitionAutoPatcher.Services.Implementations
             {
                 AppLogger.Log("LinkCacheHelper: unexpected error in fallback single-arg discovery", ex);
             }
-
-            return null;
+                return null;
+            }
+            finally
+            {
+                set.Remove(key);
+                if (set.Count == 0) s_currentResolutionKeys.Value = null;
+            }
         }
 
         // Small helper: guess whether resolved getter is ammo/projectile by name/interface heuristics

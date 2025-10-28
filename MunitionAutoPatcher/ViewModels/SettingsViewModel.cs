@@ -6,6 +6,7 @@ using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Commands;
 using MunitionAutoPatcher.Services.Interfaces;
 using Microsoft.Win32;
+using MunitionAutoPatcher.Utilities;
 
 namespace MunitionAutoPatcher.ViewModels;
 
@@ -267,14 +268,8 @@ public class SettingsViewModel : ViewModelBase
             // Diagnostic: write entry marker so we can detect repeated UI triggers
             try
             {
-                var dir = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    var sln = System.IO.Path.Combine(dir.FullName, "MunitionAutoPatcher.sln");
-                    if (System.IO.File.Exists(sln)) break;
-                    dir = dir.Parent;
-                }
-                var artifactsDir = dir != null ? System.IO.Path.Combine(dir.FullName, "artifacts", "RobCo_Patcher") : System.IO.Path.Combine(System.AppContext.BaseDirectory, "artifacts", "RobCo_Patcher");
+                var repoRoot = RepoUtils.FindRepoRoot();
+                var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
                 if (!System.IO.Directory.Exists(artifactsDir)) System.IO.Directory.CreateDirectory(artifactsDir);
                 var entryPath = System.IO.Path.Combine(artifactsDir, $"settings_extract_entry_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
                 using (var w = new System.IO.StreamWriter(entryPath, false, Encoding.UTF8))
@@ -295,25 +290,19 @@ public class SettingsViewModel : ViewModelBase
             }
 
             // Diagnostic: write exit marker to indicate the command returned
-            try
-            {
-                var dir2 = new System.IO.DirectoryInfo(System.AppContext.BaseDirectory);
-                while (dir2 != null)
+                try
                 {
-                    var sln = System.IO.Path.Combine(dir2.FullName, "MunitionAutoPatcher.sln");
-                    if (System.IO.File.Exists(sln)) break;
-                    dir2 = dir2.Parent;
+                    var repoRoot2 = RepoUtils.FindRepoRoot();
+                    var artifactsDir2 = System.IO.Path.Combine(repoRoot2, "artifacts", "RobCo_Patcher");
+                    if (!System.IO.Directory.Exists(artifactsDir2)) System.IO.Directory.CreateDirectory(artifactsDir2);
+                    var exitPath = System.IO.Path.Combine(artifactsDir2, $"settings_extract_exit_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
+                    using (var w2 = new System.IO.StreamWriter(exitPath, false, Encoding.UTF8))
+                    {
+                        w2.WriteLine($"SettingsViewModel.StartOmodExtraction exit at {DateTime.Now:O}");
+                    }
+                    if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm2) mm2.AddLog($"Settings extract exit marker written: {exitPath}");
                 }
-                var artifactsDir2 = dir2 != null ? System.IO.Path.Combine(dir2.FullName, "artifacts", "RobCo_Patcher") : System.IO.Path.Combine(System.AppContext.BaseDirectory, "artifacts", "RobCo_Patcher");
-                if (!System.IO.Directory.Exists(artifactsDir2)) System.IO.Directory.CreateDirectory(artifactsDir2);
-                var exitPath = System.IO.Path.Combine(artifactsDir2, $"settings_extract_exit_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
-                using (var w2 = new System.IO.StreamWriter(exitPath, false, Encoding.UTF8))
-                {
-                    w2.WriteLine($"SettingsViewModel.StartOmodExtraction exit at {DateTime.Now:O}");
-                }
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm2) mm2.AddLog($"Settings extract exit marker written: {exitPath}");
-            }
-            catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to write extract exit marker", ex); }
+                catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to write extract exit marker", ex); }
         }
         finally
         {
@@ -415,8 +404,8 @@ public class SettingsViewModel : ViewModelBase
             IsManualMapping = true
         };
 
-        // Choose output path under artifacts/RobCo_Patcher by default
-        var repoRoot = FindRepoRoot();
+    // Choose output path under artifacts/RobCo_Patcher by default
+    var repoRoot = RepoUtils.FindRepoRoot();
         var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher", SelectedOmodCandidate.SourcePlugin ?? "");
         if (!System.IO.Directory.Exists(artifactsDir))
             System.IO.Directory.CreateDirectory(artifactsDir);
@@ -446,23 +435,5 @@ public class SettingsViewModel : ViewModelBase
         await _iniGenerator.GenerateIniAsync(outputPath, mappings, progress);
     }
 
-    private string FindRepoRoot()
-    {
-        try
-        {
-            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                var solutionPath = System.IO.Path.Combine(dir.FullName, "MunitionAutoPatcher.sln");
-                if (System.IO.File.Exists(solutionPath))
-                    return dir.FullName;
-                dir = dir.Parent;
-            }
-        }
-        catch (Exception ex)
-        {
-            try { if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"SettingsViewModel.FindRepoRoot error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("SettingsViewModel: failed to add log to UI in FindRepoRoot", ex2); }
-        }
-        return AppContext.BaseDirectory;
-    }
+        // RepoUtils.FindRepoRoot provides repository root lookup
 }
