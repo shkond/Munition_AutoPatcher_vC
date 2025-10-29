@@ -20,9 +20,9 @@ namespace MunitionAutoPatcher.Services.Helpers
                 rsm.WriteLine($"Reverse reference map build attempted at {DateTime.Now:O}");
                 rsm.WriteLine($"ReverseMapKeys={reverseMap?.Count ?? 0}");
             }
-            catch
+            catch (Exception ex)
             {
-                // swallow
+                AppLogger.Log("DiagnosticWriter: WriteReverseMapMarker failed", ex);
             }
             return rmMarker;
         }
@@ -90,7 +90,10 @@ namespace MunitionAutoPatcher.Services.Helpers
                                         }
                                     }
                                 }
-                                catch { }
+                                catch (Exception innerEx)
+                                {
+                                    AppLogger.Log("DiagnosticWriter: failed to inspect reverseMap source record", innerEx);
+                                }
                             }
                         }
 
@@ -98,14 +101,17 @@ namespace MunitionAutoPatcher.Services.Helpers
 
                         dsw.WriteLine($"{wk},{Escape(editor)},{refCount},\"{Escape(string.Join(";", srcPlugins))}\",{confirmed}");
                     }
-                    catch { }
+                    catch (Exception innerEx)
+                    {
+                        AppLogger.Log("DiagnosticWriter: failed to process weapon object for diagnostic", innerEx);
+                    }
                 }
 
                 dsw.Flush();
             }
-            catch
+            catch (Exception ex)
             {
-                // swallow
+                AppLogger.Log("DiagnosticWriter: WriteNoveskeDiagnostic failed", ex);
             }
 
             return diagFile;

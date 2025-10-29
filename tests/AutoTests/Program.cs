@@ -20,7 +20,10 @@ internal class Program
             Console.WriteLine("デバッガをアタッチしてください。アタッチ後、Enterキーを押すとテストを続行します...");
             Console.ReadLine();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Console.WriteLine("AutoTests: Debug wait failed: " + ex.Message);
+        }
 #endif
 
         try
@@ -110,28 +113,31 @@ internal class Program
             {
                 // Build an ammo lookup map by scanning weapons' DefaultAmmo entries to help fill missing ModKey/FileName cases
                 var ammoMap = new System.Collections.Generic.Dictionary<uint, MunitionAutoPatcher.Models.FormKey>();
-                try
-                {
-                    foreach (var w2 in allWeapons)
+                    try
                     {
-                        try
+                        foreach (var w2 in allWeapons)
                         {
-                            if (w2.Ammo?.FormKey != null)
+                            try
                             {
-                                var aid = w2.Ammo.FormKey.ID;
-                                var aplugin = string.Empty;
-                                try { aplugin = w2.Ammo.FormKey.ModKey.FileName; } catch { aplugin = string.Empty; }
-                                if (aid != 0u && !string.IsNullOrEmpty(aplugin))
+                                if (w2.Ammo?.FormKey != null)
                                 {
-                                    if (!ammoMap.ContainsKey(aid))
-                                        ammoMap[aid] = new MunitionAutoPatcher.Models.FormKey { PluginName = aplugin, FormId = aid };
+                                    var aid = w2.Ammo.FormKey.ID;
+                                    var aplugin = string.Empty;
+                                    try { aplugin = w2.Ammo.FormKey.ModKey.FileName; } catch (Exception ex) { Console.WriteLine("AutoTests: failed reading Ammo FormKey.ModKey.FileName: " + ex.Message); aplugin = string.Empty; }
+                                    if (aid != 0u && !string.IsNullOrEmpty(aplugin))
+                                    {
+                                        if (!ammoMap.ContainsKey(aid))
+                                            ammoMap[aid] = new MunitionAutoPatcher.Models.FormKey { PluginName = aplugin, FormId = aid };
+                                    }
                                 }
                             }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine("AutoTests: failed processing weapon while building ammo map: " + ex);
+                            }
                         }
-                        catch { }
+                        Console.WriteLine($"Ammo lookup entries built from weapons: {ammoMap.Count}");
                     }
-                    Console.WriteLine($"Ammo lookup entries built from weapons: {ammoMap.Count}");
-                }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Failed to build ammo lookup from weapons: {ex.Message}");
@@ -155,7 +161,10 @@ internal class Program
                             modKeyFile = w.FormKey.ModKey.FileName;
                             id = w.FormKey.ID;
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("AutoTests: failed reading weapon FormKey properties: " + ex.Message);
+                        }
 
                         if (string.IsNullOrEmpty(modKeyFile) || id == 0u)
                         {
@@ -176,8 +185,8 @@ internal class Program
                             {
                                 var ammoMod = string.Empty;
                                 uint ammoId = 0u;
-                                try { ammoMod = w.Ammo.FormKey.ModKey.FileName; } catch { ammoMod = string.Empty; }
-                                try { ammoId = w.Ammo.FormKey.ID; } catch { ammoId = 0u; }
+                                try { ammoMod = w.Ammo.FormKey.ModKey.FileName; } catch (Exception ex) { Console.WriteLine("AutoTests: failed reading ammo ModKey.FileName: " + ex.Message); ammoMod = string.Empty; }
+                                try { ammoId = w.Ammo.FormKey.ID; } catch (Exception ex) { Console.WriteLine("AutoTests: failed reading ammo ID: " + ex.Message); ammoId = 0u; }
 
                                 if (!string.IsNullOrEmpty(ammoMod) && ammoId != 0u)
                                 {
@@ -195,7 +204,10 @@ internal class Program
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error building mapping for weapon #{idx}: {ex}");
+                        }
 
                         mappings.Add(new MunitionAutoPatcher.Models.WeaponMapping
                         {
@@ -260,10 +272,10 @@ internal class Program
         finally
         {
 #if DEBUG
-            Console.WriteLine("\nテストを終了するには何かキーを押してください...");
-            Console.ReadLine();
-            try { MunitionAutoPatcher.DebugConsole.Hide(); } catch { }
+        Console.WriteLine("\nテストを終了するには何かキーを押してください...");
+        Console.ReadLine();
+        try { MunitionAutoPatcher.DebugConsole.Hide(); } catch (Exception ex) { Console.WriteLine("AutoTests: DebugConsole.Hide failed: " + ex.Message); }
 #endif
-        }
+    }
     }
 }

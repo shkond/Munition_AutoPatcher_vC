@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using MunitionAutoPatcher.Models;
+using MunitionAutoPatcher;
 using Mutagen.Bethesda.Environments;
 
 namespace MunitionAutoPatcher.Services.Helpers
@@ -38,7 +39,10 @@ namespace MunitionAutoPatcher.Services.Helpers
                                     continue;
                                 }
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Log("CandidateEnumerator: failed checking excluded plugin for COBJ", ex);
+                            }
 
                             FormKey? createdAmmoKey = null;
                             string createdAmmoName = string.Empty;
@@ -62,10 +66,16 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                     break;
                                                 }
                                             }
-                                            catch { }
+                                            catch (Exception ex)
+                                            {
+                                                AppLogger.Log("CandidateEnumerator: error iterating weapons sequence", ex);
+                                            }
                                         }
                                     }
-                                    catch { }
+                                    catch (Exception ex)
+                                    {
+                                        AppLogger.Log("CandidateEnumerator: failed to enumerate weapons sequence", ex);
+                                    }
 
                                     if (possibleWeapon != null)
                                     {
@@ -88,14 +98,23 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                 }
                                             }
                                         }
-                                        catch { }
+                                        catch (Exception ex)
+                                        {
+                                            AppLogger.Log("CandidateEnumerator: failed to read Ammo/FormKey from possibleWeapon", ex);
+                                        }
                                     }
 
                                     if (createdAmmoKey != null) createdAmmoName = string.Empty;
                                 }
-                                catch { }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log("CandidateEnumerator: failed while detecting created ammo key", ex);
+                                }
                             }
-                            catch { }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("CandidateEnumerator: failed processing individual COBJ candidate", ex);
+                        }
 
                             results.Add(new OmodCandidate
                             {
@@ -109,10 +128,16 @@ namespace MunitionAutoPatcher.Services.Helpers
                                 SuggestedTarget = "CreatedWeapon"
                             });
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("CandidateEnumerator: failed processing COBJ loop item", ex);
+                        }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    AppLogger.Log("CandidateEnumerator: COBJ CreatedObject scan failed", ex);
+                }
 
                 // 2) Reflection-based scan over PriorityOrder collections to find records that reference weapons
                 try
@@ -123,7 +148,10 @@ namespace MunitionAutoPatcher.Services.Helpers
                         var weaponsSeq = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides();
                         foreach (var w in weaponsSeq) weapons.Add(w);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log("CandidateEnumerator: failed to add weapons from PriorityOrder.Weapon() sequence", ex);
+                    }
 
                     var weaponKeys = new HashSet<(string Plugin, uint Id)>();
                     foreach (var w in weapons)
@@ -134,7 +162,10 @@ namespace MunitionAutoPatcher.Services.Helpers
                             var fid = (uint)(w.FormKey.ID);
                             weaponKeys.Add((pName, fid));
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("CandidateEnumerator: failed to read FormKey from weapon record", ex);
+                        }
                     }
 
                     var priority = env.LoadOrder.PriorityOrder;
@@ -148,13 +179,16 @@ namespace MunitionAutoPatcher.Services.Helpers
                             if (mm.GetParameters().Length == 0 && typeof(System.Collections.IEnumerable).IsAssignableFrom(mm.ReturnType))
                                 methods.Add(mm);
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("CandidateEnumerator: failed inspecting PriorityOrder method", ex);
+                        }
                     }
 
                     foreach (var m in methods)
                     {
                         object? collection = null;
-                        try { collection = m.Invoke(priority, null); } catch { continue; }
+                        try { collection = m.Invoke(priority, null); } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to invoke collection method on PriorityOrder", ex); continue; }
                         if (collection == null) continue;
 
                         var winMethod = collection.GetType().GetMethod("WinningOverrides");
@@ -164,7 +198,11 @@ namespace MunitionAutoPatcher.Services.Helpers
                             if (winMethod != null) items = winMethod.Invoke(collection, null) as System.Collections.IEnumerable;
                             else if (collection is System.Collections.IEnumerable en) items = en;
                         }
-                        catch { items = null; }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("CandidateEnumerator: failed to obtain WinningOverrides or enumerate collection", ex);
+                            items = null;
+                        }
                         if (items == null) continue;
 
                         foreach (var rec in items)
@@ -190,11 +228,11 @@ namespace MunitionAutoPatcher.Services.Helpers
                                         if (idObj is uint uu) id = uu;
                                         else if (idObj != null) id = Convert.ToUInt32(idObj);
                                         if (string.IsNullOrEmpty(plugin) || id == 0) continue;
-                                        try { if ((excluded?.Contains(plugin) ?? false)) continue; } catch { }
+                                        try { if ((excluded?.Contains(plugin) ?? false)) continue; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed checking excluded plugin in reflection scan", ex); }
                                         if (!weaponKeys.Contains((plugin, id))) continue;
 
                                         var recEditorId = string.Empty;
-                                        try { recEditorId = rec.GetType().GetProperty("EditorID")?.GetValue(rec)?.ToString() ?? string.Empty; } catch { }
+                                        try { recEditorId = rec.GetType().GetProperty("EditorID")?.GetValue(rec)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read EditorID via reflection", ex); }
 
                                         // Detect ammo-like references in other properties
                                         Models.FormKey? detectedAmmoKey = null;
@@ -231,14 +269,23 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                                     }
                                                                 }
                                                             }
-                                                            catch { }
+                                                            catch (Exception ex)
+                                                            {
+                                                                AppLogger.Log("CandidateEnumerator: failed inspecting nested property for ammo detection", ex);
+                                                            }
                                                         }
                                                     }
                                                 }
-                                                catch { }
+                                                catch (Exception ex)
+                                                {
+                                                    AppLogger.Log("CandidateEnumerator: error iterating record properties for ammo detection", ex);
+                                                }
                                             }
                                         }
-                                        catch { }
+                                        catch (Exception ex)
+                                        {
+                                            AppLogger.Log("CandidateEnumerator: failed during nested property scan", ex);
+                                        }
 
                                         // Compose candidate
                                         try
@@ -257,10 +304,16 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                             break;
                                                         }
                                                     }
-                                                    catch { }
+                                                    catch (Exception ex)
+                                                    {
+                                                        AppLogger.Log("CandidateEnumerator: error scanning weapons for BaseWeaponEditorId", ex);
+                                                    }
                                                 }
                                             }
-                                            catch { }
+                                            catch (Exception ex)
+                                            {
+                                                AppLogger.Log("CandidateEnumerator: failed while searching for base weapon editor id", ex);
+                                            }
 
                                             var candidate = new OmodCandidate
                                             {
@@ -277,18 +330,33 @@ namespace MunitionAutoPatcher.Services.Helpers
                                             };
                                             results.Add(candidate);
                                         }
-                                        catch { }
+                                        catch (Exception ex)
+                                        {
+                                            AppLogger.Log("CandidateEnumerator: failed to compose/add candidate", ex);
+                                        }
                                     }
-                                    catch { }
+                                    catch (Exception ex)
+                                    {
+                                        AppLogger.Log("CandidateEnumerator: failed processing property on record", ex);
+                                    }
                                 }
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Log("CandidateEnumerator: failed processing record in method scan", ex);
+                            }
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    AppLogger.Log("CandidateEnumerator: reflection-based scan failed", ex);
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                AppLogger.Log("CandidateEnumerator: EnumerateCandidates failed", ex);
+            }
 
             return results;
         }

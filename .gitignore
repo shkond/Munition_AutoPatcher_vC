@@ -14,6 +14,9 @@
 .serena/
 .serena/*
 
+#document
+RobcoPatcher_document.txt
+
 # Generated artifacts / test outputs
 artifacts/
 artifacts/*.ini

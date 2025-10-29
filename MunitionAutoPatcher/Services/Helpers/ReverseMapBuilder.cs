@@ -19,7 +19,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                 foreach (var m in methods)
                 {
                     object? collection = null;
-                    try { collection = m.Invoke(priorityRoot, null); } catch { continue; }
+                    try { collection = m.Invoke(priorityRoot, null); } catch (Exception ex) { AppLogger.Log("ReverseMapBuilder: failed to invoke collection method", ex); continue; }
                     if (collection == null) continue;
 
                     var winMethod = collection.GetType().GetMethod("WinningOverrides");
@@ -29,7 +29,11 @@ namespace MunitionAutoPatcher.Services.Helpers
                         if (winMethod != null) items = winMethod.Invoke(collection, null) as System.Collections.IEnumerable;
                         else if (collection is System.Collections.IEnumerable en) items = en;
                     }
-                    catch { items = null; }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log("ReverseMapBuilder: failed to obtain WinningOverrides or enumerate collection", ex);
+                        items = null;
+                    }
                     if (items == null) continue;
 
                     foreach (var rec in items)
@@ -55,7 +59,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                     if (idObj is uint u) id = u;
                                     else if (idObj != null) id = Convert.ToUInt32(idObj);
                                     if (string.IsNullOrEmpty(plugin) || id == 0) continue;
-                                    try { if (excluded != null && excluded.Contains(plugin)) continue; } catch { }
+                                    try { if (excluded != null && excluded.Contains(plugin)) continue; } catch (Exception ex) { AppLogger.Log("ReverseMapBuilder: failed checking excluded plugin", ex); }
                                     var key = $"{plugin}:{id:X8}";
                                     if (!reverseMap.TryGetValue(key, out var list))
                                     {
@@ -64,16 +68,22 @@ namespace MunitionAutoPatcher.Services.Helpers
                                     }
                                     list.Add((rec, p.Name, val));
                                 }
-                                catch { /* best-effort */ }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log("ReverseMapBuilder: failed processing property on record", ex);
+                                }
                             }
                         }
-                        catch { /* best-effort */ }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("ReverseMapBuilder: failed processing record in items", ex);
+                        }
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // swallow — caller treats this as best-effort
+                AppLogger.Log("ReverseMapBuilder: Build failed", ex);
             }
 
             return reverseMap;

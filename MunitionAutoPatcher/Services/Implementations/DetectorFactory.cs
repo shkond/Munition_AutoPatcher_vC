@@ -41,11 +41,14 @@ public static class DetectorFactory
                         {
                             var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
                             var artifactsDir = System.IO.Path.Combine(repoRoot ?? string.Empty, "artifacts");
-                            try { System.IO.Directory.CreateDirectory(artifactsDir); } catch { }
+                            try { System.IO.Directory.CreateDirectory(artifactsDir); } catch (Exception dirEx) { AppLogger.Log("DetectorFactory: failed to create artifacts directory", dirEx); }
                             var marker = System.IO.Path.Combine(artifactsDir, $"detector_fallback_marker_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-                            try { System.IO.File.WriteAllText(marker, $"MutagenV51Detector construction failed: {ex}\n"); } catch { }
+                            try { System.IO.File.WriteAllText(marker, $"MutagenV51Detector construction failed: {ex}\n"); } catch (Exception fileEx) { AppLogger.Log("DetectorFactory: failed to write detector fallback marker", fileEx); }
                         }
-                        catch { }
+                        catch (Exception innerEx)
+                        {
+                            AppLogger.Log("DetectorFactory: failed while attempting to write detector fallback marker", innerEx);
+                        }
                         AppLogger.Log("DetectorFactory: failed to construct MutagenV51Detector, falling back", ex);
                     }
                 }
