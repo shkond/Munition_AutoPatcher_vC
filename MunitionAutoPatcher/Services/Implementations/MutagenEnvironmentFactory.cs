@@ -1,4 +1,4 @@
-using System;
+using Mutagen.Bethesda;using System;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Environments;
 
