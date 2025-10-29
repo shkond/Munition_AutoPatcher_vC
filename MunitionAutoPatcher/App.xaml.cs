@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MunitionAutoPatcher.Services.Implementations;
 using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Environments;
 using MunitionAutoPatcher.ViewModels;
 using MunitionAutoPatcher.Views;
 
@@ -24,6 +26,9 @@ public partial class App : Application
                 services.AddSingleton<IConfigService, ConfigService>();
                 services.AddSingleton<ILoadOrderService, LoadOrderService>();
                 services.AddSingleton<IWeaponsService, WeaponsService>();
+                // Register a factory that will create IMutagenEnvironment instances on demand.
+                services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
+
                 services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
                 services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
                 services.AddSingleton<IOrchestrator, OrchestratorService>();

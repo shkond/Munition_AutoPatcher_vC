@@ -13,15 +13,15 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 {
     private readonly ILoadOrderService _loadOrderService;
     private readonly IConfigService _configService;
-    private readonly IMutagenEnvironment? _mutagenEnvironment;
+    private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
 
-    // IMutagenEnvironment is optional; when provided it will be used instead of
-    // creating a runtime adapter. This enables DI for testing and composition.
-    public WeaponOmodExtractor(ILoadOrderService loadOrderService, IConfigService configService, IMutagenEnvironment? mutagenEnvironment = null)
+    // IMutagenEnvironmentFactory is required via DI. The factory will create the
+    // IMutagenEnvironment on demand when extraction runs.
+    public WeaponOmodExtractor(ILoadOrderService loadOrderService, IConfigService configService, IMutagenEnvironmentFactory mutagenEnvironmentFactory)
     {
         _loadOrderService = loadOrderService;
         _configService = configService;
-        _mutagenEnvironment = mutagenEnvironment;
+        _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
     }
 
         public async Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress = null)
@@ -391,8 +391,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     // populate reverseMap using adapter + builder (keeps logic version-adaptable and testable)
                     try
                     {
-                        IMutagenEnvironment mutEnv = _mutagenEnvironment ?? new MutagenV51EnvironmentAdapter(env);
-                        var builder = new ReverseMapBuilder(mutEnv);
+                        var envAdapter = _mutagenEnvironmentFactory.Create();
+                        var builder = new ReverseMapBuilder(envAdapter);
                         reverseMap = builder.Build(excluded);
                     }
                     catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to build reverse reference map via adapter", ex); }
