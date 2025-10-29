@@ -161,12 +161,8 @@ public class WeaponsService : IWeaponsService
                         }
                         catch (Exception ex)
                         {
-                            try
-                            {
-                                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                                    mainVm.AddLog($"WeaponsService: translation dump error: {ex.Message}");
-                            }
-                            catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in translation dump catch", ex2); }
+                            // Log via centralized logger rather than touching UI directly
+                            AppLogger.Log($"WeaponsService: translation dump error: {ex.Message}", ex);
                         }
 
                         // Try to resolve ammunition via the record's FormLink using env.LinkCache
@@ -216,12 +212,7 @@ public class WeaponsService : IWeaponsService
                         }
                         catch (Exception ex)
                         {
-                            try
-                            {
-                                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                                    mainVm.AddLog($"WeaponsService: ammo resolve error: {ex.Message}");
-                            }
-                            catch (Exception ex2) { AppLogger.Log("WeaponsService: failed to add log to UI in ammo resolve catch", ex2); }
+                            AppLogger.Log($"WeaponsService: ammo resolve error: {ex.Message}", ex);
                         }
 
                         _weapons.Add(weaponData);
@@ -281,7 +272,7 @@ public class WeaponsService : IWeaponsService
                 }
                 catch (Exception ex)
                 {
-                    try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"WeaponsService: ammo fallback scan error: {ex.Message}"); } catch (Exception inner) { AppLogger.Log("WeaponsService: failed to add log to UI in ammo fallback scan catch", inner); }
+                    AppLogger.Log($"WeaponsService: ammo fallback scan error: {ex.Message}", ex);
                 }
             }
 

@@ -37,9 +37,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             }
             AppLogger.Log($"WeaponOmodExtractor: wrote start marker {startMarker}");
             progress?.Report($"OMOD 抽出 開始マーカーを生成しました: {startMarker}");
-        }
-        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to write extract start marker", ex); }
-        var results = new List<OmodCandidate>();
+    }
+    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to write extract start marker", ex); }
 
         var loadOrder = await _loadOrderService.GetLoadOrderAsync();
         if (loadOrder == null)
@@ -56,86 +55,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 var excluded = new System.Collections.Generic.HashSet<string>(_configService.GetExcludedPlugins() ?? System.Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
                 int skippedByExcluded = 0;
 
-            // 1) Enumerate all ConstructibleObject records and record those that create objects (CreatedObject will usually be a weapon/item)
-            var cobjs = env.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides();
-                    foreach (var cobj in cobjs)
-            {
-                try
-                {
-                    var created = cobj.CreatedObject;
-                    if (created.IsNull) continue;
-
-                    // Skip candidates coming from excluded plugins
-                    try
-                    {
-                        var srcPlugin = cobj.FormKey.ModKey.FileName;
-                        if (excluded.Contains(srcPlugin))
-                        {
-                            skippedByExcluded++;
-                            continue;
-                        }
-                    }
-                    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: iterating COBJs", ex); }
-
-                    // Record the created object's FormKey as a candidate. Resolution to a Weapon record (to inspect Ammo) may be done later.
-                        // Try to resolve the created object to a weapon or ammo record by scanning the env PriorityOrder collections.
-                        FormKey? createdAmmoKey = null;
-                        string createdAmmoName = string.Empty;
-                        try
-                        {
-                            // created.FormKey gives us the plugin + id
-                            var plugin = created.FormKey.ModKey.FileName;
-                            var id = created.FormKey.ID;
-
-                            // Try to find a weapon record that matches
-                            var possibleWeapon = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides().FirstOrDefault(w => w.FormKey.ModKey.FileName == plugin && w.FormKey.ID == id);
-                            if (possibleWeapon != null)
-                            {
-                                // If the created weapon references ammo, try to capture it
-                                var ammoLink = possibleWeapon.Ammo;
-                                if (!ammoLink.IsNull)
-                                {
-                                    if (ammoLink.FormKey != null)
-                                    {
-                                        createdAmmoKey = new FormKey { PluginName = ammoLink.FormKey.ModKey.FileName, FormId = ammoLink.FormKey.ID };
-                                    }
-                                }
-
-                                        if (skippedByExcluded > 0)
-                                            progress?.Report($"{skippedByExcluded} 件のレコードが除外プラグイン設定のためスキップされました。");
-                                if (createdAmmoKey != null)
-                                {
-                                    // We have an ammo FormKey but resolving the actual Ammo record via PriorityOrder.Ammo()
-                                    // is not always available across Mutagen versions. Leave the name blank; the UI
-                                    // can later resolve names via LinkCache when running inside MO2.
-                                    createdAmmoName = string.Empty;
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            try
-                            {
-                                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                                    mainVm.AddLog($"WeaponOmodExtractor: COBJ created-object scan error: {ex.Message}");
-                            }
-                            catch (Exception ex2) { AppLogger.Log("WeaponOmodExtractor: failed to add log to UI in COBJ created-object scan catch", ex2); }
-                        }
-
-                        results.Add(new OmodCandidate
-                    {
-                        CandidateType = "COBJ",
-                            CandidateFormKey = new Models.FormKey { PluginName = created.FormKey.ModKey.FileName, FormId = created.FormKey.ID },
-                            CandidateEditorId = cobj.EditorID ?? string.Empty,
-                            CandidateAmmo = createdAmmoKey != null ? new Models.FormKey { PluginName = createdAmmoKey.PluginName, FormId = createdAmmoKey.FormId } : null,
-                            CandidateAmmoName = createdAmmoName ?? string.Empty,
-                            SourcePlugin = cobj.FormKey.ModKey.FileName,
-                            Notes = $"COBJ source: {cobj.FormKey.ModKey.FileName}:{cobj.FormKey.ID:X8}",
-                            SuggestedTarget = "CreatedWeapon"
-                    });
-                }
-                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: processing COBJ candidate", ex); }
-            }
+            // Step 1: Extract candidates from ConstructibleObject (COBJ)
+            var results = ExtractFromConstructibleObjects(env, excluded, progress, ref skippedByExcluded);
 
                 // 2) ObjectMod record enumeration omitted: Mutagen's API varies across versions and
                 //    ObjectMod-specific extension helpers may not be present. We currently focus on
@@ -596,7 +517,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                     }
                                                 }
                                             }
-                                            catch (Exception) { }
+                                            catch (Exception ex)
+                                            {
+                                                AppLogger.Log("WeaponOmodExtractor: failed while enumerating reverse-map source record FormKey properties", ex);
+                                            }
                                         }
                                     }
 
@@ -605,7 +529,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
                                     dsw.WriteLine($"{wk},{Escape(editor)},{refCount},\"{Escape(string.Join(";", srcPlugins))}\",{confirmed}");
                                 }
-                                catch (Exception) { }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log("WeaponOmodExtractor: failed while writing noveske diagnostic weapons list entry", ex);
+                                }
                             }
                         }
                         catch (Exception ex)

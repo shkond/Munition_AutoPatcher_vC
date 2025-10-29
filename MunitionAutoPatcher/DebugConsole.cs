@@ -42,10 +42,7 @@ public static class DebugConsole
         {
             try
             {
-                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                    mainVm.AddLog($"DebugConsole.Show redirection error: {ex.Message}");
-                else
-                    Console.WriteLine($"DebugConsole.Show redirection error: {ex.Message}");
+                try { AppLogger.Log($"DebugConsole.Show redirection error: {ex.Message}", ex); } catch { Console.WriteLine($"DebugConsole.Show redirection error: {ex.Message}"); }
             }
             catch { Console.WriteLine($"DebugConsole.Show redirection error: {ex.Message}"); }
             // Ignore redirection errors; AllocConsole still provides a visible console window.
@@ -68,10 +65,7 @@ public static class DebugConsole
         {
             try
             {
-                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                    mainVm.AddLog($"DebugConsole.Hide error: {ex.Message}");
-                else
-                    Console.WriteLine($"DebugConsole.Hide error: {ex.Message}");
+                try { AppLogger.Log($"DebugConsole.Hide error: {ex.Message}", ex); } catch { Console.WriteLine($"DebugConsole.Hide error: {ex.Message}"); }
             }
             catch { Console.WriteLine($"DebugConsole.Hide error: {ex.Message}"); }
         }

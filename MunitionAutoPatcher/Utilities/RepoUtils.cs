@@ -28,7 +28,7 @@ namespace MunitionAutoPatcher.Utilities
             catch (Exception ex)
             {
                 // Do not throw here; callers expect a best-effort path.
-                try { AppLogger.Log($"RepoUtils.FindRepoRoot error: {ex.Message}"); } catch { }
+                try { AppLogger.Log("RepoUtils.FindRepoRoot error", ex); } catch { }
             }
             return AppContext.BaseDirectory;
         }
