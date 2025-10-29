@@ -13,11 +13,15 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 {
     private readonly ILoadOrderService _loadOrderService;
     private readonly IConfigService _configService;
+    private readonly IMutagenEnvironment? _mutagenEnvironment;
 
-    public WeaponOmodExtractor(ILoadOrderService loadOrderService, IConfigService configService)
+    // IMutagenEnvironment is optional; when provided it will be used instead of
+    // creating a runtime adapter. This enables DI for testing and composition.
+    public WeaponOmodExtractor(ILoadOrderService loadOrderService, IConfigService configService, IMutagenEnvironment? mutagenEnvironment = null)
     {
         _loadOrderService = loadOrderService;
         _configService = configService;
+        _mutagenEnvironment = mutagenEnvironment;
     }
 
         public async Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress = null)
@@ -44,9 +48,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         if (loadOrder == null)
         {
             progress?.Report("エラー: ロードオーダーが取得できませんでした");
-            return results;
+            return new List<OmodCandidate>();
         }
 
+            List<OmodCandidate>? results = null;
             try
             {
                 using var env = GameEnvironment.Typical.Fallout4(Fallout4Release.Fallout4);
@@ -56,7 +61,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 int skippedByExcluded = 0;
 
             // Step 1: Extract candidates from ConstructibleObject (COBJ)
-            var results = ExtractFromConstructibleObjects(env, excluded, progress, ref skippedByExcluded);
+            results = ExtractFromConstructibleObjects(env, excluded, progress, ref skippedByExcluded);
 
                 // 2) ObjectMod record enumeration omitted: Mutagen's API varies across versions and
                 //    ObjectMod-specific extension helpers may not be present. We currently focus on
@@ -383,75 +388,14 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 string selectedDetectorName = string.Empty;
                 try
                 {
-                    // populate reverseMap inside the try (already initialized above)
+                    // populate reverseMap using adapter + builder (keeps logic version-adaptable and testable)
                     try
                     {
-                        var priority2 = env.LoadOrder.PriorityOrder;
-                        var methods2 = priority2.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                            .Where(m => m.GetParameters().Length == 0 && typeof(System.Collections.IEnumerable).IsAssignableFrom(m.ReturnType));
-
-                        foreach (var m in methods2)
-                        {
-                            object? collection = null;
-                            try { collection = m.Invoke(priority2, null); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: invoking collection method failed", ex); continue; }
-                            if (collection == null) continue;
-
-                            var winMethod = collection.GetType().GetMethod("WinningOverrides");
-                            System.Collections.IEnumerable? items2 = null;
-                            try
-                            {
-                                if (winMethod != null) items2 = winMethod.Invoke(collection, null) as System.Collections.IEnumerable;
-                                else if (collection is System.Collections.IEnumerable en) items2 = en;
-                            }
-                            catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: obtaining items from collection failed", ex); items2 = null; }
-                            if (items2 == null) continue;
-
-                            foreach (var rec in items2)
-                            {
-                                if (rec == null) continue;
-                                try
-                                {
-                                    var props = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                                    foreach (var p in props)
-                                    {
-                                        try
-                                        {
-                                            var val = p.GetValue(rec);
-                                            if (val == null) continue;
-                                            var nestedFkProp = val.GetType().GetProperty("FormKey");
-                                            if (nestedFkProp == null) continue;
-                                            var nestedFk = nestedFkProp.GetValue(val);
-                                            if (nestedFk == null) continue;
-                                            var mk = nestedFk.GetType().GetProperty("ModKey")?.GetValue(nestedFk);
-                                            var idObj = nestedFk.GetType().GetProperty("ID")?.GetValue(nestedFk);
-                                            var plugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                            uint id = 0;
-                                            if (idObj is uint u2) id = u2;
-                                            else if (idObj != null) id = Convert.ToUInt32(idObj);
-                                            if (string.IsNullOrEmpty(plugin) || id == 0) continue;
-                                            // Skip records originating from excluded plugins
-                                            try
-                                            {
-                                                if (excluded.Contains(plugin))
-                                                    continue;
-                                            }
-                                            catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: excluded plugin check failed", ex); }
-                                            var key = $"{plugin}:{id:X8}";
-                                            if (reverseMap == null || !reverseMap.TryGetValue(key, out var list))
-                                            {
-                                                list = new List<(object, string, object)>();
-                                                (reverseMap ??= new Dictionary<string, List<(object, string, object)>>(StringComparer.OrdinalIgnoreCase))[key] = list;
-                                            }
-                                            list.Add((rec, p.Name, val));
-                                        }
-                                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: iterating sp properties", ex); }
-                                    }
-                                }
-                                catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: iterating refs for base weapon", ex); }
-                            }
-                        }
+                        IMutagenEnvironment mutEnv = _mutagenEnvironment ?? new MutagenV51EnvironmentAdapter(env);
+                        var builder = new ReverseMapBuilder(mutEnv);
+                        reverseMap = builder.Build(excluded);
                     }
-                    catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: building reverse reference map", ex); }
+                    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to build reverse reference map via adapter", ex); }
 
                     // Try to get LinkCache if available for typed TryResolve
                         // Diagnostic: reverse-reference map built (or attempted)
@@ -1047,12 +991,12 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 AppLogger.Log("WeaponOmodExtractor: failed to write extract completion marker", ex);
             }
 
-            return results!;
+            return results ?? new List<OmodCandidate>();
         }
         catch (Exception ex)
         {
             progress?.Report($"エラー: OMOD 抽出中に例外が発生しました: {ex.Message}");
-            return results;
+            return results ?? new List<OmodCandidate>();
         }
     }
 
@@ -1065,4 +1009,130 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     // (Removed) use the shared LinkCacheHelper.TryResolveViaLinkCache from Services/Implementations/LinkCacheHelper.cs
 
     // RepoUtils.FindRepoRoot provides repository root lookup
+    private List<OmodCandidate> ExtractFromConstructibleObjects(dynamic env, System.Collections.Generic.HashSet<string> excluded, IProgress<string>? progress, ref int skippedByExcluded)
+    {
+        var resultsLocal = new List<OmodCandidate>();
+        try
+        {
+            var cobjs = env.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides();
+            foreach (var cobj in cobjs)
+            {
+                try
+                {
+                    var created = cobj.CreatedObject;
+                    if (created.IsNull) continue;
+
+                    // Skip candidates coming from excluded plugins
+                    try
+                    {
+                        var srcPlugin = cobj.FormKey.ModKey.FileName;
+                        if (excluded.Contains(srcPlugin))
+                        {
+                            skippedByExcluded++;
+                            continue;
+                        }
+                    }
+                    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: iterating COBJs", ex); }
+
+                    FormKey? createdAmmoKey = null;
+                    string createdAmmoName = string.Empty;
+                    try
+                    {
+                        var plugin = created.FormKey.ModKey.FileName;
+                        var id = created.FormKey.ID;
+                        object? possibleWeapon = null;
+                        try
+                        {
+                            var weaponList = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides();
+                            foreach (var w in weaponList)
+                            {
+                                try
+                                {
+                                    var wfPlugin = w.FormKey.ModKey.FileName;
+                                    var wfId = w.FormKey.ID;
+                                    if (wfPlugin == plugin && wfId == id)
+                                    {
+                                        possibleWeapon = w;
+                                        break;
+                                    }
+                                }
+                                catch { /* best-effort */ }
+                            }
+                        }
+                        catch { /* best-effort */ }
+                        if (possibleWeapon != null)
+                        {
+                            var ammoLink = possibleWeapon.GetType().GetProperty("Ammo")?.GetValue(possibleWeapon);
+                            if (ammoLink != null)
+                            {
+                                try
+                                {
+                                    var isNullProp = ammoLink.GetType().GetProperty("IsNull");
+                                    var isNullVal = isNullProp?.GetValue(ammoLink);
+                                    var isNull = false;
+                                    if (isNullVal is bool b) isNull = b;
+                                    if (!isNull)
+                                    {
+                                        var fkProp = ammoLink.GetType().GetProperty("FormKey");
+                                        var fk = fkProp?.GetValue(ammoLink);
+                                        if (fk != null)
+                                        {
+                                            try
+                                            {
+                                                var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
+                                                var fileName = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString();
+                                                var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
+                                                uint id2 = 0;
+                                                if (idObj is uint uu) id2 = uu;
+                                                else if (idObj != null) id2 = Convert.ToUInt32(idObj);
+                                                if (!string.IsNullOrEmpty(fileName) && id2 != 0)
+                                                    createdAmmoKey = new FormKey { PluginName = fileName, FormId = id2 };
+                                            }
+                                            catch { }
+                                        }
+                                    }
+                                }
+                                catch { }
+                            }
+                            if (skippedByExcluded > 0)
+                                progress?.Report($"{skippedByExcluded} 件のレコードが除外プラグイン設定のためスキップされました。");
+                            if (createdAmmoKey != null)
+                            {
+                                createdAmmoName = string.Empty;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        try
+                        {
+                            if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
+                                mainVm.AddLog($"WeaponOmodExtractor: COBJ created-object scan error: {ex.Message}");
+                        }
+                        catch (Exception ex2) { AppLogger.Log("WeaponOmodExtractor: failed to add log to UI in COBJ created-object scan catch", ex2); }
+                    }
+
+                    resultsLocal.Add(new OmodCandidate
+                    {
+                        CandidateType = "COBJ",
+                        CandidateFormKey = new Models.FormKey { PluginName = created.FormKey.ModKey.FileName, FormId = created.FormKey.ID },
+                        CandidateEditorId = cobj.EditorID ?? string.Empty,
+                        CandidateAmmo = createdAmmoKey != null ? new Models.FormKey { PluginName = createdAmmoKey.PluginName, FormId = createdAmmoKey.FormId } : null,
+                        CandidateAmmoName = createdAmmoName ?? string.Empty,
+                        SourcePlugin = cobj.FormKey.ModKey.FileName,
+                        Notes = $"COBJ source: {cobj.FormKey.ModKey.FileName}:{cobj.FormKey.ID:X8}",
+                        SuggestedTarget = "CreatedWeapon"
+                    });
+                }
+                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: processing COBJ candidate", ex); }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("WeaponOmodExtractor: failed while extracting from ConstructibleObjects", ex);
+        }
+
+        return resultsLocal;
+    }
+
 }
