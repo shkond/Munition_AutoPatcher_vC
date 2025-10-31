@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Mutagen.Bethesda.Installs;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -23,4 +24,10 @@ public interface IMutagenEnvironment
     /// If available, return the LinkCache instance (unknown/dynamic type) else null.
     /// </summary>
     object? GetLinkCache();
+
+    /// <summary>
+    /// If available, return the environment's data folder path (DirectoryPath) used by Mutagen.
+    /// Returns null when not available.
+    /// </summary>
+    Noggog.DirectoryPath? GetDataFolderPath();
 }

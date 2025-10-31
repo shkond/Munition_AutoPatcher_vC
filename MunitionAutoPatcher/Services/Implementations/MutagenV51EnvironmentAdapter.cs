@@ -7,13 +7,25 @@ using Mutagen.Bethesda.Environments;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
-public class MutagenV51EnvironmentAdapter : IMutagenEnvironment
+public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
 {
     private readonly IGameEnvironment<IFallout4Mod, IFallout4ModGetter> _env;
 
     public MutagenV51EnvironmentAdapter(IGameEnvironment<IFallout4Mod, IFallout4ModGetter> env)
     {
         _env = env;
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            (_env as IDisposable)?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("MutagenV51EnvironmentAdapter: failed while disposing inner GameEnvironment", ex);
+        }
     }
 
     public IEnumerable<object> GetWinningWeaponOverrides()
@@ -74,5 +86,11 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment
     {
         try { return _env.GetType().GetProperty("LinkCache")?.GetValue(_env); }
         catch (Exception ex) { AppLogger.Log("MutagenV51EnvironmentAdapter: failed to obtain LinkCache", ex); return null; }
+    }
+
+    public Noggog.DirectoryPath? GetDataFolderPath()
+    {
+        try { return _env.DataFolderPath; }
+        catch (Exception ex) { AppLogger.Log("MutagenV51EnvironmentAdapter: failed to obtain DataFolderPath", ex); return null; }
     }
 }

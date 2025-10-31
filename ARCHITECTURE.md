@@ -1,4 +1,4 @@
-# Application UI Overview
+# Application Architecture
 
 ## Main Window Layout
 
@@ -32,89 +32,46 @@
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Settings View
+## Core Architectural Principles
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ 設定                                                                  │
-│                                                                       │
-│ ┌─── ゲームデータパス ─────────────────────────────────────────────┐ │
-│ │ [C:\Games\Fallout4\Data                    ] [参照...] │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                       │
-│ ┌─── 出力INIファイルパス ──────────────────────────────────────────┐ │
-│ │ [C:\Games\Fallout4\Data\RobCoPatcher.ini  ] [参照...] │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                       │
-│ ┌─── マッピング戦略 ───────────────────────────────────────────────┐ │
-│ │ ☑ 名前で自動マッピング                                           │ │
-│ │ ☑ タイプで自動マッピング                                         │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                       │
-│ ┌─── アクション ───────────────────────────────────────────────────┐ │
-│ │ [     武器データ抽出を開始     ]                                 │ │
-│ │ [████████████████████████████] (Processing indicator)            │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-```
+### MVVM (Model-View-ViewModel)
+- **Views**: Purely UI-focused, defined in XAML (`SettingsView.xaml`, `MapperView.xaml`).
+- **ViewModels**: Manage UI state and logic (`SettingsViewModel.cs`, `MapperViewModel.cs`). They connect the View to the application's business logic via data binding and commands.
+- **Models**: Represent application data structures (`WeaponData.cs`, `StrategyConfig.cs`).
 
-## Mapper View
+### Service Layer & Dependency Injection
+- Business logic is encapsulated in services with clearly defined interfaces (e.g., `IWeaponsService`, `IConfigService`).
+- All dependencies (ViewModels, Services) are provided via a Dependency Injection container, promoting loose coupling and high testability.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ 武器マッピング                                                        │
-│                                                                       │
-│ [マッピング生成] [INI生成] [████████████████] (Processing)           │
-│                                                                       │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │武器名     │武器FormKey      │弾薬名         │弾薬FormKey│戦略│手動│ │
-│ ├─────────┼────────────────┼──────────────┼──────────┼───┼───┤ │
-│ │10mmピスト│Fallout4.esm:   │自動マッピング │N/A        │Def │[ ]│ │
-│ │ル        │001234           │未実装         │           │ault│   │ │
-│ ├─────────┼────────────────┼──────────────┼──────────┼───┼───┤ │
-│ │コンバット│Fallout4.esm:   │自動マッピング │N/A        │Def │[ ]│ │
-│ │ライフル  │005678           │未実装         │           │ault│   │ │
-│ └─────────┴────────────────┴──────────────┴──────────┴───┴───┘ │
-│                                                                       │
-└─────────────────────────────────────────────────────────────────────┘
-```
+### Resource Management & Mutagen Integration
+- Interaction with the Mutagen API is a critical, resource-intensive task. This is managed through a robust, abstracted factory pattern.
+- `IMutagenEnvironmentFactory`: A factory responsible for creating Mutagen environment instances.
+- `IResourcedMutagenEnvironment`: An interface that combines the `IMutagenEnvironment` (operation abstraction) with `IDisposable`.
+- Callers **must** obtain an environment from the factory within a `using` block (`using (var env = factory.Create()) { ... }`). This guarantees that the environment and its associated file handles are correctly disposed of, preventing memory leaks and file locks.
 
-## Key Features
+### Modularity and Single Responsibility
+- Complex operations are broken down into smaller, single-responsibility helper classes. For example, the `WeaponOmodExtractor` service delegates tasks to:
+  - `CandidateEnumerator`: Finds potential weapon mod candidates.
+  - `ReverseMapBuilder`: Builds reverse-lookup maps for efficient processing.
+  - `DiagnosticWriter`: Writes diagnostic and log files.
+- This approach enhances maintainability, testability, and readability.
 
-### UI Elements with Japanese Labels
-- Menu items: ファイル, 設定, マッピング, 終了, ヘルプ, バージョン情報
-- Headers: ゲームデータパス, 出力INIファイルパス, マッピング戦略, アクション
-- Buttons: 参照..., 武器データ抽出を開始, マッピング生成, INI生成
-- Checkboxes: 名前で自動マッピング, タイプで自動マッピング
-- Table headers: 武器名, 武器FormKey, 弾薬名, 弾薬FormKey, 戦略, 手動
+### Asynchronous Operations & UI Responsiveness
+- Long-running tasks, such as data extraction, are executed on background threads using `Task.Run` and `AsyncRelayCommand`.
+- This ensures the UI remains responsive. Progress is reported to the user via status bar updates, progress indicators, and detailed log messages.
 
-### Functional Flow
-1. **Settings Screen** → Set game path, output path, mapping strategy
-2. **Start Extraction** → Trigger stub weapon extraction (logs progress)
-3. **Mapper Screen** → View extracted weapons
-4. **Generate Mappings** → Create weapon-to-ammo mappings
-5. **Generate INI** → Create RobCo Patcher configuration file
+### Observable Error Handling
+- A project-wide policy mandates that exceptions must not be silently ignored.
+- Empty `catch {}` blocks are forbidden. Instead, exceptions are caught and logged via a centralized `AppLogger` (`catch (Exception ex) { AppLogger.Log(ex, "..."); }`) to ensure all errors are observable for debugging and support.
 
-### Status & Logging
-- Real-time status updates in status bar
-- Timestamped log messages in bottom panel
-- Progress indicators during async operations
+## Functional Flow
+1. **Settings Screen** → Set game data path, output path, and mapping strategy.
+2. **Start Extraction** → Trigger weapon and OMOD data extraction from game files. This is an asynchronous process.
+3. **Mapper Screen** → View extracted weapons and their potential mappings.
+4. **Generate Mappings** → Create weapon-to-ammo mappings based on selected strategies.
+5. **Generate INI** → Create the final `RobCoPatcher.ini` configuration file based on the mappings.
 
-### MVVM Architecture
-- Clean separation: Views (XAML), ViewModels (binding logic), Services (business logic)
-- Dependency injection for all services and ViewModels
-- Command pattern for user actions (RelayCommand, AsyncRelayCommand)
-- INotifyPropertyChanged for data binding
-
-### Next Steps (TODOs)
-All current functionality is stubbed. Future PRs will implement:
-- Actual Mutagen integration for plugin parsing
-- Real auto-mapping algorithms
-- Complete INI generation
-- Manual mapping editing
-- Configuration persistence
-
-### 注意事項（表示言語）
+## 注意事項（表示言語）
 本アプリケーションでは、Mutagen が提供する翻訳文字列（ITranslatedString）から表示用文字列を取得する際に、優先言語の選択が重要です。
 
 現在の実装では、Mutagen の翻訳文字列を日本語 → 英語 → TargetLanguage の順で選択するロジックを採用しています。このため、日本語環境では以下のように正しい日本語が取得でき、UI 上で文字化け（mojibake）は発生していません（例: "5.56口径弾", "フュージョン・セル", "ショットガンシェル" 等）。

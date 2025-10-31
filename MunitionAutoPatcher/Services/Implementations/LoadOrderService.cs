@@ -15,11 +15,13 @@ namespace MunitionAutoPatcher.Services.Implementations;
 public class LoadOrderService : ILoadOrderService
 {
     private readonly IConfigService _configService;
+    private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
     private ILoadOrder<IModListing<IFallout4ModGetter>>? _loadOrder;
 
-    public LoadOrderService(IConfigService configService)
+    public LoadOrderService(IConfigService configService, IMutagenEnvironmentFactory mutagenEnvironmentFactory)
     {
         _configService = configService;
+        _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
     }
 
     public async Task<ILoadOrder<IModListing<IFallout4ModGetter>>?> GetLoadOrderAsync()
@@ -35,20 +37,21 @@ public class LoadOrderService : ILoadOrderService
             // this process is launched via Mod Organizer 2. This gives the merged Data view.
             try
             {
-                // Attempt to create a typical GameEnvironment for Fallout 4. When launched via MO2
+                // Attempt to create a Mutagen-backed environment via the factory. When launched via MO2
                 // this will observe the virtualized Data folder and provide the merged LoadOrder getters.
-                using var env = GameEnvironment.Typical.Fallout4(Fallout4Release.Fallout4);
-                var envData = env.DataFolderPath;
-
-                // env.LoadOrder is a getter-based view; convert it to a concrete ILoadOrder by
-                // importing from the same data folder using the environment's listings.
-                var envListings = PluginListings.LoadOrderListings(GameRelease.Fallout4, envData, throwOnMissingMods: false);
-                var imported = LoadOrder.Import<IFallout4ModGetter>(envData, envListings, GameRelease.Fallout4);
-                if (imported != null)
+                using var envRes = _mutagenEnvironmentFactory.Create();
+                var envDataOpt = envRes.GetDataFolderPath();
+                if (envDataOpt != null)
                 {
-                    _loadOrder = imported;
-                    Console.WriteLine($"Using GameEnvironment-derived load order (DataFolder={envData})");
-                    return _loadOrder;
+                    var envData = envDataOpt.Value;
+                    var envListings = PluginListings.LoadOrderListings(GameRelease.Fallout4, envData, throwOnMissingMods: false);
+                    var imported = LoadOrder.Import<IFallout4ModGetter>(envData, envListings, GameRelease.Fallout4);
+                    if (imported != null)
+                    {
+                        _loadOrder = imported;
+                        Console.WriteLine($"Using GameEnvironment-derived load order (DataFolder={envData})");
+                        return _loadOrder;
+                    }
                 }
             }
             catch (Exception ex)

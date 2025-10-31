@@ -19,17 +19,21 @@ public class MutagenEnvironmentFactory : IMutagenEnvironmentFactory
         _environmentCreator = environmentCreator;
     }
 
-    public IMutagenEnvironment Create()
+    public IResourcedMutagenEnvironment Create()
     {
         try
         {
             var env = _environmentCreator();
-            return new MutagenV51EnvironmentAdapter(env);
+            var adapter = new MutagenV51EnvironmentAdapter(env);
+            // Pass the actual GameEnvironment as the disposable resource so Dispose will clean it up.
+            var disposableResource = env as IDisposable ?? adapter as IDisposable;
+            return new ResourcedMutagenEnvironment(adapter, disposableResource!);
         }
         catch (Exception ex)
         {
             AppLogger.Log("MutagenEnvironmentFactory: failed to create GameEnvironment; returning NoOpMutagenEnvironment", ex);
-            return new NoOpMutagenEnvironment();
+            var noop = new NoOpMutagenEnvironment();
+            return new ResourcedMutagenEnvironment(noop, noop);
         }
     }
 }

@@ -18,12 +18,14 @@ namespace MunitionAutoPatcher.Services.Implementations;
 public class WeaponsService : IWeaponsService
 {
     private readonly ILoadOrderService _loadOrderService;
+    private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
     private readonly List<WeaponData> _weapons = new();
     private readonly List<AmmoData> _ammo = new();
 
-    public WeaponsService(ILoadOrderService loadOrderService)
+    public WeaponsService(ILoadOrderService loadOrderService, IMutagenEnvironmentFactory mutagenEnvironmentFactory)
     {
         _loadOrderService = loadOrderService;
+        _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
     }
 
     // Mojibake repair was implemented here but is disabled per user request.
@@ -127,37 +129,38 @@ public class WeaponsService : IWeaponsService
 
             try
             {
-                using var env = GameEnvironment.Typical.Fallout4(Fallout4Release.Fallout4);
-                var weaponGetters = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides();
+                using var envRes = _mutagenEnvironmentFactory.Create();
+                var weaponGetters = envRes.GetWinningWeaponOverrides();
 
                 foreach (var weaponGetter in weaponGetters)
                 {
                     try
                     {
+                        dynamic wg = weaponGetter;
                         var weaponData = new WeaponData
                         {
                             FormKey = new Models.FormKey
                             {
-                                PluginName = weaponGetter.FormKey.ModKey.FileName,
-                                FormId = weaponGetter.FormKey.ID
+                                PluginName = wg.FormKey.ModKey.FileName,
+                                FormId = wg.FormKey.ID
                             },
-                            EditorId = weaponGetter.EditorID ?? string.Empty,
-                            Name = GetBestTranslatedString(weaponGetter.Name),
-                            Description = GetBestTranslatedString(weaponGetter.Description),
+                            EditorId = wg.EditorID ?? string.Empty,
+                            Name = GetBestTranslatedString(wg.Name),
+                            Description = GetBestTranslatedString(wg.Description),
                             WeaponType = "Unknown",
-                            Damage = weaponGetter.BaseDamage,
-                            FireRate = weaponGetter.AnimationAttackSeconds > 0
-                                ? 60f / weaponGetter.AnimationAttackSeconds
+                            Damage = wg.BaseDamage,
+                            FireRate = wg.AnimationAttackSeconds > 0
+                                ? 60f / wg.AnimationAttackSeconds
                                 : 0f
                         };
 
                         // If the chosen name looks like mojibake, dump all available translations for diagnosis.
                         try
                         {
-                            if (IsLikelyMojibake(weaponData.Name) && weaponGetter.Name != null)
-                                AppendTranslationsDump(weaponGetter.Name, weaponData.FormKey, "Weapon");
-                            if (IsLikelyMojibake(weaponData.Description) && weaponGetter.Description != null)
-                                AppendTranslationsDump(weaponGetter.Description, weaponData.FormKey, "WeaponDesc");
+                            if (IsLikelyMojibake(weaponData.Name) && wg.Name != null)
+                                AppendTranslationsDump(wg.Name, weaponData.FormKey, "Weapon");
+                            if (IsLikelyMojibake(weaponData.Description) && wg.Description != null)
+                                AppendTranslationsDump(wg.Description, weaponData.FormKey, "WeaponDesc");
                         }
                         catch (Exception ex)
                         {
@@ -165,49 +168,67 @@ public class WeaponsService : IWeaponsService
                             AppLogger.Log($"WeaponsService: translation dump error: {ex.Message}", ex);
                         }
 
-                        // Try to resolve ammunition via the record's FormLink using env.LinkCache
+                        // Try to resolve ammunition via the record's FormLink using adapter-provided LinkCache
                         try
                         {
-                            // Many weapon records expose their ammo as .Ammo (FormLink) - try to resolve it.
-                            var ammoLink = weaponGetter.Ammo;
-                            if (!ammoLink.IsNull && ammoLink.TryResolve(env.LinkCache, out var ammoRecord))
+                            var linkCache = envRes.GetLinkCache();
+                            var ammoResolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(wg.Ammo, linkCache);
+                            if (ammoResolved != null)
                             {
-                                weaponData.DefaultAmmo = new Models.FormKey
+                                var ammoRecord = ammoResolved;
+                                try
                                 {
-                                    PluginName = ammoRecord.FormKey.ModKey.FileName,
-                                    FormId = ammoRecord.FormKey.ID
-                                };
-                                weaponData.DefaultAmmoName = GetBestTranslatedString(ammoRecord.Name);
-
-                                var key = $"{weaponData.DefaultAmmo.PluginName}:{weaponData.DefaultAmmo.FormId:X8}";
-                                if (!seen.Contains(key))
-                                {
-                                    seen.Add(key);
-                                    _ammo.Add(new AmmoData
+                                    var fk = ammoRecord.GetType().GetProperty("FormKey")?.GetValue(ammoRecord);
+                                    var mk = fk?.GetType().GetProperty("ModKey")?.GetValue(fk);
+                                    var pluginName = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
+                                    var idObj = fk?.GetType().GetProperty("ID")?.GetValue(fk);
+                                    uint id = 0;
+                                    if (idObj is uint uu) id = uu;
+                                    else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                    if (!string.IsNullOrEmpty(pluginName) && id != 0)
                                     {
-                                        FormKey = new Models.FormKey
+                                        weaponData.DefaultAmmo = new Models.FormKey { PluginName = pluginName, FormId = id };
+                                        try { weaponData.DefaultAmmoName = ammoRecord.GetType().GetProperty("EditorID")?.GetValue(ammoRecord)?.ToString() ?? string.Empty; } catch { }
+
+                                        var key = $"{weaponData.DefaultAmmo.PluginName}:{weaponData.DefaultAmmo.FormId:X8}";
+                                        if (!seen.Contains(key))
                                         {
-                                            PluginName = weaponData.DefaultAmmo.PluginName,
-                                            FormId = weaponData.DefaultAmmo.FormId
-                                        },
-                                        Name = weaponData.DefaultAmmoName ?? string.Empty,
-                                        EditorId = ammoRecord.EditorID ?? string.Empty,
-                                        Damage = 0,
-                                        AmmoType = string.Empty
-                                    });
+                                            seen.Add(key);
+                                            _ammo.Add(new AmmoData
+                                            {
+                                                FormKey = new Models.FormKey { PluginName = weaponData.DefaultAmmo.PluginName, FormId = weaponData.DefaultAmmo.FormId },
+                                                Name = weaponData.DefaultAmmoName ?? string.Empty,
+                                                EditorId = ammoRecord.GetType().GetProperty("EditorID")?.GetValue(ammoRecord)?.ToString() ?? string.Empty,
+                                                Damage = 0,
+                                                AmmoType = string.Empty
+                                            });
+                                        }
+                                    }
                                 }
+                                catch (Exception ex) { AppLogger.Log($"WeaponsService: ammo resolved but processing failed: {ex.Message}", ex); }
                             }
                             else
                             {
-                                // No resolvable ammo record; if a FormKey is present on the link, preserve it as a fallback
-                                if (weaponGetter.Ammo.FormKey != null)
+                                // Fallback: try to read FormKey from the weaponGetter via reflection
+                                try
                                 {
-                                    weaponData.DefaultAmmo = new Models.FormKey
+                                    var ammoObj = wg.Ammo;
+                                    var fk = ammoObj?.GetType().GetProperty("FormKey")?.GetValue(ammoObj);
+                                    if (fk != null)
                                     {
-                                        PluginName = weaponGetter.Ammo.FormKey.ModKey.FileName,
-                                        FormId = weaponGetter.Ammo.FormKey.ID
-                                    };
+                                        var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
+                                        var pluginName = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
+                                        var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
+                                        uint id = 0;
+                                        if (idObj is uint uu) id = uu;
+                                        else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                        if (!string.IsNullOrEmpty(pluginName) && id != 0)
+                                        {
+                                            weaponData.DefaultAmmo = new Models.FormKey { PluginName = pluginName, FormId = id };
+                                        }
+                                    }
                                 }
+                                catch { }
                             }
                         }
                         catch (Exception ex)

@@ -30,6 +30,8 @@ public partial class App : Application
                 services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
 
                 services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
+                // Register weapon data extractor (transient: new instance per operation)
+                services.AddTransient<IWeaponDataExtractor, WeaponDataExtractor>();
                 services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
                 services.AddSingleton<IOrchestrator, OrchestratorService>();
 

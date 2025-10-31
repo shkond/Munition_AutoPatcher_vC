@@ -7,5 +7,10 @@ namespace MunitionAutoPatcher.Services.Implementations;
 /// </summary>
 public interface IMutagenEnvironmentFactory
 {
-    IMutagenEnvironment Create();
+    /// <summary>
+    /// Create a resourced environment that implements IMutagenEnvironment and IDisposable.
+    /// Callers should dispose the returned instance when finished to ensure any underlying
+    /// GameEnvironment is released.
+    /// </summary>
+    IResourcedMutagenEnvironment Create();
 }
