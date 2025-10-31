@@ -85,7 +85,7 @@ namespace LinkCacheHelperTests
             vm.OmodCandidates.Add(other);
 
             // Force update by toggling selection: set a non-null then back to null
-            vm.SelectedMapping = new ViewModels.WeaponMappingViewModel { WeaponFormKey = "NoMatch:00000000" };
+            vm.SelectedMapping = new WeaponMappingViewModel { WeaponFormKey = "NoMatch:00000000" };
             vm.SelectedMapping = null;
 
             // No selection => filtered should include both
@@ -93,7 +93,7 @@ namespace LinkCacheHelperTests
             Assert.Contains(other, vm.FilteredOmodCandidates);
 
             // Select mapping matching the 'matching' candidate
-            vm.SelectedMapping = new ViewModels.WeaponMappingViewModel { WeaponFormKey = matching.BaseWeapon.ToString() };
+            vm.SelectedMapping = new WeaponMappingViewModel { WeaponFormKey = matching.BaseWeapon.ToString() };
 
             // Now filtered should contain only the matching candidate
             Assert.Contains(matching, vm.FilteredOmodCandidates);

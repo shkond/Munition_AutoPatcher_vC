@@ -35,43 +35,68 @@ Fallout 4武器自動パッチツール - WPF MVVM実装
 ```
 MunitionAutoPatcher/
 ├── Models/                          # データモデル
-│   ├── FormKey.cs
-│   ├── WeaponData.cs
-│   ├── WeaponMapping.cs
-│   ├── StrategyConfig.cs
 │   ├── AmmoCategory.cs
-│   └── AmmoData.cs
+│   ├── AmmoData.cs
+│   ├── FormKey.cs
+│   ├── OmodCandidate.cs
+│   ├── StrategyConfig.cs
+│   ├── WeaponData.cs
+│   └── WeaponMapping.cs
 ├── ViewModels/                      # ビューモデル
-│   ├── ViewModelBase.cs
+│   ├── AmmoViewModel.cs
 │   ├── MainViewModel.cs
-│   ├── SettingsViewModel.cs
 │   ├── MapperViewModel.cs
-│   ├── WeaponMappingViewModel.cs
-│   └── AmmoViewModel.cs
+│   ├── SettingsViewModel.cs
+│   ├── ViewModelBase.cs
+│   └── WeaponMappingViewModel.cs
 ├── Views/                           # ビュー (XAML + Code-behind)
+│   ├── InputDialog.xaml
 │   ├── MainWindow.xaml
-│   ├── SettingsView.xaml
-│   └── MapperView.xaml
+│   ├── MapperView.xaml
+│   └── SettingsView.xaml
 ├── Services/                        # サービス層
+│   ├── Helpers/
+│   │   ├── CandidateEnumerator.cs
+│   │   ├── DiagnosticWriter.cs
+│   │   └── ReverseMapBuilder.cs
 │   ├── Interfaces/
-│   │   ├── IOrchestrator.cs
-│   │   ├── IWeaponsService.cs
-│   │   ├── IRobCoIniGenerator.cs
+│   │   ├── IAmmunitionChangeDetector.cs
+│   │   ├── IConfigService.cs
 │   │   ├── ILoadOrderService.cs
-│   │   └── IConfigService.cs
+│   │   ├── IOrchestrator.cs
+│   │   ├── IRobCoIniGenerator.cs
+│   │   ├── IWeaponOmodExtractor.cs
+│   │   └── IWeaponsService.cs
 │   └── Implementations/
-│       ├── OrchestratorService.cs
-│       ├── WeaponsService.cs
-│       ├── RobCoIniGenerator.cs
+│       ├── ConfigService.cs
+│       ├── DetectorFactory.cs
+│       ├── IMutagenEnvironment.cs
+│       ├── IMutagenEnvironmentFactory.cs
+│       ├── IResourcedMutagenEnvironment.cs
+│       ├── LinkCacheHelper.cs
 │       ├── LoadOrderService.cs
-│       └── ConfigService.cs
+│       ├── MutagenEnvironmentFactory.cs
+│       ├── MutagenV51Detector.cs
+│       ├── MutagenV51EnvironmentAdapter.cs
+│       ├── NoOpMutagenEnvironment.cs
+│       ├── OrchestratorService.cs
+│       ├── ReflectionFallbackDetector.cs
+│       ├── ResourcedMutagenEnvironment.cs
+│       ├── ReverseMapBuilder.cs
+│       ├── RobCoIniGenerator.cs
+│       ├── WeaponOmodExtractor.cs
+│       └── WeaponsService.cs
 ├── Commands/                        # コマンドハンドラ
-│   ├── RelayCommand.cs
-│   └── AsyncRelayCommand.cs
+│   ├── AsyncRelayCommand.cs
+│   └── RelayCommand.cs
 ├── Converters/                      # 値変換
 │   ├── BoolToVisibilityConverter.cs
 │   └── InverseBoolConverter.cs
-└── App.xaml.cs                      # アプリケーションエントリポイント + DI設定
+├── Utilities/                       # ユーティリティ
+│   └── RepoUtils.cs
+├── App.xaml.cs                      # アプリケーションエントリポイント + DI設定
+├── AppLogger.cs                     # ロギング
+└── DebugConsole.cs                  # デバッグコンソール
 ```
 
 ## ビルド方法

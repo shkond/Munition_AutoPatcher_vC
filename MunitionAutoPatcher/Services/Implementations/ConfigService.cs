@@ -62,8 +62,7 @@ public class ConfigService : IConfigService
         {
             try
             {
-                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                    mainVm.AddLog($"ConfigService.FindRepoRoot error: {ex.Message}");
+                AppLogger.Log($"ConfigService.FindRepoRoot error: {ex.Message}", ex);
             }
             catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in FindRepoRoot", ex2); }
         }

@@ -33,8 +33,28 @@ public class MainViewModel : ViewModelBase
         ShowMapperCommand = new RelayCommand(() => CurrentView = MapperViewModel);
         ExitCommand = new RelayCommand(() => System.Windows.Application.Current.Shutdown());
 
+        // Subscribe to central logger events for UI updates
+        AppLogger.LogMessagePublished += OnAppLogPublished;
+
         // Initialize
         _ = InitializeAsync();
+    }
+
+    private void OnAppLogPublished(string line)
+    {
+        // Event may be raised on a thread-pool thread; marshal to UI and avoid re-persisting
+        var app = System.Windows.Application.Current;
+        if (app != null && app.Dispatcher != null && !app.Dispatcher.CheckAccess())
+        {
+            app.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try { AddLog(line, persist: false); } catch { /* swallow */ }
+            }));
+        }
+        else
+        {
+            try { AddLog(line, persist: false); } catch { /* swallow */ }
+        }
     }
 
     public SettingsViewModel SettingsViewModel { get; }
@@ -78,19 +98,57 @@ public class MainViewModel : ViewModelBase
         }
     }
 
-    public void AddLog(string message)
+    public void AddLog(string message, bool persist = true)
     {
         var timestamp = DateTime.Now.ToString("HH:mm:ss");
-        LogMessages.Add($"[{timestamp}] {message}");
-        StatusMessage = message;
-        // Persist UI-visible logs to the central AppLogger so they are written to disk
+        // Ensure collection mutation happens on the UI thread. Some callers invoke AddLog
+        // from background threads (e.g. extraction tasks). Use BeginInvoke to avoid
+        // blocking the caller and to marshal the update to the Dispatcher thread.
         try
         {
-            AppLogger.Log(message);
+            var payload = $"[{timestamp}] {message}";
+            var app = System.Windows.Application.Current;
+            if (app != null && app.Dispatcher != null && !app.Dispatcher.CheckAccess())
+            {
+                app.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        LogMessages.Add(payload);
+                        StatusMessage = message;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Swallow to avoid any UI logging failure affecting background work
+                        AppLogger.Log($"AddLog: UI update failed: {ex.Message}");
+                    }
+                }));
+            }
+            else
+            {
+                // We're already on the UI thread or dispatcher unavailable
+                LogMessages.Add(payload);
+                StatusMessage = message;
+            }
+
+            // Persist UI-visible logs to the central AppLogger so they are written to disk
+            if (persist)
+            {
+                try
+                {
+                    AppLogger.Log(message);
+                }
+                catch (Exception ex)
+                {
+                    // Never allow logging failures to affect UI; AppLogger itself is best-effort.
+                    System.Diagnostics.Debug.WriteLine($"AddLog: AppLogger failed: {ex.Message}");
+                }
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Never allow logging failures to affect UI; AppLogger itself is best-effort.
+            // Defensive: do not let logging errors propagate
+            AppLogger.Log($"AddLog: top-level failure: {ex.Message}");
         }
     }
 }

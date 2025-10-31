@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MunitionAutoPatcher.Services.Implementations;
 using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Environments;
 using MunitionAutoPatcher.ViewModels;
 using MunitionAutoPatcher.Views;
 
@@ -24,7 +26,12 @@ public partial class App : Application
                 services.AddSingleton<IConfigService, ConfigService>();
                 services.AddSingleton<ILoadOrderService, LoadOrderService>();
                 services.AddSingleton<IWeaponsService, WeaponsService>();
+                // Register a factory that will create IMutagenEnvironment instances on demand.
+                services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
+
                 services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
+                // Register weapon data extractor (transient: new instance per operation)
+                services.AddTransient<IWeaponDataExtractor, WeaponDataExtractor>();
                 services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
                 services.AddSingleton<IOrchestrator, OrchestratorService>();
 
@@ -57,10 +64,7 @@ public partial class App : Application
         {
             try
             {
-                if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm)
-                    mainVm.AddLog($"App startup debug console show failed: {ex.Message}");
-                else
-                    Console.WriteLine($"App startup debug console show failed: {ex.Message}");
+                AppLogger.Log($"App startup debug console show failed: {ex.Message}", ex);
             }
             catch { Console.WriteLine($"App startup debug console show failed: {ex.Message}"); }
         }
@@ -89,7 +93,6 @@ public partial class App : Application
                 var asm = geType.Assembly.GetName();
                 var msg = $"Mutagen assembly loaded: {asm.Name} v{asm.Version}";
                 AppLogger.Log(msg);
-                    try { mainViewModel.AddLog(msg); } catch (Exception ex) { AppLogger.Log("App.xaml: failed to add startup log to UI", ex); }
             }
             catch (Exception ex)
             {
@@ -105,7 +108,7 @@ public partial class App : Application
     protected override async void OnExit(ExitEventArgs e)
     {
 #if DEBUG
-    try { DebugConsole.Hide(); } catch (Exception ex) { try { if (System.Windows.Application.Current?.MainWindow?.DataContext is MunitionAutoPatcher.ViewModels.MainViewModel mainVm) mainVm.AddLog($"App exit debug console hide failed: {ex.Message}"); } catch (Exception inner) { AppLogger.Log("App.xaml.OnExit: failed to add log to UI on debug console hide", inner); } }
+    try { DebugConsole.Hide(); } catch (Exception ex) { try { AppLogger.Log($"App exit debug console hide failed: {ex.Message}", ex); } catch (Exception inner) { AppLogger.Log("App.xaml.OnExit: failed to add log to UI on debug console hide", inner); } }
 #endif
         await _host.StopAsync();
         _host.Dispose();

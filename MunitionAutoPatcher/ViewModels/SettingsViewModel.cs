@@ -238,10 +238,8 @@ public class SettingsViewModel : ViewModelBase
         {
             var progress = new Progress<string>(msg =>
             {
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
-                {
-                    mainVm.AddLog(msg);
-                }
+                // Route progress messages through centralized logger instead of touching UI directly
+                AppLogger.Log(msg);
             });
 
             await _orchestrator.ExtractWeaponsAsync(progress);
@@ -257,13 +255,7 @@ public class SettingsViewModel : ViewModelBase
         IsProcessing = true;
         try
         {
-            var progress = new Progress<string>(msg =>
-            {
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
-                {
-                    mainVm.AddLog(msg);
-                }
-            });
+            var progress = new Progress<string>(msg => AppLogger.Log(msg));
 
             // Diagnostic: write entry marker so we can detect repeated UI triggers
             try
@@ -276,18 +268,50 @@ public class SettingsViewModel : ViewModelBase
                 {
                     w.WriteLine($"SettingsViewModel.StartOmodExtraction entry at {DateTime.Now:O}");
                 }
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm) mm.AddLog($"Settings extract entry marker written: {entryPath}");
+                AppLogger.Log($"Settings extract entry marker written: {entryPath}");
             }
             catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to write extract entry marker", ex); }
 
             // Run extraction on the thread pool to avoid blocking the UI thread (ExtractCandidatesAsync does heavy synchronous work).
             var results = await Task.Run(async () => await _omodExtractor.ExtractCandidatesAsync(progress));
-            // Populate UI collection
-            OmodCandidates.Clear();
-            foreach (var r in results)
+
+            // Populate UI collection. Adding a very large number of items one-by-one on the UI
+            // thread can freeze the UI. Insert items in small batches on the Dispatcher so the
+            // message loop can keep processing, and avoid a single huge synchronous update.
+            try
             {
-                OmodCandidates.Add(r);
+                var list = (results ?? System.Linq.Enumerable.Empty<OmodCandidate>()).ToList();
+                // Clear on UI thread first
+                if (Application.Current != null && Application.Current.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+                {
+                    Application.Current.Dispatcher.Invoke(() => OmodCandidates.Clear());
+                }
+                else
+                {
+                    OmodCandidates.Clear();
+                }
+
+                const int batchSize = 200;
+                for (int i = 0; i < list.Count; i += batchSize)
+                {
+                    var chunk = list.Skip(i).Take(batchSize).ToList();
+                    if (Application.Current != null && Application.Current.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+                    {
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            foreach (var r in chunk) OmodCandidates.Add(r);
+                        }, System.Windows.Threading.DispatcherPriority.Background);
+                    }
+                    else
+                    {
+                        foreach (var r in chunk) OmodCandidates.Add(r);
+                    }
+
+                    // Yield to allow UI to process the collection change events
+                    await Task.Delay(30);
+                }
             }
+            catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to populate OmodCandidates collection", ex); }
 
             // Diagnostic: write exit marker to indicate the command returned
                 try
@@ -300,7 +324,7 @@ public class SettingsViewModel : ViewModelBase
                     {
                         w2.WriteLine($"SettingsViewModel.StartOmodExtraction exit at {DateTime.Now:O}");
                     }
-                    if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm2) mm2.AddLog($"Settings extract exit marker written: {exitPath}");
+                    AppLogger.Log($"Settings extract exit marker written: {exitPath}");
                 }
                 catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to write extract exit marker", ex); }
         }
@@ -373,8 +397,7 @@ public class SettingsViewModel : ViewModelBase
 
         if (!dlgResult || string.IsNullOrEmpty(input))
         {
-            if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
-                mainVm.AddLog("INI 生成がキャンセルされました。弾薬 FormKey が指定されていません。");
+            AppLogger.Log("INI 生成がキャンセルされました。弾薬 FormKey が指定されていません。");
             return;
         }
 
@@ -386,10 +409,7 @@ public class SettingsViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm2)
-            {
-                mainVm2.AddLog($"無効な FormKey: {ex.Message}");
-            }
+            AppLogger.Log($"無効な FormKey: {ex.Message}", ex);
             return;
         }
 
@@ -424,11 +444,7 @@ public class SettingsViewModel : ViewModelBase
             return;
 
         var outputPath = sfd.FileName;
-        var progress = new Progress<string>(msg =>
-        {
-            if (Application.Current.MainWindow?.DataContext is MainViewModel mainVm3)
-                mainVm3.AddLog(msg);
-        });
+        var progress = new Progress<string>(msg => AppLogger.Log(msg));
 
         // Generate INI asynchronously
         var mappings = new List<MunitionAutoPatcher.Models.WeaponMapping> { mapping };

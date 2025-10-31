@@ -129,10 +129,7 @@ public class MapperViewModel : ViewModelBase
         {
             var progress = new Progress<string>(msg =>
             {
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
-                {
-                    mainVm.AddLog(msg);
-                }
+                AppLogger.Log(msg);
             });
 
             await _orchestrator.GenerateMappingsAsync(progress);
@@ -227,8 +224,7 @@ public class MapperViewModel : ViewModelBase
             {
                 try
                 {
-                    if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
-                        mainVm.AddLog($"MapperViewModel: ammo candidate build error: {ex.Message}");
+                    AppLogger.Log($"MapperViewModel: ammo candidate build error: {ex.Message}", ex);
                 }
                 catch (Exception inner) { AppLogger.Log("MapperViewModel: failed to add log to UI in ammo candidate build catch", inner); }
             }
@@ -256,7 +252,7 @@ public class MapperViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
-                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: weapon exclude check error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("MapperViewModel: failed to add log to UI", ex2); }
+                    try { AppLogger.Log($"MapperViewModel: weapon exclude check error: {ex.Message}", ex); } catch (Exception ex2) { AppLogger.Log("MapperViewModel: failed to add log to UI", ex2); }
                 }
                 if (weapon.DefaultAmmo != null)
                 {
@@ -308,13 +304,7 @@ public class MapperViewModel : ViewModelBase
         IsProcessing = true;
         try
         {
-            var progress = new Progress<string>(msg =>
-            {
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
-                {
-                    mainVm.AddLog(msg);
-                }
-            });
+            var progress = new Progress<string>(msg => AppLogger.Log(msg));
 
             // Diagnostic: write entry marker so we can detect repeated UI triggers
             try
@@ -333,7 +323,7 @@ public class MapperViewModel : ViewModelBase
                 {
                     w.WriteLine($"MapperViewModel.ExtractOmods entry at {DateTime.Now:O}");
                 }
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm) mm.AddLog($"Extract command entry marker written: {entryPath}");
+                try { AppLogger.Log($"Extract command entry marker written: {entryPath}"); } catch { }
             }
             catch (Exception ex) { AppLogger.Log("MapperViewModel: failed to write extract entry marker", ex); }
 
@@ -365,7 +355,7 @@ public class MapperViewModel : ViewModelBase
                 {
                     w2.WriteLine($"MapperViewModel.ExtractOmods exit at {DateTime.Now:O}");
                 }
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mm2) mm2.AddLog($"Extract command exit marker written: {exitPath}");
+                try { AppLogger.Log($"Extract command exit marker written: {exitPath}"); } catch { }
             }
             catch (Exception ex) { AppLogger.Log("MapperViewModel: failed to write extract exit marker", ex); }
 
@@ -423,13 +413,7 @@ public class MapperViewModel : ViewModelBase
         IsProcessing = true;
         try
         {
-            var progress = new Progress<string>(msg =>
-            {
-                if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm)
-                {
-                    mainVm.AddLog(msg);
-                }
-            });
+            var progress = new Progress<string>(msg => { AppLogger.Log(msg); });
 
             // Build mappings from current WeaponMappings and call INI generator directly
             var mappings = new List<MunitionAutoPatcher.Models.WeaponMapping>();
@@ -449,7 +433,7 @@ public class MapperViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
-                    try { if (System.Windows.Application.Current.MainWindow?.DataContext is MainViewModel mainVm) mainVm.AddLog($"MapperViewModel: mapping parse error: {ex.Message}"); } catch (Exception ex2) { AppLogger.Log("MapperViewModel: failed to add log to UI in mapping parse catch", ex2); }
+                    try { AppLogger.Log($"MapperViewModel: mapping parse error: {ex.Message}", ex); } catch (Exception ex2) { AppLogger.Log("MapperViewModel: failed to add log to UI in mapping parse catch", ex2); }
                 }
             }
 
