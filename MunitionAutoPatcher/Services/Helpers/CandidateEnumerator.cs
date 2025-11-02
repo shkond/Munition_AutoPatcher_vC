@@ -258,9 +258,9 @@ namespace MunitionAutoPatcher.Services.Helpers
                                 // If the record itself comes from an excluded plugin, skip it early.
                                 try
                                 {
-                                    var recFormKey = rec.GetType().GetProperty("FormKey")?.GetValue(rec);
-                                    var recMk = recFormKey?.GetType().GetProperty("ModKey")?.GetValue(recFormKey);
-                                    var recPlugin = recMk?.GetType().GetProperty("FileName")?.GetValue(recMk)?.ToString() ?? string.Empty;
+                                    string recPlugin = string.Empty;
+                                    try { if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(rec, out var pluginTmp, out var _)) recPlugin = pluginTmp; }
+                                    catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read rec plugin via helper", ex); }
                                     if (!string.IsNullOrEmpty(recPlugin))
                                     {
                                         try { if ((excluded?.Contains(recPlugin) ?? false)) continue; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed checking excluded plugin for reflected record", ex); }
@@ -283,18 +283,16 @@ namespace MunitionAutoPatcher.Services.Helpers
                                         if (nestedFkProp == null) continue;
                                         var nestedFk = nestedFkProp.GetValue(val);
                                         if (nestedFk == null) continue;
-                                        var mk = nestedFk.GetType().GetProperty("ModKey")?.GetValue(nestedFk);
-                                        var idObj = nestedFk.GetType().GetProperty("ID")?.GetValue(nestedFk);
-                                        var plugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                        uint id = 0;
-                                        if (idObj is uint uu) id = uu;
-                                        else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                        string plugin = string.Empty; uint id = 0;
+                                        try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(nestedFk, out plugin, out id); }
+                                        catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read nested FormKey via helper", ex); }
                                         if (string.IsNullOrEmpty(plugin) || id == 0) continue;
                                         try { if ((excluded?.Contains(plugin) ?? false)) continue; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed checking excluded plugin in reflection scan", ex); }
                                         if (!weaponKeys.Contains((plugin, id))) continue;
 
                                         var recEditorId = string.Empty;
-                                        try { recEditorId = rec.GetType().GetProperty("EditorID")?.GetValue(rec)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read EditorID via reflection", ex); }
+                                        try { if (!MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<string>(rec, "EditorID", out recEditorId)) recEditorId = string.Empty; }
+                                        catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read EditorID via helper", ex); }
 
                                         // Detect ammo-like references in other properties
                                         Models.FormKey? detectedAmmoKey = null;
@@ -377,14 +375,8 @@ namespace MunitionAutoPatcher.Services.Helpers
                                             uint recSourceId = 0;
                                             try
                                             {
-                                                recFormKeyObj = rec.GetType().GetProperty("FormKey")?.GetValue(rec);
-                                                if (recFormKeyObj != null)
-                                                {
-                                                    var recMk2 = recFormKeyObj.GetType().GetProperty("ModKey")?.GetValue(recFormKeyObj);
-                                                    recSourcePlugin = recMk2?.GetType().GetProperty("FileName")?.GetValue(recMk2)?.ToString() ?? string.Empty;
-                                                    var idObjRec = recFormKeyObj.GetType().GetProperty("ID")?.GetValue(recFormKeyObj);
-                                                    if (idObjRec is uint recu) recSourceId = recu; else if (idObjRec != null) recSourceId = Convert.ToUInt32(idObjRec);
-                                                }
+                                                try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(rec, out recSourcePlugin, out recSourceId); }
+                                                catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read rec source plugin/id via helper", ex); }
                                             }
                                             catch (Exception ex)
                                             {
