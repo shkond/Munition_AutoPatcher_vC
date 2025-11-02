@@ -215,7 +215,10 @@ namespace MunitionAutoPatcher.Services.Implementations
                         if (!pType.IsAssignableFrom(arg.GetType()) && pType != typeof(object))
                             continue;
                         var r = m.Invoke(linkCache, new object?[] { arg });
-                        if (r != null) return r;
+                        // Ignore boolean-returning methods (e.g., Equals) which are not resolution results.
+                        if (r == null) continue;
+                        if (r is bool) continue;
+                        return r;
                     }
                     catch (Exception ex)
                     {

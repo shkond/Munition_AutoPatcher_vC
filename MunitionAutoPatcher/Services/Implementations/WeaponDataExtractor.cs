@@ -41,20 +41,28 @@ namespace MunitionAutoPatcher.Services.Implementations
                         }
                         catch { }
 
-                        // Skip by excluded plugin
+                        // Determine created object's plugin/id early so exclusion checks can consider it when the COBJ has no source plugin
+                        string createdPlugin = string.Empty;
+                        uint createdId = 0u;
+                        try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(created, out createdPlugin, out createdId); } catch { }
+
+                        // Skip by excluded plugin. Prefer the COBJ's source plugin; if unavailable fall back to the created object's plugin.
                         try
                         {
                             var srcPlugin = string.Empty;
                             if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(cobj, out var sp, out _))
                                 srcPlugin = sp;
-                            if (excluded.Contains(srcPlugin)) continue;
+
+                            if (!string.IsNullOrEmpty(srcPlugin))
+                            {
+                                if (excluded.Contains(srcPlugin)) continue;
+                            }
+                            else if (!string.IsNullOrEmpty(createdPlugin))
+                            {
+                                if (excluded.Contains(createdPlugin)) continue;
+                            }
                         }
                         catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponDataExtractor: iterating COBJs", ex); }
-
-                        // Try to resolve created object to a weapon to read its ammo link
-                        string createdPlugin = string.Empty;
-                        uint createdId = 0u;
-                        MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(created, out createdPlugin, out createdId);
 
                         object? possibleWeapon = null;
                         foreach (var w in allWeapons)

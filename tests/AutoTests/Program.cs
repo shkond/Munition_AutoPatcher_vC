@@ -266,7 +266,7 @@ internal class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine("\\n\u2605\u2605\u2605 エラーが発生しました \u2605\u2605\u2605");
+            Console.WriteLine("\n\u2605\u2605\u2605 エラーが発生しました \u2605\u2605\u2605");
             Console.WriteLine("Mutagenがゲーム環境をロードできませんでした。");
             Console.WriteLine("考えられる原因:");
             Console.WriteLine("1. このプログラムがMO2経由で実行されていない。");

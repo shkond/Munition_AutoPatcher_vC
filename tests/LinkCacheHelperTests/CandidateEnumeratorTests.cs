@@ -8,13 +8,13 @@ namespace LinkCacheHelperTests
 {
     public class CandidateEnumeratorTests
     {
-        private class FakeModKey { public string FileName { get; set; } = string.Empty; }
-        private class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
-        private class FakeFormLink { public bool IsNull { get; set; } = false; public FakeFormKey FormKey { get; set; } = new FakeFormKey(); }
-        private class FakeCOBJ { public FakeFormLink CreatedObject { get; set; } = new FakeFormLink(); public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = "COBJ_ED"; }
-        private class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = "WPN_ED"; public FakeFormLink Ammo { get; set; } = new FakeFormLink(); }
+        public class FakeModKey { public string FileName { get; set; } = string.Empty; }
+        public class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
+        public class FakeFormLink { public bool IsNull { get; set; } = false; public FakeFormKey FormKey { get; set; } = new FakeFormKey(); }
+        public class FakeCOBJ { public FakeFormLink CreatedObject { get; set; } = new FakeFormLink(); public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = "COBJ_ED"; }
+        public class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = "WPN_ED"; public FakeFormLink Ammo { get; set; } = new FakeFormLink(); }
 
-        private class FakePriorityOrder
+        public class FakePriorityOrder
         {
             private readonly IEnumerable<FakeCOBJ> _cobjs;
             private readonly IEnumerable<FakeWeapon> _weapons;
@@ -23,9 +23,8 @@ namespace LinkCacheHelperTests
             public IEnumerable<FakeWeapon> Weapon() => _weapons;
             // Other collections omitted
         }
-
-        private class FakeLoadOrder { public FakePriorityOrder PriorityOrder { get; set; } public FakeLoadOrder(FakePriorityOrder p) { PriorityOrder = p; } }
-        private class FakeEnv { public FakeLoadOrder LoadOrder { get; set; } public FakeEnv(FakeLoadOrder l) { LoadOrder = l; } }
+        public class FakeLoadOrder { public FakePriorityOrder PriorityOrder { get; set; } public FakeLoadOrder(FakePriorityOrder p) { PriorityOrder = p; } }
+        public class FakeEnv { public FakeLoadOrder LoadOrder { get; set; } public FakeEnv(FakeLoadOrder l) { LoadOrder = l; } }
 
         [Fact]
         public void CandidateEnumerator_Includes_COBJ_CreatedWeapon()
