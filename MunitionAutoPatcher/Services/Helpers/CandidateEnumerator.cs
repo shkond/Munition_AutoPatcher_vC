@@ -81,21 +81,9 @@ namespace MunitionAutoPatcher.Services.Helpers
                                     {
                                         try
                                         {
-                                            var ammoLink = possibleWeapon.GetType().GetProperty("Ammo")?.GetValue(possibleWeapon);
-                                            if (ammoLink != null)
+                                            if (TryExtractAmmoKeyFromWeaponObject(possibleWeapon, out var ammoKey) && ammoKey != null)
                                             {
-                                                var fk = ammoLink.GetType().GetProperty("FormKey")?.GetValue(ammoLink);
-                                                if (fk != null)
-                                                {
-                                                    var pf = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
-                                                    var pName = pf?.GetType().GetProperty("FileName")?.GetValue(pf)?.ToString() ?? string.Empty;
-                                                    var fid = fk.GetType().GetProperty("ID")?.GetValue(fk);
-                                                    uint fidu = 0;
-                                                    if (fid is uint uu) fidu = uu;
-                                                    else if (fid != null) fidu = Convert.ToUInt32(fid);
-                                                    if (!string.IsNullOrEmpty(pName) && fidu != 0)
-                                                        createdAmmoKey = new FormKey { PluginName = pName, FormId = fidu };
-                                                }
+                                                createdAmmoKey = ammoKey;
                                             }
                                         }
                                         catch (Exception ex)
@@ -328,13 +316,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                         {
                                                             try
                                                             {
-                                                                var mkq = fkq.GetType().GetProperty("ModKey")?.GetValue(fkq);
-                                                                var idObjq = fkq.GetType().GetProperty("ID")?.GetValue(fkq);
-                                                                var pluginq = mkq?.GetType().GetProperty("FileName")?.GetValue(mkq)?.ToString() ?? string.Empty;
-                                                                uint idq = 0;
-                                                                if (idObjq is uint uuq) idq = uuq;
-                                                                else if (idObjq != null) idq = Convert.ToUInt32(idObjq);
-                                                                if (!string.IsNullOrEmpty(pluginq) && idq != 0)
+                                                                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(fkq, out var pluginq, out var idq))
                                                                 {
                                                                     if (!(string.Equals(pluginq, plugin, StringComparison.OrdinalIgnoreCase) && idq == id))
                                                                     {
@@ -474,6 +456,31 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
 
             return results;
+        }
+
+        // Helper: extract Ammo FormKey from a weapon-like object safely via reflection helpers
+        private static bool TryExtractAmmoKeyFromWeaponObject(object possibleWeapon, out Models.FormKey? ammoKey)
+        {
+            ammoKey = null;
+            try
+            {
+                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(possibleWeapon, "Ammo", out var ammoLink) && ammoLink != null)
+                {
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(ammoLink, "FormKey", out var fk) && fk != null)
+                    {
+                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(fk, out var plugin, out var id))
+                        {
+                            ammoKey = new Models.FormKey { PluginName = plugin, FormId = id };
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log("CandidateEnumerator: TryExtractAmmoKeyFromWeaponObject failed", ex);
+            }
+            return false;
         }
     }
 }
