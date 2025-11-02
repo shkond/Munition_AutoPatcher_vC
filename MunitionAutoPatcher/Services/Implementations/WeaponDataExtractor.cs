@@ -39,12 +39,22 @@ namespace MunitionAutoPatcher.Services.Implementations
                                 if (isNullVal is bool b && b) continue;
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("Suppressed exception in WeaponDataExtractor: inspecting CreatedObject.IsNull", ex);
+                        }
 
                         // Determine created object's plugin/id early so exclusion checks can consider it when the COBJ has no source plugin
                         string createdPlugin = string.Empty;
                         uint createdId = 0u;
-                        try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(created, out createdPlugin, out createdId); } catch { }
+                        try
+                        {
+                            MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(created, out createdPlugin, out createdId);
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("Suppressed exception in WeaponDataExtractor: reading created object's plugin/id", ex);
+                        }
 
                         // Skip by excluded plugin. Prefer the COBJ's source plugin; if unavailable fall back to the created object's plugin.
                         try
@@ -62,7 +72,10 @@ namespace MunitionAutoPatcher.Services.Implementations
                                 if (excluded.Contains(createdPlugin)) continue;
                             }
                         }
-                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponDataExtractor: iterating COBJs", ex); }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("Suppressed exception in WeaponDataExtractor: skip-by-excluded check", ex);
+                        }
 
                         object? possibleWeapon = null;
                         foreach (var w in allWeapons)
@@ -75,7 +88,10 @@ namespace MunitionAutoPatcher.Services.Implementations
                                     break;
                                 }
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Log("Suppressed exception in WeaponDataExtractor: scanning weapons for created object match", ex);
+                            }
                         }
 
                         FormKey? createdAmmoKey = null;
@@ -96,7 +112,10 @@ namespace MunitionAutoPatcher.Services.Implementations
                                         }
                                     }
                                 }
-                                catch { }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log("Suppressed exception in WeaponDataExtractor: reading Ammo FormKey", ex);
+                                }
                             }
                         }
 
