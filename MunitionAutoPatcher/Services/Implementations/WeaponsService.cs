@@ -174,7 +174,33 @@ public class WeaponsService : IWeaponsService
                         try
                         {
                             var linkCache = envRes.GetLinkCache();
-                            var ammoResolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(wg.Ammo, linkCache);
+                            MunitionAutoPatcher.Services.Implementations.LinkResolver? resolver = linkCache != null ? new MunitionAutoPatcher.Services.Implementations.LinkResolver(linkCache) : null;
+                            object? ammoResolved = null;
+                            if (resolver != null)
+                            {
+                                try { resolver.TryResolve(wg.Ammo, out ammoResolved); } catch (Exception ex) { AppLogger.Log($"WeaponsService: resolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    if (linkCache != null)
+                                    {
+                                        try
+                                        {
+                                            var tmpResolver = new MunitionAutoPatcher.Services.Implementations.LinkResolver(linkCache);
+                                            try { tmpResolver.TryResolve(wg.Ammo, out ammoResolved); } catch (Exception ex) { AppLogger.Log($"WeaponsService: tmpResolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
+                                        }
+                                        catch (Exception ex) { AppLogger.Log($"WeaponsService: failed to create temporary LinkResolver: {ex.Message}", ex); ammoResolved = null; }
+                                    }
+                                    else
+                                    {
+                                        try { ammoResolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(wg.Ammo, linkCache); } catch (Exception ex) { AppLogger.Log($"WeaponsService: LinkCache fallback failed: {ex.Message}", ex); ammoResolved = null; }
+                                    }
+                                }
+                                catch (Exception ex) { AppLogger.Log($"WeaponsService: unexpected resolution error: {ex.Message}", ex); ammoResolved = null; }
+                            }
+
                             if (ammoResolved != null)
                             {
                                 var ammoRecord = ammoResolved;
