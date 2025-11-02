@@ -81,21 +81,9 @@ namespace MunitionAutoPatcher.Services.Helpers
                                     {
                                         try
                                         {
-                                            var ammoLink = possibleWeapon.GetType().GetProperty("Ammo")?.GetValue(possibleWeapon);
-                                            if (ammoLink != null)
+                                            if (TryExtractAmmoKeyFromWeaponObject(possibleWeapon, out var ammoKey) && ammoKey != null)
                                             {
-                                                var fk = ammoLink.GetType().GetProperty("FormKey")?.GetValue(ammoLink);
-                                                if (fk != null)
-                                                {
-                                                    var pf = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
-                                                    var pName = pf?.GetType().GetProperty("FileName")?.GetValue(pf)?.ToString() ?? string.Empty;
-                                                    var fid = fk.GetType().GetProperty("ID")?.GetValue(fk);
-                                                    uint fidu = 0;
-                                                    if (fid is uint uu) fidu = uu;
-                                                    else if (fid != null) fidu = Convert.ToUInt32(fid);
-                                                    if (!string.IsNullOrEmpty(pName) && fidu != 0)
-                                                        createdAmmoKey = new FormKey { PluginName = pName, FormId = fidu };
-                                                }
+                                                createdAmmoKey = ammoKey;
                                             }
                                         }
                                         catch (Exception ex)
@@ -111,10 +99,10 @@ namespace MunitionAutoPatcher.Services.Helpers
                                     AppLogger.Log("CandidateEnumerator: failed while detecting created ammo key", ex);
                                 }
                             }
-                        catch (Exception ex)
-                        {
-                            AppLogger.Log("CandidateEnumerator: failed processing individual COBJ candidate", ex);
-                        }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Log("CandidateEnumerator: failed processing individual COBJ candidate", ex);
+                            }
 
                             results.Add(new OmodCandidate
                             {
@@ -151,6 +139,47 @@ namespace MunitionAutoPatcher.Services.Helpers
                     catch (Exception ex)
                     {
                         AppLogger.Log("CandidateEnumerator: failed to add weapons from PriorityOrder.Weapon() sequence", ex);
+                    }
+
+                    // If direct WinningOverrides retrieval failed (e.g. test fakes), try reflecting the PriorityOrder to collect Weapon() items.
+                    if (weapons.Count == 0)
+                    {
+                        try
+                        {
+                            var priorityForWeapons = env.LoadOrder.PriorityOrder;
+                            var pt = priorityForWeapons.GetType();
+                            var pmethods = pt.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+                            foreach (var mm in pmethods)
+                            {
+                                try
+                                {
+                                    if (mm.GetParameters().Length == 0 && string.Equals(mm.Name, "Weapon", StringComparison.OrdinalIgnoreCase) && typeof(System.Collections.IEnumerable).IsAssignableFrom(mm.ReturnType))
+                                    {
+                                        var coll = mm.Invoke(priorityForWeapons, null);
+                                        if (coll == null) continue;
+                                        var winm = coll.GetType().GetMethod("WinningOverrides");
+                                        System.Collections.IEnumerable? its = null;
+                                        if (winm != null) its = winm.Invoke(coll, null) as System.Collections.IEnumerable;
+                                        else if (coll is System.Collections.IEnumerable en2) its = en2;
+                                        if (its != null)
+                                        {
+                                            foreach (var w in its)
+                                            {
+                                                try { weapons.Add(w); } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed adding reflected weapon item", ex); }
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log("CandidateEnumerator: failed collecting weapons via reflection", ex);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("CandidateEnumerator: failed reflecting PriorityOrder for weapons", ex);
+                        }
                     }
 
                     var weaponKeys = new HashSet<(string Plugin, uint Id)>();
@@ -205,11 +234,44 @@ namespace MunitionAutoPatcher.Services.Helpers
                         }
                         if (items == null) continue;
 
+                        // If this collection is the 'Weapon' collection, ensure we capture its items into the weapons list
+                        try
+                        {
+                            if (string.Equals(m.Name, "Weapon", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var materialized = new List<object>();
+                                foreach (var it in items) materialized.Add(it);
+                                foreach (var it in materialized) weapons.Add(it);
+                                items = materialized; // use materialized list for further iteration
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log("CandidateEnumerator: failed materializing Weapon collection", ex);
+                        }
+
                         foreach (var rec in items)
                         {
                             if (rec == null) continue;
                             try
                             {
+                                // If the record itself comes from an excluded plugin, skip it early.
+                                try
+                                {
+                                    string recPlugin = string.Empty;
+                                    try { if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(rec, out var pluginTmp, out var _)) recPlugin = pluginTmp ?? string.Empty; }
+                                    catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read rec plugin via helper", ex); }
+                                    if (!string.IsNullOrEmpty(recPlugin))
+                                    {
+                                        try { if ((excluded?.Contains(recPlugin) ?? false)) continue; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed checking excluded plugin for reflected record", ex); }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log("CandidateEnumerator: failed obtaining record source plugin", ex);
+                                }
+
+                                
                                 var props = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
                                 foreach (var p in props)
                                 {
@@ -221,18 +283,16 @@ namespace MunitionAutoPatcher.Services.Helpers
                                         if (nestedFkProp == null) continue;
                                         var nestedFk = nestedFkProp.GetValue(val);
                                         if (nestedFk == null) continue;
-                                        var mk = nestedFk.GetType().GetProperty("ModKey")?.GetValue(nestedFk);
-                                        var idObj = nestedFk.GetType().GetProperty("ID")?.GetValue(nestedFk);
-                                        var plugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                        uint id = 0;
-                                        if (idObj is uint uu) id = uu;
-                                        else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                        string? plugin = null; uint id = 0;
+                                        try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(nestedFk, out plugin, out id); }
+                                        catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read nested FormKey via helper", ex); }
                                         if (string.IsNullOrEmpty(plugin) || id == 0) continue;
                                         try { if ((excluded?.Contains(plugin) ?? false)) continue; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed checking excluded plugin in reflection scan", ex); }
                                         if (!weaponKeys.Contains((plugin, id))) continue;
 
                                         var recEditorId = string.Empty;
-                                        try { recEditorId = rec.GetType().GetProperty("EditorID")?.GetValue(rec)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read EditorID via reflection", ex); }
+                                        try { if (!MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<string>(rec, "EditorID", out recEditorId)) recEditorId = string.Empty; }
+                                        catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read EditorID via helper", ex); }
 
                                         // Detect ammo-like references in other properties
                                         Models.FormKey? detectedAmmoKey = null;
@@ -254,13 +314,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                         {
                                                             try
                                                             {
-                                                                var mkq = fkq.GetType().GetProperty("ModKey")?.GetValue(fkq);
-                                                                var idObjq = fkq.GetType().GetProperty("ID")?.GetValue(fkq);
-                                                                var pluginq = mkq?.GetType().GetProperty("FileName")?.GetValue(mkq)?.ToString() ?? string.Empty;
-                                                                uint idq = 0;
-                                                                if (idObjq is uint uuq) idq = uuq;
-                                                                else if (idObjq != null) idq = Convert.ToUInt32(idObjq);
-                                                                if (!string.IsNullOrEmpty(pluginq) && idq != 0)
+                                                                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(fkq, out var pluginq, out var idq))
                                                                 {
                                                                     if (!(string.Equals(pluginq, plugin, StringComparison.OrdinalIgnoreCase) && idq == id))
                                                                     {
@@ -315,19 +369,54 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                 AppLogger.Log("CandidateEnumerator: failed while searching for base weapon editor id", ex);
                                             }
 
-                                            var candidate = new OmodCandidate
+                                            // Extract the record's own FormKey (source) safely
+                                            string? recSourcePlugin = null;
+                                            uint recSourceId = 0;
+                                            try
                                             {
-                                                CandidateType = m.Name,
-                                                CandidateFormKey = new Models.FormKey { PluginName = rec.GetType().GetProperty("FormKey")?.GetValue(rec)?.GetType().GetProperty("ModKey")?.GetValue(rec.GetType().GetProperty("FormKey")?.GetValue(rec))?.GetType().GetProperty("FileName")?.GetValue(rec.GetType().GetProperty("FormKey")?.GetValue(rec))?.ToString() ?? string.Empty, FormId = (uint)(rec.GetType().GetProperty("FormKey")?.GetValue(rec)?.GetType().GetProperty("ID")?.GetValue(rec.GetType().GetProperty("FormKey")?.GetValue(rec)) ?? 0) },
-                                                CandidateEditorId = recEditorId,
-                                                BaseWeapon = new Models.FormKey { PluginName = plugin, FormId = id },
-                                                BaseWeaponEditorId = baseWeaponEditorId,
-                                                CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
-                                                CandidateAmmoName = string.Empty,
-                                                SourcePlugin = rec.GetType().GetProperty("FormKey")?.GetValue(rec)?.GetType().GetProperty("ModKey")?.GetValue(rec.GetType().GetProperty("FormKey")?.GetValue(rec))?.GetType().GetProperty("FileName")?.GetValue(rec.GetType().GetProperty("FormKey")?.GetValue(rec))?.ToString() ?? string.Empty,
-                                                Notes = $"Reference found in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
-                                                SuggestedTarget = "Reference"
-                                            };
+                                                try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(rec, out recSourcePlugin, out recSourceId); }
+                                                catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read rec source plugin/id via helper", ex); }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                AppLogger.Log("CandidateEnumerator: failed reading record FormKey for candidate composition", ex);
+                                            }
+
+                                            var recSourcePluginSafe = recSourcePlugin ?? string.Empty;
+                                            OmodCandidate candidate;
+                                            if (string.Equals(m.Name, "ConstructibleObject", StringComparison.OrdinalIgnoreCase) && string.Equals(p.Name, "CreatedObject", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                // This is a COBJ -> CreatedObject reference: treat as a COBJ candidate
+                                                candidate = new OmodCandidate
+                                                {
+                                                    CandidateType = "COBJ",
+                                                    CandidateFormKey = new Models.FormKey { PluginName = plugin!, FormId = id },
+                                                    CandidateEditorId = recEditorId,
+                                                    BaseWeapon = new Models.FormKey { PluginName = plugin!, FormId = id },
+                                                    BaseWeaponEditorId = baseWeaponEditorId,
+                                                    CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
+                                                    CandidateAmmoName = string.Empty,
+                                                    SourcePlugin = recSourcePluginSafe,
+                                                    Notes = $"COBJ source: {recSourcePluginSafe}:{recSourceId:X8};Reference in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
+                                                    SuggestedTarget = "CreatedWeapon"
+                                                };
+                                            }
+                                            else
+                                            {
+                                                candidate = new OmodCandidate
+                                                {
+                                                    CandidateType = m.Name,
+                                                    CandidateFormKey = new Models.FormKey { PluginName = recSourcePluginSafe, FormId = recSourceId },
+                                                    CandidateEditorId = recEditorId,
+                                                    BaseWeapon = new Models.FormKey { PluginName = plugin!, FormId = id },
+                                                    BaseWeaponEditorId = baseWeaponEditorId,
+                                                    CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
+                                                    CandidateAmmoName = string.Empty,
+                                                    SourcePlugin = recSourcePluginSafe,
+                                                    Notes = $"Reference found in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
+                                                    SuggestedTarget = "Reference"
+                                                };
+                                            }
                                             results.Add(candidate);
                                         }
                                         catch (Exception ex)
@@ -359,6 +448,31 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
 
             return results;
+        }
+
+        // Helper: extract Ammo FormKey from a weapon-like object safely via reflection helpers
+        private static bool TryExtractAmmoKeyFromWeaponObject(object possibleWeapon, out Models.FormKey? ammoKey)
+        {
+            ammoKey = null;
+            try
+            {
+                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(possibleWeapon, "Ammo", out var ammoLink) && ammoLink != null)
+                {
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(ammoLink, "FormKey", out var fk) && fk != null)
+                    {
+                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(fk, out var plugin, out var id))
+                        {
+                            ammoKey = new Models.FormKey { PluginName = plugin, FormId = id };
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log("CandidateEnumerator: TryExtractAmmoKeyFromWeaponObject failed", ex);
+            }
+            return false;
         }
     }
 }
