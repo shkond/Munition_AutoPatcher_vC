@@ -69,9 +69,17 @@ namespace MunitionAutoPatcher.Services.Implementations
             object? formKeyObj = null;
             try
             {
+                // Prefer cached reflection for speed
                 var fk = s_formKeyProp.GetOrAdd(linkLike.GetType(), tt => tt.GetProperty("FormKey", BindingFlags.Public | BindingFlags.Instance));
                 if (fk != null)
                     formKeyObj = fk.GetValue(linkLike);
+
+                // Fallback to generic helper in case the property is implemented via an interface or dynamic proxy
+                if (formKeyObj == null)
+                {
+                    try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(linkLike, "FormKey", out formKeyObj); }
+                    catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: helper-based FormKey extraction failed: {ex.Message}", ex); }
+                }
             }
             catch (Exception ex)
             {
@@ -94,12 +102,23 @@ namespace MunitionAutoPatcher.Services.Implementations
                     {
                         try
                         {
+                            // Try a direct invoke; if that fails due to overload resolution,
+                            // attempt a generic helper-based invocation before giving up.
                             var rr = resolve.Invoke(linkCache, new object?[] { formKeyObj });
                             if (rr != null) return rr;
                         }
                         catch (Exception ex)
                         {
                             AppLogger.Log($"LinkCacheHelper: linkCache.Resolve(formKey) invocation failed: {ex.Message}", ex);
+                            try
+                            {
+                                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryInvokeMethod(linkCache, "Resolve", new object?[] { formKeyObj }, out var rr2) && rr2 != null)
+                                    return rr2;
+                            }
+                            catch (Exception ex2)
+                            {
+                                AppLogger.Log($"LinkCacheHelper: helper-based Resolve(formKey) failed: {ex2.Message}", ex2);
+                            }
                             /* ignore and try TryResolve */
                         }
                     }
