@@ -53,13 +53,13 @@ namespace MunitionAutoPatcher.Services.Implementations
                             if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(cobj, out var sp, out _))
                                 srcPlugin = sp;
 
-                            if (!string.IsNullOrEmpty(srcPlugin))
+                                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponDataExtractor: iterating COBJs", ex); }
                             {
                                 if (excluded.Contains(srcPlugin)) continue;
                             }
                             else if (!string.IsNullOrEmpty(createdPlugin))
                             {
-                                if (excluded.Contains(createdPlugin)) continue;
+                                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponDataExtractor: processing possibleWeapon ammo extraction", ex); }
                             }
                         }
                         catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponDataExtractor: iterating COBJs", ex); }
