@@ -5,6 +5,8 @@ using Mutagen.Bethesda;
 using Mutagen.Bethesda.Environments;
 using Mutagen.Bethesda.Strings;
 
+using MunitionAutoPatcher.Utilities;
+
 using System.Linq;
 using System.Text;
 using System.IO;
@@ -178,27 +180,26 @@ public class WeaponsService : IWeaponsService
                                 var ammoRecord = ammoResolved;
                                 try
                                 {
-                                    var fk = ammoRecord.GetType().GetProperty("FormKey")?.GetValue(ammoRecord);
-                                    var mk = fk?.GetType().GetProperty("ModKey")?.GetValue(fk);
-                                    var pluginName = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                    var idObj = fk?.GetType().GetProperty("ID")?.GetValue(fk);
-                                    uint id = 0;
-                                    if (idObj is uint uu) id = uu;
-                                    else if (idObj != null) id = Convert.ToUInt32(idObj);
-                                    if (!string.IsNullOrEmpty(pluginName) && id != 0)
+                                    if (MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoRecord, out string pluginName, out uint id))
                                     {
                                         weaponData.DefaultAmmo = new Models.FormKey { PluginName = pluginName, FormId = id };
-                                        try { weaponData.DefaultAmmoName = ammoRecord.GetType().GetProperty("EditorID")?.GetValue(ammoRecord)?.ToString() ?? string.Empty; } catch { }
 
-                                        var key = $"{weaponData.DefaultAmmo.PluginName}:{weaponData.DefaultAmmo.FormId:X8}";
+                                        if (MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? editorId) && !string.IsNullOrEmpty(editorId))
+                                        {
+                                            weaponData.DefaultAmmoName = editorId!;
+                                        }
+
+                                        var key = $"{pluginName}:{id:X8}";
                                         if (!seen.Contains(key))
                                         {
                                             seen.Add(key);
+
+                                            MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? ammoEditorId);
                                             _ammo.Add(new AmmoData
                                             {
-                                                FormKey = new Models.FormKey { PluginName = weaponData.DefaultAmmo.PluginName, FormId = weaponData.DefaultAmmo.FormId },
+                                                FormKey = new Models.FormKey { PluginName = pluginName, FormId = id },
                                                 Name = weaponData.DefaultAmmoName ?? string.Empty,
-                                                EditorId = ammoRecord.GetType().GetProperty("EditorID")?.GetValue(ammoRecord)?.ToString() ?? string.Empty,
+                                                EditorId = ammoEditorId ?? string.Empty,
                                                 Damage = 0,
                                                 AmmoType = string.Empty
                                             });
@@ -213,19 +214,9 @@ public class WeaponsService : IWeaponsService
                                 try
                                 {
                                     var ammoObj = wg.Ammo;
-                                    var fk = ammoObj?.GetType().GetProperty("FormKey")?.GetValue(ammoObj);
-                                    if (fk != null)
+                                    if (MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoObj, out string plugin, out uint formId))
                                     {
-                                        var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
-                                        var pluginName = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                        var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
-                                        uint id = 0;
-                                        if (idObj is uint uu) id = uu;
-                                        else if (idObj != null) id = Convert.ToUInt32(idObj);
-                                        if (!string.IsNullOrEmpty(pluginName) && id != 0)
-                                        {
-                                            weaponData.DefaultAmmo = new Models.FormKey { PluginName = pluginName, FormId = id };
-                                        }
+                                        weaponData.DefaultAmmo = new Models.FormKey { PluginName = plugin, FormId = formId };
                                     }
                                 }
                                 catch { }
