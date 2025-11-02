@@ -1,4 +1,7 @@
 using System;
+using System.Linq;
+using System.Reflection;
+using MunitionAutoPatcher;
 
 namespace MunitionAutoPatcher.Utilities
 {
@@ -111,6 +114,60 @@ namespace MunitionAutoPatcher.Utilities
             {
                 plugin = string.Empty;
                 id = 0u;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Safely try to get a property value (typed) from an object via reflection.
+        /// Returns true if the property exists and could be converted to T.
+        /// </summary>
+        public static bool TryGetPropertyValue<T>(object? obj, string propName, out T? value)
+        {
+            value = default;
+            if (obj == null) return false;
+            try
+            {
+                var prop = obj.GetType().GetProperty(propName, BindingFlags.Public | BindingFlags.Instance);
+                if (prop == null) return false;
+                var v = prop.GetValue(obj);
+                if (v == null) return false;
+                if (v is T t) { value = t; return true; }
+                try { value = (T)Convert.ChangeType(v, typeof(T)); return true; } catch { return false; }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"MutagenReflectionHelpers: TryGetPropertyValue failed for {propName}", ex);
+                value = default;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Safely try to invoke a method (non-generic/instance) by name and return the result.
+        /// Returns true if invocation succeeded.
+        /// </summary>
+        public static bool TryInvokeMethod(object? obj, string methodName, object?[]? args, out object? result)
+        {
+            result = null;
+            if (obj == null) return false;
+            try
+            {
+                var type = obj.GetType();
+                var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                                  .Where(m => string.Equals(m.Name, methodName, StringComparison.Ordinal))
+                                  .ToArray();
+                if (methods.Length == 0) return false;
+
+                // Prefer parameter-count matching
+                MethodInfo? method = methods.FirstOrDefault(m => m.GetParameters().Length == (args?.Length ?? 0)) ?? methods.First();
+                result = method.Invoke(obj, args);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"MutagenReflectionHelpers: TryInvokeMethod failed for {methodName}", ex);
+                result = null;
                 return false;
             }
         }
