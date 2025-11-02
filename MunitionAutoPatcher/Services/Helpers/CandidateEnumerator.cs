@@ -259,7 +259,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                 try
                                 {
                                     string recPlugin = string.Empty;
-                                    try { if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(rec, out var pluginTmp, out var _)) recPlugin = pluginTmp; }
+                                    try { if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(rec, out var pluginTmp, out var _)) recPlugin = pluginTmp ?? string.Empty; }
                                     catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read rec plugin via helper", ex); }
                                     if (!string.IsNullOrEmpty(recPlugin))
                                     {
@@ -283,7 +283,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                         if (nestedFkProp == null) continue;
                                         var nestedFk = nestedFkProp.GetValue(val);
                                         if (nestedFk == null) continue;
-                                        string plugin = string.Empty; uint id = 0;
+                                        string? plugin = null; uint id = 0;
                                         try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(nestedFk, out plugin, out id); }
                                         catch (Exception ex) { AppLogger.Log("CandidateEnumerator: failed to read nested FormKey via helper", ex); }
                                         if (string.IsNullOrEmpty(plugin) || id == 0) continue;
@@ -370,8 +370,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                             }
 
                                             // Extract the record's own FormKey (source) safely
-                                            object? recFormKeyObj = null;
-                                            string recSourcePlugin = string.Empty;
+                                            string? recSourcePlugin = null;
                                             uint recSourceId = 0;
                                             try
                                             {
@@ -383,6 +382,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                 AppLogger.Log("CandidateEnumerator: failed reading record FormKey for candidate composition", ex);
                                             }
 
+                                            var recSourcePluginSafe = recSourcePlugin ?? string.Empty;
                                             OmodCandidate candidate;
                                             if (string.Equals(m.Name, "ConstructibleObject", StringComparison.OrdinalIgnoreCase) && string.Equals(p.Name, "CreatedObject", StringComparison.OrdinalIgnoreCase))
                                             {
@@ -390,14 +390,14 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                 candidate = new OmodCandidate
                                                 {
                                                     CandidateType = "COBJ",
-                                                    CandidateFormKey = new Models.FormKey { PluginName = plugin, FormId = id },
+                                                    CandidateFormKey = new Models.FormKey { PluginName = plugin!, FormId = id },
                                                     CandidateEditorId = recEditorId,
-                                                    BaseWeapon = new Models.FormKey { PluginName = plugin, FormId = id },
+                                                    BaseWeapon = new Models.FormKey { PluginName = plugin!, FormId = id },
                                                     BaseWeaponEditorId = baseWeaponEditorId,
                                                     CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
                                                     CandidateAmmoName = string.Empty,
-                                                    SourcePlugin = recSourcePlugin ?? string.Empty,
-                                                    Notes = $"COBJ source: {recSourcePlugin}:{recSourceId:X8};Reference in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
+                                                    SourcePlugin = recSourcePluginSafe,
+                                                    Notes = $"COBJ source: {recSourcePluginSafe}:{recSourceId:X8};Reference in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
                                                     SuggestedTarget = "CreatedWeapon"
                                                 };
                                             }
@@ -406,13 +406,13 @@ namespace MunitionAutoPatcher.Services.Helpers
                                                 candidate = new OmodCandidate
                                                 {
                                                     CandidateType = m.Name,
-                                                    CandidateFormKey = new Models.FormKey { PluginName = recSourcePlugin ?? string.Empty, FormId = recSourceId },
+                                                    CandidateFormKey = new Models.FormKey { PluginName = recSourcePluginSafe, FormId = recSourceId },
                                                     CandidateEditorId = recEditorId,
-                                                    BaseWeapon = new Models.FormKey { PluginName = plugin, FormId = id },
+                                                    BaseWeapon = new Models.FormKey { PluginName = plugin!, FormId = id },
                                                     BaseWeaponEditorId = baseWeaponEditorId,
                                                     CandidateAmmo = detectedAmmoKey != null ? new Models.FormKey { PluginName = detectedAmmoKey.PluginName, FormId = detectedAmmoKey.FormId } : null,
                                                     CandidateAmmoName = string.Empty,
-                                                    SourcePlugin = recSourcePlugin ?? string.Empty,
+                                                    SourcePlugin = recSourcePluginSafe,
                                                     Notes = $"Reference found in {m.Name}.{p.Name} -> {plugin}:{id:X8}" + (detectedAmmoKey != null ? $";DetectedAmmo={detectedAmmoKey.PluginName}:{detectedAmmoKey.FormId:X8}" : string.Empty),
                                                     SuggestedTarget = "Reference"
                                                 };
