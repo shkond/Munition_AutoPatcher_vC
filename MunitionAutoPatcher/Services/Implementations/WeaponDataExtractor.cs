@@ -27,17 +27,12 @@ namespace MunitionAutoPatcher.Services.Implementations
                 {
                     try
                     {
-                        var created = cobj?.GetType().GetProperty("CreatedObject")?.GetValue(cobj);
-                        if (created == null) continue;
+                        if (!TryGetCreatedObject(cobj, out var created) || created == null) continue;
 
                         try
                         {
-                            var isNullProp = created.GetType().GetProperty("IsNull");
-                            if (isNullProp != null)
-                            {
-                                var isNullVal = isNullProp.GetValue(created);
-                                if (isNullVal is bool b && b) continue;
-                            }
+                            if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<bool>(created, "IsNull", out var isNull) && isNull)
+                                continue;
                         }
                         catch (Exception ex)
                         {
@@ -77,46 +72,13 @@ namespace MunitionAutoPatcher.Services.Implementations
                             AppLogger.Log("Suppressed exception in WeaponDataExtractor: skip-by-excluded check", ex);
                         }
 
-                        object? possibleWeapon = null;
-                        foreach (var w in allWeapons)
-                        {
-                            try
-                            {
-                                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(w, out var wfPlugin, out var wfId) && wfPlugin == createdPlugin && wfId == createdId)
-                                {
-                                    possibleWeapon = w;
-                                    break;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                AppLogger.Log("Suppressed exception in WeaponDataExtractor: scanning weapons for created object match", ex);
-                            }
-                        }
+                        var possibleWeapon = TryFindMatchingWeapon(allWeapons, createdPlugin, createdId);
 
                         FormKey? createdAmmoKey = null;
                         string createdAmmoName = string.Empty;
                         if (possibleWeapon != null)
                         {
-                            var ammoLink = possibleWeapon.GetType().GetProperty("Ammo")?.GetValue(possibleWeapon);
-                            if (ammoLink != null)
-                            {
-                                try
-                                {
-                                    var fk = ammoLink.GetType().GetProperty("FormKey")?.GetValue(ammoLink);
-                                    if (fk != null)
-                                    {
-                                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(fk, out var fileName, out var id2))
-                                        {
-                                            createdAmmoKey = new FormKey { PluginName = fileName, FormId = id2 };
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    AppLogger.Log("Suppressed exception in WeaponDataExtractor: reading Ammo FormKey", ex);
-                                }
-                            }
+                            TryExtractAmmoKey(possibleWeapon, out createdAmmoKey);
                         }
 
                         var candEditorId = cobj?.GetType().GetProperty("EditorID")?.GetValue(cobj)?.ToString() ?? string.Empty;
@@ -145,6 +107,72 @@ namespace MunitionAutoPatcher.Services.Implementations
             }
 
             return Task.FromResult(resultsLocal);
+        }
+
+        // Helper: get CreatedObject via reflection safely
+        private static bool TryGetCreatedObject(object? cobj, out object? created)
+        {
+            created = null;
+            try
+            {
+                return MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(cobj, "CreatedObject", out created);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log("TryGetCreatedObject failed", ex);
+                created = null;
+                return false;
+            }
+        }
+
+        // Helper: find a matching weapon in the weapon list by plugin and id
+        private static object? TryFindMatchingWeapon(IEnumerable<object> allWeapons, string plugin, uint id)
+        {
+            try
+            {
+                foreach (var w in allWeapons)
+                {
+                    try
+                    {
+                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(w, out var wfPlugin, out var wfId) && wfPlugin == plugin && wfId == id)
+                            return w;
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Log("TryFindMatchingWeapon: error inspecting weapon", ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log("TryFindMatchingWeapon failed", ex);
+            }
+            return null;
+        }
+
+        // Helper: extract Ammo FormKey from a weapon-like object
+        private static bool TryExtractAmmoKey(object possibleWeapon, out FormKey? ammoKey)
+        {
+            ammoKey = null;
+            try
+            {
+                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(possibleWeapon, "Ammo", out var ammoLink) && ammoLink != null)
+                {
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(ammoLink, "FormKey", out var fk) && fk != null)
+                    {
+                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(fk, out var fileName, out var id2))
+                        {
+                            ammoKey = new FormKey { PluginName = fileName, FormId = id2 };
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log("TryExtractAmmoKey failed", ex);
+            }
+            return false;
         }
     }
 }
