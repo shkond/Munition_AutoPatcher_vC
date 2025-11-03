@@ -14,14 +14,29 @@ This file provides instructions and context for GitHub Copilot Coding Agent when
 
 ### Key Directories
 - `MunitionAutoPatcher/` - Main WPF application
-  - `Models/` - Data models (WeaponData, AmmoData, etc.)
+  - `Models/` - Data models (WeaponData, AmmoData, ExtractionContext, ConfirmationContext, etc.)
   - `ViewModels/` - MVVM view models
   - `Views/` - XAML views
-  - `Services/` - Business logic (weapons extraction, INI generation)
+  - `Services/` - Business logic (orchestrator pattern with specialized services)
+    - `Interfaces/` - Service abstractions (ICandidateProvider, ICandidateConfirmer, IDiagnosticWriter, etc.)
+    - `Implementations/` - Service implementations (WeaponOmodExtractor orchestrator, providers, confirmers)
+    - `Helpers/` - Utility helpers
 - `tests/` - Unit and integration tests
   - `AutoTests/` - General tests
   - `LinkCacheHelperTests/` - LinkCache-specific tests
   - `WeaponDataExtractorTests/` - Weapon extractor tests
+
+### Architecture Pattern: Orchestrator with Strategy
+- **WeaponOmodExtractor** - Thin orchestrator (520 lines) that delegates to specialized services
+- **Candidate Providers** - Strategy pattern implementations (ICandidateProvider)
+  - `CobjCandidateProvider` - Extracts candidates from COBJ records
+  - `ReverseReferenceCandidateProvider` - Discovers candidates via reflection scanning
+- **Candidate Confirmer** - Validates candidates (ICandidateConfirmer)
+  - `ReverseMapConfirmer` - Confirms via reverse-reference analysis
+- **Supporting Services**
+  - `DiagnosticWriter` - All diagnostic file I/O (markers, CSVs, reports)
+  - `MutagenAccessor` - Abstraction for Mutagen API with error handling
+  - `PathService` - Repository and artifact path resolution
 
 ## Build and Test Commands
 
@@ -131,7 +146,13 @@ The following directories are gitignored:
 1. Create interface in `Services/Interfaces/`
 2. Implement in `Services/Implementations/`
 3. Register in `App.xaml.cs` DI container
-4. Inject into ViewModels via constructor
+4. Inject into constructors via DI (use interfaces, not concrete types)
+
+### Adding a Strategy Provider (e.g., new ICandidateProvider)
+1. Create implementation in `Services/Implementations/`
+2. Implement `ICandidateProvider` interface with `ProvideCandidatesAsync()`
+3. Register as `services.AddSingleton<ICandidateProvider, YourProvider>()` in `App.xaml.cs`
+4. WeaponOmodExtractor automatically uses all registered providers via `IEnumerable<ICandidateProvider>`
 
 ### Adding a New View
 1. Create XAML in `Views/`
@@ -145,11 +166,20 @@ The following directories are gitignored:
 3. Mock dependencies using interfaces
 4. Follow existing test patterns in the project
 
+### Working with WeaponOmodExtractor Architecture
+- **Do NOT** add business logic to WeaponOmodExtractor - keep it as a thin orchestrator
+- **Extract providers** - Create new ICandidateProvider implementations for extraction logic
+- **Confirmation logic** - Implement ICandidateConfirmer for validation logic
+- **Diagnostic output** - Use IDiagnosticWriter for all file I/O (CSVs, markers, reports)
+- **Mutagen access** - Use IMutagenAccessor abstraction instead of direct Mutagen calls
+- **Logging** - Use ILogger<T> injected via DI, not static AppLogger
+
 ### Working with Mutagen
 - Use `ILinkCache` for efficient record lookups
 - Handle `ModKey` and `FormKey` carefully
 - Check for null/missing records
 - Use `WinningOverrides` for conflict resolution
+- Prefer IMutagenAccessor abstraction for testability
 
 ## References
 
@@ -157,3 +187,4 @@ The following directories are gitignored:
 - [WPF Documentation](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/)
 - [Mutagen Documentation](https://github.com/Mutagen-Modding/Mutagen)
 - See `README.md` for more details
+- See `REFACTORING_SUMMARY.md` for WeaponOmodExtractor architecture details
