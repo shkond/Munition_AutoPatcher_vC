@@ -122,66 +122,93 @@ namespace MunitionAutoPatcher.Services.Implementations
         {
             try
             {
+                // 1. Convert the formKeyObj to a string representation.
+                string? keyString = null;
+                try
+                {
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(formKeyObj, "ModKey", out var modKey) && modKey != null &&
+                        MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(modKey, "FileName", out var fileName) && fileName is string fn &&
+                        MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<uint>(formKeyObj, "ID", out var id))
+                    {
+                        keyString = $"{fn}:{id:X8}";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"LinkCacheHelper: Failed to construct string key from FormKey object: {ex.Message}", ex);
+                    return null;
+                }
+
                 var lcType = linkCache.GetType();
 
-                // Resolve(formKey)
-                var resolve = s_linkCacheResolveByKey.GetOrAdd(lcType, lc =>
-                    lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                      .FirstOrDefault(m => string.Equals(m.Name, "Resolve", StringComparison.Ordinal) && m.GetParameters().Length == 1)
-                );
-                if (resolve != null)
+                // 2. Find a Resolve(string) method on the link cache and try it first if we have a string key.
+                if (!string.IsNullOrEmpty(keyString))
                 {
-                    try
+                    var resolve = s_linkCacheResolveByKey.GetOrAdd(lcType, lc =>
+                        lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                          .FirstOrDefault(m =>
+                              string.Equals(m.Name, "Resolve", StringComparison.Ordinal) &&
+                              m.GetParameters().Length == 1 &&
+                              m.GetParameters()[0].ParameterType == typeof(string))
+                    );
+
+                    if (resolve != null)
                     {
-                        var rr = resolve.Invoke(linkCache, new object?[] { formKeyObj });
-                        if (rr != null) return rr;
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Log($"LinkCacheHelper: linkCache.Resolve(formKey) invocation failed: {ex.Message}", ex);
                         try
                         {
-                            if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryInvokeMethod(linkCache, "Resolve", new object?[] { formKeyObj }, out var rr2) && rr2 != null)
-                                return rr2;
+                            var rr = resolve.Invoke(linkCache, new object?[] { keyString });
+                            if (rr != null) return rr;
                         }
-                        catch (Exception ex2)
+                        catch (Exception ex)
                         {
-                            AppLogger.Log($"LinkCacheHelper: helper-based Resolve(formKey) failed: {ex2.Message}", ex2);
+                            AppLogger.Log($"LinkCacheHelper: linkCache.Resolve(string key) invocation failed: {ex.Message}", ex);
                         }
                     }
                 }
 
-                // TryResolve(formKey, out)
-                var tryMethods = s_linkCacheTryResolveMethods.GetOrAdd(lcType, lc =>
-                    lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                      .Where(m => string.Equals(m.Name, "TryResolve", StringComparison.Ordinal) && m.GetParameters().Length == 2)
-                      .ToArray()
-                );
-
-                foreach (var m in tryMethods)
+                // 3. If Resolve(string) didn't return anything (or we couldn't form a string key), try TryResolve(formKey, out object) variants.
+                try
                 {
-                    try
+                    var tryMethods = s_linkCacheTryResolveMethods.GetOrAdd(lcType, lc =>
+                        lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                          .Where(m => string.Equals(m.Name, "TryResolve", StringComparison.Ordinal) && m.GetParameters().Length == 2)
+                          .ToArray()
+                    );
+
+                    foreach (var m in tryMethods)
                     {
-                        MethodInfo invoke = m!;
-                        if (m!.IsGenericMethodDefinition)
+                        try
                         {
-                            var genArg = formKeyObj.GetType();
-                            try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}", ex); continue; }
+                            MethodInfo invoke = m!;
+                            if (m!.IsGenericMethodDefinition)
+                            {
+                                var fkType = formKeyObj.GetType();
+                                if (!fkType.IsGenericType)
+                                    continue;
+                                var genArg = fkType.GetGenericArguments().FirstOrDefault();
+                                if (genArg == null) continue;
+                                try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}", ex); continue; }
+                            }
+
+                            var p0 = invoke.GetParameters()![0]!.ParameterType;
+                            var fkActual = formKeyObj.GetType();
+                            bool compatible = p0 == fkActual || p0.IsAssignableFrom(fkActual) || fkActual.IsAssignableFrom(p0);
+                            if (!compatible) continue;
+
+                            var args = new object?[] { formKeyObj, null };
+                            var okObj = invoke.Invoke(linkCache, args);
+                            if (okObj is bool ok && ok && args[1] != null)
+                                return args[1];
                         }
-
-                        var p0 = invoke.GetParameters()![0]!.ParameterType;
-                        if (!p0.IsAssignableFrom(formKeyObj.GetType()) && p0 != typeof(object))
-                            continue;
-
-                        var args = new object?[] { formKeyObj, null };
-                        var okObj = invoke.Invoke(linkCache, args);
-                        if (okObj is bool ok && ok && args[1] != null)
-                            return args[1];
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) candidate invocation failed: {ex.Message}", ex);
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) candidate invocation failed: {ex.Message}", ex);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"LinkCacheHelper: error while scanning TryResolve(formKey) candidates: {ex.Message}", ex);
                 }
             }
             catch (Exception ex)

@@ -138,31 +138,75 @@ public class WeaponsService : IWeaponsService
                 {
                     try
                     {
-                        dynamic wg = weaponGetter;
+                        // Use reflection-safe helpers to extract FormKey and common properties.
+                        // Dynamic binding can throw when the object doesn't expose expected members
+                        // (e.g., in test/no-op environments), so prefer guarded extraction.
+                        string pluginName = string.Empty;
+                        uint formId = 0;
+                        if (!MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(weaponGetter, out pluginName, out formId))
+                            throw new InvalidOperationException("weapon record missing FormKey");
+
+                        string editorId = string.Empty;
+                        try { MutagenReflectionHelpers.TryGetPropertyValue<string>(weaponGetter, "EditorID", out editorId); } catch { editorId = string.Empty; }
+
+                        // Name / Description may be ITranslatedStringGetter or simple strings
+                        object? nameObj = null;
+                        object? descObj = null;
+                        object? ammoObj = null;
+                        string name = string.Empty;
+                        string description = string.Empty;
+                        try
+                        {
+                            MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Name", out nameObj);
+                            if (nameObj != null)
+                            {
+                                if (nameObj is ITranslatedStringGetter tname) name = GetBestTranslatedString(tname);
+                                else name = nameObj.ToString() ?? string.Empty;
+                            }
+                        }
+                        catch { name = string.Empty; }
+
+                        try
+                        {
+                            MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Description", out descObj);
+                            if (descObj != null)
+                            {
+                                if (descObj is ITranslatedStringGetter tdesc) description = GetBestTranslatedString(tdesc);
+                                else description = descObj.ToString() ?? string.Empty;
+                            }
+                        }
+                        catch { description = string.Empty; }
+
+                        try { MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Ammo", out ammoObj); } catch { ammoObj = null; }
+
+                        float damage = 0f;
+                        try { if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "BaseDamage", out var bd) && bd != null) damage = Convert.ToSingle(bd); } catch { damage = 0f; }
+
+                        float fireRate = 0f;
+                        try { if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "AnimationAttackSeconds", out var aas) && aas != null) { var secs = Convert.ToSingle(aas); fireRate = secs > 0 ? 60f / secs : 0f; } } catch { fireRate = 0f; }
+
                         var weaponData = new WeaponData
                         {
                             FormKey = new Models.FormKey
                             {
-                                PluginName = wg.FormKey.ModKey.FileName,
-                                FormId = wg.FormKey.ID
+                                PluginName = pluginName,
+                                FormId = formId
                             },
-                            EditorId = wg.EditorID ?? string.Empty,
-                            Name = GetBestTranslatedString(wg.Name),
-                            Description = GetBestTranslatedString(wg.Description),
+                            EditorId = editorId ?? string.Empty,
+                            Name = name,
+                            Description = description,
                             WeaponType = "Unknown",
-                            Damage = wg.BaseDamage,
-                            FireRate = wg.AnimationAttackSeconds > 0
-                                ? 60f / wg.AnimationAttackSeconds
-                                : 0f
+                            Damage = damage,
+                            FireRate = fireRate
                         };
 
                         // If the chosen name looks like mojibake, dump all available translations for diagnosis.
                         try
                         {
-                            if (IsLikelyMojibake(weaponData.Name) && wg.Name != null)
-                                AppendTranslationsDump(wg.Name, weaponData.FormKey, "Weapon");
-                            if (IsLikelyMojibake(weaponData.Description) && wg.Description != null)
-                                AppendTranslationsDump(wg.Description, weaponData.FormKey, "WeaponDesc");
+                            if (IsLikelyMojibake(weaponData.Name) && nameObj is ITranslatedStringGetter tnameObj)
+                                AppendTranslationsDump(tnameObj, weaponData.FormKey, "Weapon");
+                            if (IsLikelyMojibake(weaponData.Description) && descObj is ITranslatedStringGetter tdescObj)
+                                AppendTranslationsDump(tdescObj, weaponData.FormKey, "WeaponDesc");
                         }
                         catch (Exception ex)
                         {
@@ -178,7 +222,7 @@ public class WeaponsService : IWeaponsService
                             object? ammoResolved = null;
                             if (resolver != null)
                             {
-                                try { resolver.TryResolve(wg.Ammo, out ammoResolved); } catch (Exception ex) { AppLogger.Log($"WeaponsService: resolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
+                                try { if (ammoObj != null) resolver.TryResolve(ammoObj, out ammoResolved); else ammoResolved = null; } catch (Exception ex) { AppLogger.Log($"WeaponsService: resolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
                             }
                             else
                             {
@@ -189,13 +233,13 @@ public class WeaponsService : IWeaponsService
                                         try
                                         {
                                             var tmpResolver = new MunitionAutoPatcher.Services.Implementations.LinkResolver(linkCache);
-                                            try { tmpResolver.TryResolve(wg.Ammo, out ammoResolved); } catch (Exception ex) { AppLogger.Log($"WeaponsService: tmpResolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
+                                            try { if (ammoObj != null) tmpResolver.TryResolve(ammoObj, out ammoResolved); else ammoResolved = null; } catch (Exception ex) { AppLogger.Log($"WeaponsService: tmpResolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
                                         }
                                         catch (Exception ex) { AppLogger.Log($"WeaponsService: failed to create temporary LinkResolver: {ex.Message}", ex); ammoResolved = null; }
                                     }
-                                    else
+                                        else
                                     {
-                                        try { ammoResolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(wg.Ammo, linkCache); } catch (Exception ex) { AppLogger.Log($"WeaponsService: LinkCache fallback failed: {ex.Message}", ex); ammoResolved = null; }
+                                        try { ammoResolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(ammoObj, linkCache); } catch (Exception ex) { AppLogger.Log($"WeaponsService: LinkCache fallback failed: {ex.Message}", ex); ammoResolved = null; }
                                     }
                                 }
                                 catch (Exception ex) { AppLogger.Log($"WeaponsService: unexpected resolution error: {ex.Message}", ex); ammoResolved = null; }
@@ -206,26 +250,26 @@ public class WeaponsService : IWeaponsService
                                 var ammoRecord = ammoResolved;
                                 try
                                 {
-                                    if (MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoRecord, out string pluginName, out uint id))
+                                    if (MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoRecord, out string ammoPlugin, out uint id))
                                     {
-                                        weaponData.DefaultAmmo = new Models.FormKey { PluginName = pluginName, FormId = id };
+                                        weaponData.DefaultAmmo = new Models.FormKey { PluginName = ammoPlugin, FormId = id };
 
-                                        if (MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? editorId) && !string.IsNullOrEmpty(editorId))
+                                        if (MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? ammoEditorId) && !string.IsNullOrEmpty(ammoEditorId))
                                         {
-                                            weaponData.DefaultAmmoName = editorId!;
+                                            weaponData.DefaultAmmoName = ammoEditorId!;
                                         }
 
-                                        var key = $"{pluginName}:{id:X8}";
+                                        var key = $"{ammoPlugin}:{id:X8}";
                                         if (!seen.Contains(key))
                                         {
                                             seen.Add(key);
 
-                                            MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? ammoEditorId);
+                                            MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? ammoEditorId2);
                                             _ammo.Add(new AmmoData
                                             {
-                                                FormKey = new Models.FormKey { PluginName = pluginName, FormId = id },
+                                                FormKey = new Models.FormKey { PluginName = ammoPlugin, FormId = id },
                                                 Name = weaponData.DefaultAmmoName ?? string.Empty,
-                                                EditorId = ammoEditorId ?? string.Empty,
+                                                EditorId = ammoEditorId2 ?? string.Empty,
                                                 Damage = 0,
                                                 AmmoType = string.Empty
                                             });
@@ -239,10 +283,9 @@ public class WeaponsService : IWeaponsService
                                 // Fallback: try to read FormKey from the weaponGetter via reflection
                                 try
                                 {
-                                    var ammoObj = wg.Ammo;
-                                    if (MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoObj, out string plugin, out uint formId))
+                                    if (ammoObj != null && MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoObj, out string ammoPluginFallback, out uint ammoFormId))
                                     {
-                                        weaponData.DefaultAmmo = new Models.FormKey { PluginName = plugin, FormId = formId };
+                                        weaponData.DefaultAmmo = new Models.FormKey { PluginName = ammoPluginFallback, FormId = ammoFormId };
                                     }
                                 }
                                 catch { }
