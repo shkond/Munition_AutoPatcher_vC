@@ -1,0 +1,76 @@
+name: CI Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+          
+    - name: Restore dependencies
+      run: dotnet restore MunitionAutoPatcher.sln
+      
+    - name: Build
+      run: dotnet build MunitionAutoPatcher.sln -c Release --no-restore
+      
+    - name: Run tests
+      run: dotnet test tests/AutoTests/AutoTests.csproj -c Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+      
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: '**/TestResults/*.trx'
+        
+    - name: Publish test results
+      uses: EnricoMi/publish-unit-test-result-action/windows@v2
+      if: always()
+      with:
+        files: '**/TestResults/*.trx'
+        
+  code-format-check:
+    name: Code Format Check
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Restore dependencies
+      run: dotnet restore MunitionAutoPatcher.sln
+      
+    - name: Check code formatting
+      run: dotnet format MunitionAutoPatcher.sln --verify-no-changes --verbosity diagnostic
