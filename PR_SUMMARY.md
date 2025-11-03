@@ -184,6 +184,15 @@ await File.WriteAllTextAsync(outputPath, iniContent);
 - ⏳ Mapping import/export
 - ⏳ Comprehensive error UI feedback
 
+- [ ] PR #23 — Configure repository for GitHub Copilot Coding Agent
+  - 概要: リポジトリ向けの Copilot 指示書・Issue/PR テンプレート・CI ワークフロー・CONTRIBUTING 等の追加が含まれます。
+  - アクション:
+    1. 変更ファイル（`.github/` 以下、`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`, `config/` 等）をレビュー
+    2. Windows 環境でビルド & テストを実行して CI 設定を検証（WPF のため Windows ランナー推奨）
+    3. マージ後に `DECISIONS.md` に要約を追加してオンボーディング手順を整備
+  - 担当（推奨）: @shkond
+  - リンク: https://github.com/shkond/Munition_AutoPatcher_vC/pull/23
+
 ### Requirements
 
 - .NET 8.0 SDK or later

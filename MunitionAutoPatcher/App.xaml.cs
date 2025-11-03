@@ -29,6 +29,18 @@ public partial class App : Application
                 // Register a factory that will create IMutagenEnvironment instances on demand.
                 services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
 
+                // Register extraction infrastructure
+                services.AddSingleton<IPathService, PathService>();
+                services.AddSingleton<IMutagenAccessor, MutagenAccessor>();
+                services.AddSingleton<IDiagnosticWriter, DiagnosticWriter>();
+                
+                // Register candidate providers
+                services.AddSingleton<ICandidateProvider, CobjCandidateProvider>();
+                services.AddSingleton<ICandidateProvider, ReverseReferenceCandidateProvider>();
+                
+                // Register candidate confirmer
+                services.AddSingleton<ICandidateConfirmer, ReverseMapConfirmer>();
+
                 services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
                 // Register weapon data extractor (transient: new instance per operation)
                 services.AddTransient<IWeaponDataExtractor, WeaponDataExtractor>();

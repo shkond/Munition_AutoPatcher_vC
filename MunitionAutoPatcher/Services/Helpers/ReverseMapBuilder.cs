@@ -181,10 +181,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                 // Use helper to extract plugin and ID
                 if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(nestedFk, out string? plugin, out uint id))
                 {
-                    if (!string.IsNullOrEmpty(plugin) && id != 0)
-                    {
-                        return (plugin, id);
-                    }
+                    return (plugin, id);
                 }
             }
             catch (Exception ex)
