@@ -1,4 +1,5 @@
 using MunitionAutoPatcher.Services.Interfaces;
+using MunitionAutoPatcher.Utilities;
 using System.Reflection;
 
 namespace MunitionAutoPatcher.Services.Implementations;
@@ -27,8 +28,8 @@ public class ReflectionFallbackDetector : IAmmunitionChangeDetector
                         // Heuristic: property with FormLink-like shape (has FormKey property)
                         var val = p.GetValue(omod);
                         if (val == null) continue;
-                        var fkProp = val.GetType().GetProperty("FormKey");
-                        if (fkProp == null) continue;
+                        if (!MutagenReflectionHelpers.TryGetFormKey(val, out var candidateFormKey) || candidateFormKey == null)
+                            continue;
 
                         // If this property name looks like ammo/projectile, treat as candidate
                         var lname = p.Name.ToLowerInvariant();
@@ -37,20 +38,14 @@ public class ReflectionFallbackDetector : IAmmunitionChangeDetector
                             // still consider it — some authors use uncommon names
                         }
 
-                        // Extract FormKey info if possible
-                        var fk = fkProp.GetValue(val);
-                        if (fk == null) continue;
-
                         // If we have an original link, compare FormKeys if possible
                         if (originalAmmoLink != null)
                         {
                             try
                             {
-                                var origFkProp = originalAmmoLink.GetType().GetProperty("FormKey");
-                                if (origFkProp != null)
+                                if (MutagenReflectionHelpers.TryGetFormKey(originalAmmoLink, out var originalFormKey) && originalFormKey != null)
                                 {
-                                    var origFk = origFkProp.GetValue(originalAmmoLink);
-                                    if (origFk != null && fk.ToString() == origFk.ToString())
+                                    if (string.Equals(candidateFormKey.ToString(), originalFormKey.ToString(), StringComparison.Ordinal))
                                     {
                                         // same -> not a change
                                         continue;

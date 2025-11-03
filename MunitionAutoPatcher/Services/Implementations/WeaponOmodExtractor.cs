@@ -15,6 +15,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     private readonly IConfigService _configService;
     private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
     private readonly MunitionAutoPatcher.Services.Interfaces.IWeaponDataExtractor _weaponDataExtractor;
+    // Pending cancellation token for the current extraction run; set by the CT-enabled overload.
+    private System.Threading.CancellationToken _pendingToken = System.Threading.CancellationToken.None;
 
     // IMutagenEnvironmentFactory is required via DI. The factory will create the
     // IMutagenEnvironment on demand when extraction runs.
@@ -33,16 +35,12 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         // Diagnostic: mark start of extraction
             try
             {
-                var repoRootStart = RepoUtils.FindRepoRoot();
-            var artifactsDirStart = System.IO.Path.Combine(repoRootStart, "artifacts", "RobCo_Patcher");
-            if (!System.IO.Directory.Exists(artifactsDirStart)) System.IO.Directory.CreateDirectory(artifactsDirStart);
-            var startMarker = System.IO.Path.Combine(artifactsDirStart, $"extract_start_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
-            using (var ssw = new System.IO.StreamWriter(startMarker, false, Encoding.UTF8))
-            {
-                ssw.WriteLine($"ExtractCandidatesAsync started at {DateTime.Now:O}");
-            }
-            AppLogger.Log($"WeaponOmodExtractor: wrote start marker {startMarker}");
-            progress?.Report($"OMOD 抽出 開始マーカーを生成しました: {startMarker}");
+                var startMarker = WriteDiagnosticsMarker(
+                    "extract_start_",
+                    new[] { $"ExtractCandidatesAsync started at {DateTime.Now:O}" }
+                );
+                AppLogger.Log($"WeaponOmodExtractor: wrote start marker {startMarker}");
+                progress?.Report($"OMOD 抽出 開始マーカーを生成しました: {startMarker}");
     }
     catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to write extract start marker", ex); }
 
@@ -60,11 +58,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 // The factory will return a NoOpMutagenEnvironment wrapped in a ResourcedMutagenEnvironment when a concrete GameEnvironment cannot be created.
                 using (var mutEnv = _mutagenEnvironmentFactory.Create())
                 {
-                    // Cache the full weapons list once — calling GetWinningWeaponOverrides() is potentially expensive
-                    // because it filters/iterates the entire load order. Reuse this cached list throughout the method.
-                    var allWeapons = mutEnv.GetWinningWeaponOverrides().ToList();
-                    // Load excluded plugins from config (blacklist). Candidates from these plugins will be skipped.
-                    var excluded = new System.Collections.Generic.HashSet<string>(_configService.GetExcludedPlugins() ?? System.Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+                    // Build extraction context (caches AllWeapons and excluded set)
+                    var __ctx = CreateExtractionContext(mutEnv, _configService, progress, _pendingToken);
+                    // Prepare a per-scan resolver early so any diagnostic or post-processing that
+                    // attempts to resolve CreatedObject EditorIDs can use the same scoped cache.
+                    LinkResolver? resolver = __ctx.LinkCache != null ? new LinkResolver(__ctx.LinkCache) : null;
+                    var allWeapons = __ctx.AllWeapons; // keep variable names to minimize diff
+                    var excluded = __ctx.ExcludedPlugins;
                     int skippedByExcluded = 0;
 
                     // Step 1: Extract candidates from ConstructibleObject (COBJ) via WeaponDataExtractor
@@ -86,19 +86,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 {
                     // Build a quick weapon-set for lookup using the adapter (use cached allWeapons)
                     var weapons = allWeapons;
-                    var weaponKeys = new HashSet<(string Plugin, uint Id)>();
-                    foreach (var w in weapons)
-                    {
-                        try
-                        {
-                            // Use centralized reflection helpers
-                            if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(w, out var pluginNameLocal, out var idLocal))
-                            {
-                                weaponKeys.Add((pluginNameLocal, idLocal));
-                            }
-                        }
-                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed while building weaponKeys from adapter results", ex); }
-                    }
+                    var weaponKeys = BuildWeaponKeySet(weapons);
 
                     // Enumerate record collections via the adapter (version-adaptive)
                     var collections = mutEnv.EnumerateRecordCollections();
@@ -296,87 +284,11 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     }
 
                     // Try to build ammo map if adapter exposes an Ammo collection via EnumerateRecordCollections
-                    try
-                    {
-                        var ammoCol = mutEnv.EnumerateRecordCollections().FirstOrDefault(t => string.Equals(t.Name, "Ammo", StringComparison.OrdinalIgnoreCase));
-                        if (!ammoCol.Equals(default((string, System.Collections.Generic.IEnumerable<object>))) && ammoCol.Items != null)
-                        {
-                                var ammoList = ammoCol.Items;
-                            ammoMap = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                            foreach (var a in ammoList)
-                            {
-                                try
-                                {
-                                    if (a == null) continue;
-                                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(a, out var plugin, out var id) && !string.IsNullOrEmpty(plugin) && id != 0)
-                                    {
-                                        var key = $"{plugin}:{id:X8}";
-                                        ammoMap[key] = a;
-                                    }
-                                }
-                                catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: building ammoMap entries", ex); }
-                            }
-                        }
-                    }
+                    try { ammoMap = BuildAmmoMap(mutEnv); }
                     catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: building ammoMap", ex); ammoMap = null; }
 
                     // Populate candidate names/ids
-                    foreach (var c in results ?? System.Linq.Enumerable.Empty<OmodCandidate>())
-                    {
-                        try
-                        {
-                            // Resolve BaseWeapon editor id
-                            if (c.BaseWeapon != null && string.IsNullOrEmpty(c.BaseWeaponEditorId))
-                            {
-                                var bk = $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}";
-                                if (weaponMap.TryGetValue(bk, out var wgetter))
-                                {
-                                    try { c.BaseWeaponEditorId = wgetter?.GetType().GetProperty("EditorID")?.GetValue(wgetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read BaseWeapon.EditorID", ex); }
-                                    // If candidate has no ammo, try to read from the weapon's Ammo link
-                                    try
-                                    {
-                                        if (wgetter != null)
-                                        {
-                                            var ammoLink = wgetter.GetType().GetProperty("Ammo")?.GetValue(wgetter);
-                                            if (ammoLink != null)
-                                            {
-                                                var fk = ammoLink.GetType().GetProperty("FormKey")?.GetValue(ammoLink);
-                                                if (fk != null)
-                                                {
-                                                    var plugin = fk.GetType().GetProperty("ModKey")?.GetValue(fk)?.GetType().GetProperty("FileName")?.GetValue(fk.GetType().GetProperty("ModKey")?.GetValue(fk))?.ToString() ?? string.Empty;
-                                                    var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
-                                                    uint id = 0;
-                                                    if (idObj is uint uu) id = uu;
-                                                    else if (idObj != null) id = Convert.ToUInt32(idObj);
-                                                    if (!string.IsNullOrEmpty(plugin) && id != 0)
-                                                    {
-                                                        c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
-                                                        var key = $"{plugin}:{id:X8}";
-                                                        if (ammoMap != null && ammoMap.TryGetValue(key, out var ammoGetter))
-                                                        {
-                                                            try { c.CandidateAmmoName = ammoGetter?.GetType().GetProperty("EditorID")?.GetValue(ammoGetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ammoGetter.EditorID", ex); }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: error while inspecting ammo link on weapon getter", ex); }
-                                }
-                            }
-
-                            // Resolve CandidateAmmoName
-                            if (c.CandidateAmmo != null && string.IsNullOrEmpty(c.CandidateAmmoName) && ammoMap != null)
-                            {
-                                var ak = $"{c.CandidateAmmo.PluginName}:{c.CandidateAmmo.FormId:X8}";
-                                if (ammoMap.TryGetValue(ak, out var ag))
-                                {
-                                    try { c.CandidateAmmoName = ag.GetType().GetProperty("EditorID")?.GetValue(ag)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ag.EditorID", ex); }
-                                }
-                            }
-                        }
-                        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: resolving candidate names", ex); }
-                    }
+                    ResolveCandidateDisplayFields(weaponMap, ammoMap, results);
                 }
                 catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: resolution pass", ex); }
                 // 2) ObjectMod enumeration is not performed here (API surface differs per Mutagen version); subject to future enhancement.
@@ -404,15 +316,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                         // Diagnostic: reverse-reference map built (or attempted)
                         try
                         {
-                            var repoRootRm = RepoUtils.FindRepoRoot();
-                            var artifactsDirRm = System.IO.Path.Combine(repoRootRm, "artifacts", "RobCo_Patcher");
-                            if (!System.IO.Directory.Exists(artifactsDirRm)) System.IO.Directory.CreateDirectory(artifactsDirRm);
-                            var rmMarker = System.IO.Path.Combine(artifactsDirRm, $"reverse_map_built_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
-                            using (var rsm = new System.IO.StreamWriter(rmMarker, false, Encoding.UTF8))
-                            {
-                                rsm.WriteLine($"Reverse reference map build attempted at {DateTime.Now:O}");
-                                rsm.WriteLine($"ReverseMapKeys={reverseMap?.Count ?? 0}");
-                            }
+                            var rmMarker = WriteDiagnosticsMarker(
+                                "reverse_map_built_",
+                                new[]
+                                {
+                                    $"Reverse reference map build attempted at {DateTime.Now:O}",
+                                    $"ReverseMapKeys={reverseMap?.Count ?? 0}"
+                                });
                             AppLogger.Log($"WeaponOmodExtractor: wrote reverse-map marker {rmMarker}");
                             progress?.Report($"逆参照マップ マーカーを生成しました: {rmMarker}");
                         }
@@ -420,6 +330,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
                         object? linkCache = null;
                         try { linkCache = mutEnv.GetLinkCache(); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to obtain LinkCache via adapter", ex); linkCache = null; }
+                        // Per-scan resolver with scoped cache; reuse earlier resolver if present, otherwise create one from linkCache
+                        resolver = linkCache != null ? new LinkResolver(linkCache) : resolver;
 
                     // Diagnostic dump for specific problematic plugins (helps investigate missing candidates)
                     try
@@ -512,15 +424,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                             // Diagnostic: detector selected
                             try
                             {
-                                var repoRootDet = RepoUtils.FindRepoRoot();
-                                var artifactsDirDet = System.IO.Path.Combine(repoRootDet, "artifacts", "RobCo_Patcher");
-                                if (!System.IO.Directory.Exists(artifactsDirDet)) System.IO.Directory.CreateDirectory(artifactsDirDet);
-                                var detMarker = System.IO.Path.Combine(artifactsDirDet, $"detector_selected_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
-                                using (var dsw = new System.IO.StreamWriter(detMarker, false, Encoding.UTF8))
-                                {
-                                    dsw.WriteLine($"Detector selected at {DateTime.Now:O}");
-                                    dsw.WriteLine($"Detector={selectedDetectorName}");
-                                }
+                                var detMarker = WriteDiagnosticsMarker(
+                                    "detector_selected_",
+                                    new[]
+                                    {
+                                        $"Detector selected at {DateTime.Now:O}",
+                                        $"Detector={selectedDetectorName}"
+                                    });
                                 AppLogger.Log($"WeaponOmodExtractor: wrote detector marker {detMarker}");
                                 progress?.Report($"Detector 選択マーカーを生成しました: {detMarker}");
                             }
@@ -532,162 +442,23 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                         }
 
                     // Now, for each candidate that has a BaseWeapon, check reverseMap entries for that weapon.
-                    foreach (var c in results ?? System.Linq.Enumerable.Empty<OmodCandidate>())
+                    if (reverseMap != null)
                     {
-                        try
-                        {
-                            if (c.BaseWeapon == null) continue;
-                            var baseKey = $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}";
-                            if (reverseMap == null || !reverseMap.TryGetValue(baseKey, out var refs)) continue;
-
-                            foreach (var entry in refs)
-                            {
-                                try
-                                {
-                                    var sourceRec = entry.Record;
-                                    // Skip source records from excluded plugins to keep exclusion consistent
-                                    try
-                                    {
-                                        var fkPropSrc = sourceRec.GetType().GetProperty("FormKey");
-                                        if (fkPropSrc != null)
-                                        {
-                                            var fkSrc = fkPropSrc.GetValue(sourceRec);
-                                            if (fkSrc != null)
-                                            {
-                                                var mkSrc = fkSrc.GetType().GetProperty("ModKey")?.GetValue(fkSrc);
-                                                var srcPlugin = mkSrc?.GetType().GetProperty("FileName")?.GetValue(mkSrc)?.ToString() ?? string.Empty;
-                                                if (!string.IsNullOrEmpty(srcPlugin) && excluded.Contains(srcPlugin))
-                                                    continue;
-                                            }
-                                        }
-                                    }
-                                    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed while checking sourceRec.FormKey or excluded plugins", ex); }
-                                    // First, attempt to use a version-adaptive detector if available. The detector
-                                    // can sometimes deterministically say this rec changes ammo for the base weapon.
-                                    try
-                                    {
-                                        // Attempt to obtain the original weapon's Ammo link (if present)
-                                        object? originalAmmoLinkObj = null;
-                                        try
-                                        {
-                                            // Use adapter to obtain the weapon getter reflectively
-                                            var weaponGetter = allWeapons.FirstOrDefault(w =>
-                                            {
-                                                try
-                                                {
-                                                    var fk = w?.GetType().GetProperty("FormKey")?.GetValue(w);
-                                                    var mk = fk?.GetType().GetProperty("ModKey")?.GetValue(fk);
-                                                    var pfn = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                                    var idObj = fk?.GetType().GetProperty("ID")?.GetValue(fk);
-                                                    uint idv = 0;
-                                                    if (idObj is uint ui) idv = ui;
-                                                    else if (idObj != null) idv = Convert.ToUInt32(idObj);
-                                                    return string.Equals(pfn, c.BaseWeapon.PluginName, StringComparison.OrdinalIgnoreCase) && idv == c.BaseWeapon.FormId;
-                                                }
-                                                catch { return false; }
-                                            });
-                                            if (weaponGetter != null)
-                                                originalAmmoLinkObj = weaponGetter.GetType().GetProperty("Ammo")?.GetValue(weaponGetter);
-                                        }
-                                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to obtain originalAmmoLinkObj", ex); }
-
-                                        try
-                                        {
-                                            if (detector != null && detector.DoesOmodChangeAmmo(sourceRec, originalAmmoLinkObj, out var newAmmoLinkObj))
-                                            {
-                                                try
-                                                {
-                                                    var fk = newAmmoLinkObj?.GetType().GetProperty("FormKey")?.GetValue(newAmmoLinkObj);
-                                                    if (fk != null)
-                                                    {
-                                                        var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
-                                                        var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
-                                                        var plugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                                                        uint id = 0;
-                                                        if (idObj is uint uu) id = uu;
-                                                        else if (idObj != null) id = Convert.ToUInt32(idObj);
-                                                        if (!string.IsNullOrEmpty(plugin) && id != 0)
-                                                        {
-                                                            c.ConfirmedAmmoChange = true;
-                                                            c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
-                                                            try { c.CandidateAmmoName = newAmmoLinkObj?.GetType().GetProperty("EditorID")?.GetValue(newAmmoLinkObj)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read CandidateAmmoName EditorID", ex); }
-                                                            c.ConfirmReason = $"Detector {detector.Name} reported change";
-                                                            // Stop processing this candidate (confirmed)
-                                                            if (c.ConfirmedAmmoChange) break;
-                                                        }
-                                                    }
-                                                }
-                                                catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector result processing failed", ex); }
-                                            }
-                                        }
-                                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector invocation failed", ex); }
-                                        }
-                                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector/pre-check failed", ex); }
-
-                                    // Inspect properties of the source record to find ammo-like references
-                                    var sprops = sourceRec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                                    foreach (var sp in sprops)
-                                    {
-                                        try
-                                        {
-                                            var sval = sp.GetValue(sourceRec);
-                                            if (sval == null) continue;
-                                            // Use centralized helper to obtain FormKey details for this property value
-                                            if (!MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(sval, out var plugin, out var id))
-                                            {
-                                                // not a FormKey-like value
-                                                continue;
-                                            }
-                                            var resolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(sval, linkCache);
-                                            bool isAmmo = false;
-                                            string resolvedTypeName = string.Empty;
-                                            object? resolvedGetter = null;
-                                            if (resolved != null)
-                                            {
-                                                resolvedGetter = resolved;
-                                                resolvedTypeName = resolved.GetType().Name ?? string.Empty;
-                                                var lname = resolvedTypeName.ToLowerInvariant();
-                                                if (lname.Contains("ammo") || lname.Contains("projectile") || lname.Contains("projectilegetter"))
-                                                    isAmmo = true;
-                                            }
-
-                                            // Fallback: check ammoMap built earlier
-                                            var fkKey = $"{plugin}:{id:X8}";
-                                            if (!isAmmo && fkKey != null && ammoMap != null && ammoMap.TryGetValue(fkKey, out var ammoGetterObj))
-                                            {
-                                                isAmmo = true;
-                                                resolvedGetter = ammoGetterObj;
-                                                try { resolvedTypeName = ammoGetterObj.GetType().Name ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ammoGetter object type name", ex); }
-                                            }
-
-                                            if (isAmmo)
-                                            {
-                                                // Confirm candidate
-                                                c.ConfirmedAmmoChange = true;
-                                                c.ConfirmReason = $"Resolved {sp.Name} -> {resolvedTypeName} on {entry.Record.GetType().Name}";
-                                                // Populate CandidateAmmo and CandidateAmmoName
-                                                c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
-                                                if (resolvedGetter != null)
-                                                {
-                                                    try { c.CandidateAmmoName = resolvedGetter.GetType().GetProperty("EditorID")?.GetValue(resolvedGetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read resolvedGetter.EditorID", ex); }
-                                                }
-                                                else
-                                                {
-                                                    // try to fill name from ammoMap key if available
-                                                }
-
-                                                // Stop on first confirmed ammo reference for performance
-                                                break;
-                                            }
-                                        }
-                                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: scanning properties for ammo refs", ex); }
-                                    }
-                                    if (c.ConfirmedAmmoChange) break;
-                                }
-                                catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: iterating reverse-reference entries for candidate", ex); }
-                            }
-                        }
-                        catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: processing reverse-reference entries", ex); }
+                        ConfirmCandidatesThroughReverseMap(
+                            results,
+                            reverseMap,
+                            excluded,
+                            allWeapons,
+                            ammoMap,
+                            detector,
+                            resolver,
+                            linkCache,
+                            _pendingToken
+                        );
+                    }
+                    else
+                    {
+                        AppLogger.Log("WeaponOmodExtractor: reverseMap is null; skipping precise reverse-reference confirmation pass.");
                     }
                 }
                 catch (Exception ex)
@@ -698,15 +469,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 // Diagnostic: detection pass completed (or aborted)
                 try
                 {
-                    var repoRootDetPass = RepoUtils.FindRepoRoot();
-                    var artifactsDirDetPass = System.IO.Path.Combine(repoRootDetPass, "artifacts", "RobCo_Patcher");
-                    if (!System.IO.Directory.Exists(artifactsDirDetPass)) System.IO.Directory.CreateDirectory(artifactsDirDetPass);
-                    var passMarker = System.IO.Path.Combine(artifactsDirDetPass, $"detection_pass_complete_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
-                    using (var psw = new System.IO.StreamWriter(passMarker, false, Encoding.UTF8))
-                    {
-                        psw.WriteLine($"Detection pass finished at {DateTime.Now:O}");
-                        psw.WriteLine($"ResultsCount={results?.Count ?? 0}");
-                    }
+                    var passMarker = WriteDiagnosticsMarker(
+                        "detection_pass_complete_",
+                        new[]
+                        {
+                            $"Detection pass finished at {DateTime.Now:O}",
+                            $"ResultsCount={results?.Count ?? 0}"
+                        });
                     AppLogger.Log($"WeaponOmodExtractor: wrote detection-pass marker {passMarker}");
                     progress?.Report($"検出パス完了マーカーを生成しました: {passMarker}");
                 }
@@ -792,20 +561,50 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                                                                 try
                                                                 {
                                                                     // Try to resolve CreatedObject via LinkCache to obtain EditorID when possible
-                                                                    try
-                                                                    {
-                                                                        var linkCacheLocal = mutEnv.GetLinkCache();
-                                                                        var resolvedCreated = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(createdObj, linkCacheLocal);
-                                                                        if (resolvedCreated != null)
-                                                                            createdEditor = resolvedCreated.GetType().GetProperty("EditorID")?.GetValue(resolvedCreated)?.ToString() ?? string.Empty;
-                                                                        else
+                                                                        try
+                                                                        {
+                                                                            object? resolvedCreated = null;
+                                                                            if (resolver != null)
+                                                                            {
+                                                                                try { resolver.TryResolve(createdObj, out resolvedCreated); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: resolver.TryResolve failed", ex); resolvedCreated = null; }
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                try
+                                                                                {
+                                                                                    var linkCacheLocal = mutEnv.GetLinkCache();
+                                                                                    // Prefer using a LinkResolver (scoped cache) even if we only have a local LinkCache.
+                                                                                    if (resolver != null)
+                                                                                    {
+                                                                                        try { resolver.TryResolve(createdObj, out resolvedCreated); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: resolver.TryResolve failed", ex); resolvedCreated = null; }
+                                                                                    }
+                                                                                    else if (linkCacheLocal != null)
+                                                                                    {
+                                                                                        try
+                                                                                        {
+                                                                                            var tmpResolver = new LinkResolver(linkCacheLocal);
+                                                                                            try { tmpResolver.TryResolve(createdObj, out resolvedCreated); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: tmpResolver.TryResolve failed", ex); resolvedCreated = null; }
+                                                                                        }
+                                                                                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to create temporary LinkResolver", ex); resolvedCreated = null; }
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        try { resolvedCreated = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(createdObj, linkCacheLocal); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to resolve CreatedObject EditorID via LinkCache", ex); resolvedCreated = null; }
+                                                                                    }
+                                                                                }
+                                                                                catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to resolve CreatedObject EditorID via LinkCache (outer)", ex); resolvedCreated = null; }
+                                                                            }
+
+                                                                            if (resolvedCreated != null)
+                                                                                createdEditor = resolvedCreated.GetType().GetProperty("EditorID")?.GetValue(resolvedCreated)?.ToString() ?? string.Empty;
+                                                                            else
+                                                                                createdEditor = string.Empty;
+                                                                        }
+                                                                        catch (Exception ex)
+                                                                        {
+                                                                            AppLogger.Log("WeaponOmodExtractor: failed while attempting to determine CreatedObject editor name", ex);
                                                                             createdEditor = string.Empty;
-                                                                    }
-                                                                    catch (Exception ex)
-                                                                    {
-                                                                        AppLogger.Log("WeaponOmodExtractor: failed to resolve CreatedObject EditorID via LinkCache", ex);
-                                                                        createdEditor = string.Empty;
-                                                                    }
+                                                                        }
                                                                 }
                                                                 catch (Exception ex)
                                                                 {
@@ -1001,16 +800,13 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             // Diagnostic marker: write a small file so we can confirm the method actually completed at runtime.
             try
             {
-                var repoRoot = RepoUtils.FindRepoRoot();
-                var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
-                if (!System.IO.Directory.Exists(artifactsDir))
-                    System.IO.Directory.CreateDirectory(artifactsDir);
-                var marker = System.IO.Path.Combine(artifactsDir, $"extract_complete_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
-                using (var msw = new System.IO.StreamWriter(marker, false, Encoding.UTF8))
-                {
-                    msw.WriteLine($"ExtractCandidatesAsync completed at {DateTime.Now:O}");
-                    msw.WriteLine($"CandidateCount={(results?.Count ?? 0)}");
-                }
+                var marker = WriteDiagnosticsMarker(
+                    "extract_complete_",
+                    new[]
+                    {
+                        $"ExtractCandidatesAsync completed at {DateTime.Now:O}",
+                        $"CandidateCount={(results?.Count ?? 0)}"
+                    });
                 AppLogger.Log($"WeaponOmodExtractor: wrote completion marker {marker}");
                 progress?.Report($"OMOD 抽出 完了マーカーを生成しました: {marker}");
             }
@@ -1028,6 +824,24 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         }
     }
 
+    // Overload with CancellationToken support (keeps existing call sites intact). New code paths can prefer this overload.
+    public async Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress, System.Threading.CancellationToken cancellationToken)
+        {
+            // Thread the token through the long-running method via a scoped field (no public API break).
+            _pendingToken = cancellationToken;
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var res = await ExtractCandidatesAsync(progress);
+                cancellationToken.ThrowIfCancellationRequested();
+                return res;
+            }
+            finally
+            {
+                _pendingToken = System.Threading.CancellationToken.None;
+            }
+        }
+
     private string Escape(string? s)
     {
         if (s == null) return string.Empty;
@@ -1035,6 +849,455 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     }
 
     // (Removed) use the shared LinkCacheHelper.TryResolveViaLinkCache from Services/Implementations/LinkCacheHelper.cs
+
+    // --- Internal DTOs for staged refactor (not yet fully wired) ---
+    internal sealed class ExtractionContext
+    {
+        public Services.Implementations.IResourcedMutagenEnvironment? Env { get; set; }
+        public object? LinkCache { get; set; }
+        public System.Collections.Generic.HashSet<string> ExcludedPlugins { get; set; } = new(System.StringComparer.OrdinalIgnoreCase);
+        public System.Collections.Generic.List<object> AllWeapons { get; set; } = new();
+        public System.Collections.Generic.HashSet<(string Plugin, uint Id)> WeaponKeySet { get; set; } = new();
+        public System.Collections.Generic.Dictionary<string, object> AmmoMap { get; set; } = new(System.StringComparer.OrdinalIgnoreCase);
+        public IProgress<string>? Progress { get; set; }
+        public System.Threading.CancellationToken CancellationToken { get; set; }
+    }
+
+    internal sealed class ReverseRefIndex
+    {
+        public System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<ReverseRefEntry>> Map { get; } = new(System.StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal sealed class ReverseRefEntry
+    {
+        public object Record { get; set; } = new object();
+        public string PropName { get; set; } = string.Empty;
+        public object PropValue { get; set; } = new object();
+    }
+
+    // --- Private helpers (stage 1) ---
+    // --- Context builder (stage 1) ---
+    private static ExtractionContext CreateExtractionContext(
+        Services.Implementations.IResourcedMutagenEnvironment env,
+        Services.Interfaces.IConfigService config,
+        IProgress<string>? progress,
+        System.Threading.CancellationToken token)
+    {
+        var ctx = new ExtractionContext
+        {
+            Env = env,
+            Progress = progress,
+            CancellationToken = token
+        };
+
+        // LinkCache (if available)
+        try { ctx.LinkCache = env.GetLinkCache(); }
+        catch (System.Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to obtain LinkCache in CreateExtractionContext", ex); ctx.LinkCache = null; }
+
+        // Excluded plugins (from config flags and explicit list)
+        try
+        {
+            var excluded = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var p in config.GetExcludedPlugins() ?? System.Linq.Enumerable.Empty<string>())
+                if (!string.IsNullOrWhiteSpace(p)) excluded.Add(p.Trim());
+
+            if (config.GetExcludeFallout4Esm()) excluded.Add("Fallout4.esm");
+            if (config.GetExcludeDlcEsms())
+            {
+                excluded.Add("DLCRobot.esm");
+                excluded.Add("DLCworkshop01.esm");
+                excluded.Add("DLCCoast.esm");
+                excluded.Add("DLCworkshop02.esm");
+                excluded.Add("DLCworkshop03.esm");
+                excluded.Add("DLCNukaWorld.esm");
+            }
+            // Note: CC ESL exclusion is not deterministically derivable here without load order; defer to explicit list.
+            ctx.ExcludedPlugins = excluded;
+        }
+        catch (System.Exception ex)
+        {
+            AppLogger.Log("WeaponOmodExtractor: failed to build excluded plugin set in CreateExtractionContext", ex);
+            ctx.ExcludedPlugins = new(System.StringComparer.OrdinalIgnoreCase);
+        }
+
+        // All weapons via adapter (prefer dedicated method, then fallback to named collection)
+        try
+        {
+            var list = new System.Collections.Generic.List<object>();
+            try
+            {
+                var wins = env.GetWinningWeaponOverrides();
+                if (wins != null) list.AddRange(System.Linq.Enumerable.Cast<object>(wins));
+            }
+            catch (System.Exception ex)
+            {
+                AppLogger.Log("WeaponOmodExtractor: GetWinningWeaponOverrides failed, trying EnumerateRecordCollections fallback", ex);
+            }
+
+            if (list.Count == 0)
+            {
+                try
+                {
+                    var weaponCol = env.EnumerateRecordCollections().FirstOrDefault(t => string.Equals(t.Name, "Weapon", System.StringComparison.OrdinalIgnoreCase));
+                    if (!weaponCol.Equals(default((string, System.Collections.Generic.IEnumerable<object>))) && weaponCol.Items != null)
+                        list.AddRange(weaponCol.Items);
+                }
+                catch (System.Exception ex)
+                {
+                    AppLogger.Log("WeaponOmodExtractor: EnumerateRecordCollections fallback failed while locating Weapon collection", ex);
+                }
+            }
+
+            ctx.AllWeapons = list;
+            ctx.WeaponKeySet = BuildWeaponKeySet(list);
+        }
+        catch (System.Exception ex)
+        {
+            AppLogger.Log("WeaponOmodExtractor: failed while preparing AllWeapons/WeaponKeySet in CreateExtractionContext", ex);
+            ctx.AllWeapons = new();
+            ctx.WeaponKeySet = new();
+        }
+
+        // Ammo map (optional)
+        try
+        {
+            var maybe = BuildAmmoMap(env);
+            if (maybe != null) ctx.AmmoMap = maybe;
+        }
+        catch (System.Exception ex)
+        {
+            AppLogger.Log("WeaponOmodExtractor: failed while building AmmoMap in CreateExtractionContext", ex);
+        }
+
+        return ctx;
+    }
+
+    private static System.Collections.Generic.HashSet<(string Plugin, uint Id)> BuildWeaponKeySet(System.Collections.Generic.IEnumerable<object> weapons)
+    {
+        var set = new System.Collections.Generic.HashSet<(string Plugin, uint Id)>();
+        foreach (var w in weapons)
+        {
+            try
+            {
+                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(w, out var plugin, out var id))
+                {
+                    set.Add((plugin, id));
+                }
+            }
+            catch (System.Exception ex)
+            {
+                AppLogger.Log("WeaponOmodExtractor: failed while building weaponKeys from adapter results", ex);
+            }
+        }
+        return set;
+    }
+
+    private static System.Collections.Generic.Dictionary<string, object>? BuildAmmoMap(Services.Implementations.IResourcedMutagenEnvironment mutEnv)
+    {
+        var ammoCol = mutEnv.EnumerateRecordCollections().FirstOrDefault(t => string.Equals(t.Name, "Ammo", System.StringComparison.OrdinalIgnoreCase));
+        if (!ammoCol.Equals(default((string, System.Collections.Generic.IEnumerable<object>))) && ammoCol.Items != null)
+        {
+            var ammoMap = new System.Collections.Generic.Dictionary<string, object>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var a in ammoCol.Items)
+            {
+                try
+                {
+                    if (a == null) continue;
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(a, out var plugin, out var id) && !string.IsNullOrEmpty(plugin) && id != 0)
+                    {
+                        var key = $"{plugin}:{id:X8}";
+                        ammoMap[key] = a;
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: building ammoMap entries", ex);
+                }
+            }
+            return ammoMap;
+        }
+        return null;
+    }
+
+    // --- Helper: populate candidate display fields from maps (stage 2) ---
+    private static void ResolveCandidateDisplayFields(
+        System.Collections.Generic.Dictionary<string, object> weaponMap,
+        System.Collections.Generic.Dictionary<string, object>? ammoMap,
+        System.Collections.Generic.IEnumerable<OmodCandidate>? results)
+    {
+        foreach (var c in results ?? System.Linq.Enumerable.Empty<OmodCandidate>())
+        {
+            try
+            {
+                // Resolve BaseWeapon editor id
+                if (c.BaseWeapon != null && string.IsNullOrEmpty(c.BaseWeaponEditorId))
+                {
+                    var bk = $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}";
+                    if (weaponMap.TryGetValue(bk, out var wgetter))
+                    {
+                        try { c.BaseWeaponEditorId = wgetter?.GetType().GetProperty("EditorID")?.GetValue(wgetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read BaseWeapon.EditorID", ex); }
+                        // If candidate has no ammo, try to read from the weapon's Ammo link
+                        try
+                        {
+                            if (wgetter != null)
+                            {
+                                var ammoLink = wgetter.GetType().GetProperty("Ammo")?.GetValue(wgetter);
+                                if (ammoLink != null)
+                                {
+                                    var fk = ammoLink.GetType().GetProperty("FormKey")?.GetValue(ammoLink);
+                                    if (fk != null)
+                                    {
+                                        var plugin = fk.GetType().GetProperty("ModKey")?.GetValue(fk)?.GetType().GetProperty("FileName")?.GetValue(fk.GetType().GetProperty("ModKey")?.GetValue(fk))?.ToString() ?? string.Empty;
+                                        var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
+                                        uint id = 0;
+                                        if (idObj is uint uu) id = uu;
+                                        else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                        if (!string.IsNullOrEmpty(plugin) && id != 0)
+                                        {
+                                            c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
+                                            var key = $"{plugin}:{id:X8}";
+                                            if (ammoMap != null && ammoMap.TryGetValue(key, out var ammoGetter))
+                                            {
+                                                try { c.CandidateAmmoName = ammoGetter?.GetType().GetProperty("EditorID")?.GetValue(ammoGetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ammoGetter.EditorID", ex); }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: error while inspecting ammo link on weapon getter", ex); }
+                    }
+                }
+
+                // Resolve CandidateAmmoName
+                if (c.CandidateAmmo != null && string.IsNullOrEmpty(c.CandidateAmmoName) && ammoMap != null)
+                {
+                    var ak = $"{c.CandidateAmmo.PluginName}:{c.CandidateAmmo.FormId:X8}";
+                    if (ammoMap.TryGetValue(ak, out var ag))
+                    {
+                        try { c.CandidateAmmoName = ag.GetType().GetProperty("EditorID")?.GetValue(ag)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ag.EditorID", ex); }
+                    }
+                }
+            }
+            catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponOmodExtractor: resolving candidate names", ex); }
+        }
+    }
+
+    // --- Helper: confirm candidates via reverse map (stage 2) ---
+    private static void ConfirmCandidatesThroughReverseMap(
+        System.Collections.Generic.IEnumerable<OmodCandidate>? results,
+        System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<(object Record, string PropName, object PropValue)>> reverseMap,
+        System.Collections.Generic.HashSet<string> excluded,
+        System.Collections.Generic.List<object> allWeapons,
+        System.Collections.Generic.Dictionary<string, object>? ammoMap,
+        Services.Interfaces.IAmmunitionChangeDetector detector,
+        LinkResolver? resolver,
+        object? linkCache,
+        System.Threading.CancellationToken token)
+    {
+        foreach (var c in results ?? System.Linq.Enumerable.Empty<OmodCandidate>())
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                if (c.BaseWeapon == null) continue;
+                var baseKey = $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}";
+                if (reverseMap == null || !reverseMap.TryGetValue(baseKey, out var refs)) continue;
+
+                foreach (var entry in refs)
+                {
+                    token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var sourceRec = entry.Record;
+                        // Skip source records from excluded plugins to keep exclusion consistent
+                        try
+                        {
+                            var fkPropSrc = sourceRec.GetType().GetProperty("FormKey");
+                            if (fkPropSrc != null)
+                            {
+                                var fkSrc = fkPropSrc.GetValue(sourceRec);
+                                if (fkSrc != null)
+                                {
+                                    var mkSrc = fkSrc.GetType().GetProperty("ModKey")?.GetValue(fkSrc);
+                                    var srcPlugin = mkSrc?.GetType().GetProperty("FileName")?.GetValue(mkSrc)?.ToString() ?? string.Empty;
+                                    if (!string.IsNullOrEmpty(srcPlugin) && excluded.Contains(srcPlugin))
+                                        continue;
+                                }
+                            }
+                        }
+                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed while checking sourceRec.FormKey or excluded plugins", ex); }
+
+                        // First, attempt to use a version-adaptive detector if available. The detector
+                        // can sometimes deterministically say this rec changes ammo for the base weapon.
+                        try
+                        {
+                            // Attempt to obtain the original weapon's Ammo link (if present)
+                            object? originalAmmoLinkObj = null;
+                            try
+                            {
+                                // Use adapter to obtain the weapon getter reflectively
+                                var weaponGetter = allWeapons.FirstOrDefault(w =>
+                                {
+                                    try
+                                    {
+                                        var fk = w?.GetType().GetProperty("FormKey")?.GetValue(w);
+                                        var mk = fk?.GetType().GetProperty("ModKey")?.GetValue(fk);
+                                        var pfn = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
+                                        var idObj = fk?.GetType().GetProperty("ID")?.GetValue(fk);
+                                        uint idv = 0;
+                                        if (idObj is uint ui) idv = ui;
+                                        else if (idObj != null) idv = Convert.ToUInt32(idObj);
+                                        return string.Equals(pfn, c.BaseWeapon.PluginName, StringComparison.OrdinalIgnoreCase) && idv == c.BaseWeapon.FormId;
+                                    }
+                                    catch { return false; }
+                                });
+                                if (weaponGetter != null)
+                                    originalAmmoLinkObj = weaponGetter.GetType().GetProperty("Ammo")?.GetValue(weaponGetter);
+                            }
+                            catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to obtain originalAmmoLinkObj", ex); }
+
+                            try
+                            {
+                                if (detector != null && detector.DoesOmodChangeAmmo(sourceRec, originalAmmoLinkObj, out var newAmmoLinkObj))
+                                {
+                                    try
+                                    {
+                                        var fk = newAmmoLinkObj?.GetType().GetProperty("FormKey")?.GetValue(newAmmoLinkObj);
+                                        if (fk != null)
+                                        {
+                                            var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
+                                            var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
+                                            var plugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
+                                            uint id = 0;
+                                            if (idObj is uint uu) id = uu;
+                                            else if (idObj != null) id = Convert.ToUInt32(idObj);
+                                            if (!string.IsNullOrEmpty(plugin) && id != 0)
+                                            {
+                                                c.ConfirmedAmmoChange = true;
+                                                c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
+                                                try { c.CandidateAmmoName = newAmmoLinkObj?.GetType().GetProperty("EditorID")?.GetValue(newAmmoLinkObj)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read CandidateAmmoName EditorID", ex); }
+                                                c.ConfirmReason = $"Detector {detector.Name} reported change";
+                                                // Stop processing this candidate (confirmed)
+                                                if (c.ConfirmedAmmoChange) break;
+                                            }
+                                        }
+                                    }
+                                    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector result processing failed", ex); }
+                                }
+                            }
+                            catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector invocation failed", ex); }
+                        }
+                        catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: detector/pre-check failed", ex); }
+
+                        // Inspect properties of the source record to find ammo-like references
+                        var sprops = sourceRec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                        foreach (var sp in sprops)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            try
+                            {
+                                var sval = sp.GetValue(sourceRec);
+                                if (sval == null) continue;
+                                // Use centralized helper to obtain FormKey details for this property value
+                                if (!MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(sval, out var plugin, out var id))
+                                {
+                                    // not a FormKey-like value
+                                    continue;
+                                }
+                                object? resolved = null;
+                                if (resolver != null)
+                                {
+                                    try { resolver.TryResolve(sval, out resolved); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: resolver.TryResolve failed", ex); resolved = null; }
+                                }
+                                else
+                                {
+                                    try
+                                    {
+                                        if (linkCache != null)
+                                        {
+                                            try
+                                            {
+                                                var tmpResolver = new LinkResolver(linkCache);
+                                                try { tmpResolver.TryResolve(sval, out resolved); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: tmpResolver.TryResolve failed", ex); resolved = null; }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                AppLogger.Log("WeaponOmodExtractor: failed to create temporary LinkResolver", ex);
+                                                resolved = null;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            try { resolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(sval, linkCache); } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: LinkCache fallback failed", ex); resolved = null; }
+                                        }
+                                    }
+                                    catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: unexpected error in resolution fallback", ex); resolved = null; }
+                                }
+                                bool isAmmo = false;
+                                string resolvedTypeName = string.Empty;
+                                object? resolvedGetter = null;
+                                if (resolved != null)
+                                {
+                                    resolvedGetter = resolved;
+                                    resolvedTypeName = resolved.GetType().Name ?? string.Empty;
+                                    var lname = resolvedTypeName.ToLowerInvariant();
+                                    if (lname.Contains("ammo") || lname.Contains("projectile") || lname.Contains("projectilegetter"))
+                                        isAmmo = true;
+                                }
+
+                                // Fallback: check ammoMap built earlier
+                                var fkKey = $"{plugin}:{id:X8}";
+                                if (!isAmmo && fkKey != null && ammoMap != null && ammoMap.TryGetValue(fkKey, out var ammoGetterObj))
+                                {
+                                    isAmmo = true;
+                                    resolvedGetter = ammoGetterObj;
+                                    try { resolvedTypeName = ammoGetterObj.GetType().Name ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read ammoGetter object type name", ex); }
+                                }
+
+                                if (isAmmo)
+                                {
+                                    // Confirm candidate
+                                    c.ConfirmedAmmoChange = true;
+                                    c.ConfirmReason = $"Resolved {sp.Name} -> {resolvedTypeName} on {entry.Record.GetType().Name}";
+                                    // Populate CandidateAmmo and CandidateAmmoName
+                                    c.CandidateAmmo = new Models.FormKey { PluginName = plugin, FormId = id };
+                                    if (resolvedGetter != null)
+                                    {
+                                        try { c.CandidateAmmoName = resolvedGetter.GetType().GetProperty("EditorID")?.GetValue(resolvedGetter)?.ToString() ?? string.Empty; } catch (Exception ex) { AppLogger.Log("WeaponOmodExtractor: failed to read resolvedGetter.EditorID", ex); }
+                                    }
+                                    else
+                                    {
+                                        // try to fill name from ammoMap key if available
+                                    }
+
+                                    // Stop on first confirmed ammo reference for performance
+                                    break;
+                                }
+                            }
+                            catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: scanning properties for ammo refs", ex); }
+                        }
+                        if (c.ConfirmedAmmoChange) break;
+                    }
+                    catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: iterating reverse-reference entries for candidate", ex); }
+                }
+            }
+            catch (Exception ex) { AppLogger.Log("Suppressed exception in WeaponOmodExtractor: processing reverse-reference entries", ex); }
+        }
+    }
+
+    private static string WriteDiagnosticsMarker(string filePrefix, System.Collections.Generic.IEnumerable<string> lines)
+    {
+        var repoRoot = RepoUtils.FindRepoRoot();
+        var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
+        if (!System.IO.Directory.Exists(artifactsDir)) System.IO.Directory.CreateDirectory(artifactsDir);
+        var path = System.IO.Path.Combine(artifactsDir, $"{filePrefix}{System.DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
+        using (var sw = new System.IO.StreamWriter(path, false, System.Text.Encoding.UTF8))
+        {
+            foreach (var line in lines) sw.WriteLine(line);
+        }
+        return path;
+    }
 
     // RepoUtils.FindRepoRoot provides repository root lookup
     

@@ -1,4 +1,5 @@
 using MunitionAutoPatcher.Services.Interfaces;
+using MunitionAutoPatcher.Utilities;
 using System.Reflection;
 
 namespace MunitionAutoPatcher.Services.Implementations;
@@ -41,29 +42,28 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
                         var val = p.GetValue(omod);
                         if (val == null) continue;
 
-                        // Look for a FormKey property on the value
-                        var fkProp = val.GetType().GetProperty("FormKey");
-                        if (fkProp == null) continue;
-                        var fk = fkProp.GetValue(val);
-                        if (fk == null) continue;
+                        // 標準化されたヘルパーでFormKeyを取得
+                        if (!MutagenReflectionHelpers.TryGetFormKey(val, out var candidateFormKey) || candidateFormKey == null)
+                            continue;
 
-                        // If an original ammo link is supplied, try to compare to avoid false positives
+                        // 元の弾薬リンクが渡されている場合、FormKey同一なら変更なしとしてスキップ
                         if (originalAmmoLink != null)
                         {
                             try
                             {
-                                var origFkProp = originalAmmoLink.GetType().GetProperty("FormKey");
-                                if (origFkProp != null)
+                                if (MutagenReflectionHelpers.TryGetFormKey(originalAmmoLink, out var originalFormKey) && originalFormKey != null)
                                 {
-                                    var origFk = origFkProp.GetValue(originalAmmoLink);
-                                    if (origFk != null && fk.ToString() == origFk.ToString())
+                                    if (string.Equals(candidateFormKey.ToString(), originalFormKey.ToString(), StringComparison.Ordinal))
                                     {
                                         // same as original -> not a change
                                         continue;
                                     }
                                 }
                             }
-                            catch (Exception ex) { AppLogger.Log("MutagenV51Detector: failing to read property during detection", ex); }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Log("MutagenV51Detector: failing to read original FormKey during detection", ex);
+                            }
                         }
 
                         newAmmoLink = val;

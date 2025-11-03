@@ -36,8 +36,38 @@ namespace MunitionAutoPatcher.Services.Implementations
 
             try
             {
-                // 1) Prefer calling an instance-level TryResolve on the link-like object: linkLike.TryResolve(linkCache, out resolved)
-                try
+                // 1) インスタンス側の TryResolve を優先
+                var instResolved = TryInstanceResolve(linkLike, linkCache);
+                if (instResolved != null) return instResolved;
+
+                // 2) FormKey ベースで解決
+                var formKeyObj = ExtractFormKey(linkLike);
+                if (formKeyObj != null)
+                {
+                    var byKey = TryFormKeyResolve(formKeyObj, linkCache);
+                    if (byKey != null) return byKey;
+                }
+
+                // 3) linkLike 自体を TryResolve
+                var byLink = TryLinkLikeResolve(linkLike, linkCache);
+                if (byLink != null) return byLink;
+
+                // 4) 最終フォールバック: 単一引数の公開メソッド
+                var last = TrySingleArgFallback(linkLike, formKeyObj, linkCache);
+                if (last != null) return last;
+
+                return null;
+            }
+            finally
+            {
+                set.Remove(key);
+                if (set.Count == 0) s_currentResolutionKeys.Value = null;
+            }
+        }
+
+        private static object? TryInstanceResolve(object linkLike, object linkCache)
+        {
+            try
             {
                 var t = linkLike.GetType();
                 var inst = s_instanceTryResolve.GetOrAdd(t, tt =>
@@ -64,66 +94,81 @@ namespace MunitionAutoPatcher.Services.Implementations
             {
                 AppLogger.Log($"LinkCacheHelper: instance TryResolve discovery failed: {ex.Message}", ex);
             }
+            return null;
+        }
 
-            // 2) Try to extract a FormKey-like property and use linkCache.Resolve(formKey) or linkCache.TryResolve(formKey, out resolved)
-            object? formKeyObj = null;
+        private static object? ExtractFormKey(object linkLike)
+        {
             try
             {
-                // Prefer cached reflection for speed
                 var fk = s_formKeyProp.GetOrAdd(linkLike.GetType(), tt => tt.GetProperty("FormKey", BindingFlags.Public | BindingFlags.Instance));
                 if (fk != null)
-                    formKeyObj = fk.GetValue(linkLike);
-
-                // Fallback to generic helper in case the property is implemented via an interface or dynamic proxy
-                if (formKeyObj == null)
                 {
-                    try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(linkLike, "FormKey", out formKeyObj); }
-                    catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: helper-based FormKey extraction failed: {ex.Message}", ex); }
+                    var v = fk.GetValue(linkLike);
+                    if (v != null) return v;
                 }
+
+                try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(linkLike, "FormKey", out var formKeyObj); return formKeyObj; }
+                catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: helper-based FormKey extraction failed: {ex.Message}", ex); return null; }
             }
             catch (Exception ex)
             {
                 AppLogger.Log($"LinkCacheHelper: FormKey extraction failed: {ex.Message}", ex);
-                formKeyObj = null;
+                return null;
             }
+        }
 
-            if (formKeyObj != null)
+        private static object? TryFormKeyResolve(object formKeyObj, object linkCache)
+        {
+            try
             {
+                // 1. Convert the formKeyObj to a string representation.
+                string? keyString = null;
                 try
                 {
-                    var lcType = linkCache.GetType();
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(formKeyObj, "ModKey", out var modKey) && modKey != null &&
+                        MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(modKey, "FileName", out var fileName) && fileName is string fn &&
+                        MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<uint>(formKeyObj, "ID", out var id))
+                    {
+                        keyString = $"{fn}:{id:X8}";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Log($"LinkCacheHelper: Failed to construct string key from FormKey object: {ex.Message}", ex);
+                    return null;
+                }
 
-                    // 2a) Try linkCache.Resolve(formKey) -> returns resolved directly
+                var lcType = linkCache.GetType();
+
+                // 2. Find a Resolve(string) method on the link cache and try it first if we have a string key.
+                if (!string.IsNullOrEmpty(keyString))
+                {
                     var resolve = s_linkCacheResolveByKey.GetOrAdd(lcType, lc =>
                         lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                          .FirstOrDefault(m => string.Equals(m.Name, "Resolve", StringComparison.Ordinal) && m.GetParameters().Length == 1)
+                          .FirstOrDefault(m =>
+                              string.Equals(m.Name, "Resolve", StringComparison.Ordinal) &&
+                              m.GetParameters().Length == 1 &&
+                              m.GetParameters()[0].ParameterType == typeof(string))
                     );
+
                     if (resolve != null)
                     {
                         try
                         {
-                            // Try a direct invoke; if that fails due to overload resolution,
-                            // attempt a generic helper-based invocation before giving up.
-                            var rr = resolve.Invoke(linkCache, new object?[] { formKeyObj });
+                            var rr = resolve.Invoke(linkCache, new object?[] { keyString });
                             if (rr != null) return rr;
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Log($"LinkCacheHelper: linkCache.Resolve(formKey) invocation failed: {ex.Message}", ex);
-                            try
-                            {
-                                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryInvokeMethod(linkCache, "Resolve", new object?[] { formKeyObj }, out var rr2) && rr2 != null)
-                                    return rr2;
-                            }
-                            catch (Exception ex2)
-                            {
-                                AppLogger.Log($"LinkCacheHelper: helper-based Resolve(formKey) failed: {ex2.Message}", ex2);
-                            }
-                            /* ignore and try TryResolve */
+                            AppLogger.Log($"LinkCacheHelper: linkCache.Resolve(string key) invocation failed: {ex.Message}", ex);
                         }
                     }
+                }
 
-                    // 2b) Try linkCache.TryResolve(formKey, out resolved)
+                // 3. If Resolve(string) didn't return anything (or we couldn't form a string key), try TryResolve(formKey, out object) variants.
+                try
+                {
                     var tryMethods = s_linkCacheTryResolveMethods.GetOrAdd(lcType, lc =>
                         lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
                           .Where(m => string.Equals(m.Name, "TryResolve", StringComparison.Ordinal) && m.GetParameters().Length == 2)
@@ -134,17 +179,21 @@ namespace MunitionAutoPatcher.Services.Implementations
                     {
                         try
                         {
-                                 MethodInfo invoke = m!;
-                                 if (m!.IsGenericMethodDefinition)
-                                 {
-                                // attempt to close generic on the formKey object's type if possible
-                                var genArg = formKeyObj.GetType();
+                            MethodInfo invoke = m!;
+                            if (m!.IsGenericMethodDefinition)
+                            {
+                                var fkType = formKeyObj.GetType();
+                                if (!fkType.IsGenericType)
+                                    continue;
+                                var genArg = fkType.GetGenericArguments().FirstOrDefault();
+                                if (genArg == null) continue;
                                 try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}", ex); continue; }
                             }
 
-                                 var p0 = invoke.GetParameters()![0]!.ParameterType;
-                            if (!p0.IsAssignableFrom(formKeyObj.GetType()) && p0 != typeof(object))
-                                continue;
+                            var p0 = invoke.GetParameters()![0]!.ParameterType;
+                            var fkActual = formKeyObj.GetType();
+                            bool compatible = p0 == fkActual || p0.IsAssignableFrom(fkActual) || fkActual.IsAssignableFrom(p0);
+                            if (!compatible) continue;
 
                             var args = new object?[] { formKeyObj, null };
                             var okObj = invoke.Invoke(linkCache, args);
@@ -159,11 +208,18 @@ namespace MunitionAutoPatcher.Services.Implementations
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log($"LinkCacheHelper: FormKey-based resolution failed: {ex.Message}", ex);
+                    AppLogger.Log($"LinkCacheHelper: error while scanning TryResolve(formKey) candidates: {ex.Message}", ex);
                 }
             }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"LinkCacheHelper: FormKey-based resolution failed: {ex.Message}", ex);
+            }
+            return null;
+        }
 
-            // 3) Fallback: try LinkCache.TryResolve(linkLike, out resolved) variants (including generic TryResolve<T>)
+        private static object? TryLinkLikeResolve(object linkLike, object linkCache)
+        {
             try
             {
                 var lcType = linkCache.GetType();
@@ -177,33 +233,25 @@ namespace MunitionAutoPatcher.Services.Implementations
                 {
                     try
                     {
-                            MethodInfo invoke = m!;
-                             if (m!.IsGenericMethodDefinition)
+                        MethodInfo invoke = m!;
+                        if (m!.IsGenericMethodDefinition)
                         {
                             var linkType = linkLike.GetType();
-                            if (linkType.IsGenericType)
-                            {
-                                var genArg = linkType.GetGenericArguments().FirstOrDefault();
-                                if (genArg != null)
-                                {
+                            if (!linkType.IsGenericType) continue;
+                            var genArg = linkType.GetGenericArguments().FirstOrDefault();
+                            if (genArg == null) continue;
                             try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(linkLike): {ex.Message}", ex); continue; }
-                                }
-                                else continue;
-                            }
-                            else continue;
                         }
 
-                             var p0 = invoke.GetParameters()![0]!.ParameterType;
+                        var p0 = invoke.GetParameters()![0]!.ParameterType;
                         var linkTypeActual = linkLike.GetType();
-
                         bool compatible = p0 == linkTypeActual || p0.IsAssignableFrom(linkTypeActual) || linkTypeActual.IsAssignableFrom(p0);
                         if (!compatible) continue;
 
                         var args = new object?[] { linkLike, null };
                         var okObj = invoke.Invoke(linkCache, args);
                         var ok = okObj as bool? ?? (okObj is bool b && b);
-                        if (ok)
-                            return args[1];
+                        if (ok) return args[1];
                     }
                     catch (Exception ex)
                     {
@@ -215,8 +263,11 @@ namespace MunitionAutoPatcher.Services.Implementations
             {
                 AppLogger.Log("LinkCacheHelper: unexpected error in TryResolve fallback loop", ex);
             }
+            return null;
+        }
 
-            // 4) As a last resort: try any public instance method on linkCache that accepts a single parameter compatible with linkLike or formKeyObj
+        private static object? TrySingleArgFallback(object? linkLike, object? formKeyObj, object linkCache)
+        {
             try
             {
                 var lcType = linkCache.GetType();
@@ -234,9 +285,8 @@ namespace MunitionAutoPatcher.Services.Implementations
                         if (!pType.IsAssignableFrom(arg.GetType()) && pType != typeof(object))
                             continue;
                         var r = m.Invoke(linkCache, new object?[] { arg });
-                        // Ignore boolean-returning methods (e.g., Equals) which are not resolution results.
                         if (r == null) continue;
-                        if (r is bool) continue;
+                        if (r is bool) continue; // ignore sentinel bools like Equals
                         return r;
                     }
                     catch (Exception ex)
@@ -249,25 +299,21 @@ namespace MunitionAutoPatcher.Services.Implementations
             {
                 AppLogger.Log("LinkCacheHelper: unexpected error in fallback single-arg discovery", ex);
             }
-                return null;
-            }
-            finally
-            {
-                set.Remove(key);
-                if (set.Count == 0) s_currentResolutionKeys.Value = null;
-            }
+            return null;
         }
 
         // Small helper: guess whether resolved getter is ammo/projectile by name/interface heuristics
         public static bool IsAmmoOrProjectile(object? getter)
         {
             if (getter == null) return false;
+            // 利用可能なら型/署名ベースで判定し、最後に名前ヒューリスティクへフォールバック
+            try { if (Utilities.MutagenTypeGuards.IsAmmoOrProjectile(getter)) return true; }
+            catch { /* fall back below */ }
+
             var t = getter.GetType();
             var name = t.Name ?? string.Empty;
             var lname = name.ToLowerInvariant();
-            if (lname.Contains("ammo") || lname.Contains("projectile") || lname.Contains("bullet"))
-                return true;
-            return false;
+            return lname.Contains("ammo") || lname.Contains("projectile") || lname.Contains("bullet");
         }
 
         // LinkCacheHelper previously had an internal Log helper; use shared AppLogger instead.

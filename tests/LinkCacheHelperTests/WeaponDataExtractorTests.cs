@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using MunitionAutoPatcher.Services.Implementations;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Models;
-using MunitionAutoPatcher.Services.Implementations;
 using Xunit;
 
 namespace LinkCacheHelperTests
