@@ -5,6 +5,7 @@ using MunitionAutoPatcher.ViewModels;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Models;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace LinkCacheHelperTests
@@ -50,6 +51,7 @@ namespace LinkCacheHelperTests
         private class DummyOmodExtractor : MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor
         {
             public Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress = null) => Task.FromResult(new List<OmodCandidate>());
+            public Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress, CancellationToken cancellationToken) => Task.FromResult(new List<OmodCandidate>());
         }
 
         [Fact]

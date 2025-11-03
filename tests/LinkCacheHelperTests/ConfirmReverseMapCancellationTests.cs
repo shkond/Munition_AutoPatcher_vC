@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Services.Implementations;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace LinkCacheHelperTests
@@ -29,15 +28,30 @@ namespace LinkCacheHelperTests
             }
         }
 
+        private class MockMutagenAccessor : IMutagenAccessor
+        {
+            public object? GetLinkCache(IResourcedMutagenEnvironment env) => null;
+            public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Array.Empty<object>();
+            public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
+            public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
+            public bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId)
+            {
+                pluginName = string.Empty;
+                formId = 0;
+                return false;
+            }
+            public string GetEditorId(object? record) => string.Empty;
+        }
+
         [Fact]
-        public void ConfirmCandidatesThroughReverseMap_CancelsDuringProcessing_ThrowsOperationCanceledException()
+        public void ReverseMapConfirmer_CancelsDuringProcessing_ThrowsOperationCanceledException()
         {
             // Arrange: prepare a candidate and a reverseMap with many slow entries so cancellation can occur while iterating
             var candidate = new OmodCandidate
             {
                 BaseWeapon = new FormKey { PluginName = "mod.esp", FormId = 1 }
             };
-            var results = new List<OmodCandidate> { candidate };
+            var candidates = new List<OmodCandidate> { candidate };
 
             var slow = new SlowRecord();
             var refs = new List<(object Record, string PropName, object PropValue)>();
@@ -49,18 +63,28 @@ namespace LinkCacheHelperTests
             };
 
             var cts = new CancellationTokenSource();
-            // Cancel immediately so the helper will observe the cancellation token early in the pass
+            // Cancel immediately so the confirmer will observe the cancellation token early in the pass
             cts.Cancel();
 
             var detector = new NoopDetector();
+            var mutagenAccessor = new MockMutagenAccessor();
+            var logger = NullLogger<ReverseMapConfirmer>.Instance;
+            var confirmer = new ReverseMapConfirmer(mutagenAccessor, logger);
 
-            // Use reflection to invoke the private static helper
-            var method = typeof(WeaponOmodExtractor).GetMethod("ConfirmCandidatesThroughReverseMap", BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.NotNull(method);
+            var context = new ConfirmationContext
+            {
+                ReverseMap = reverseMap,
+                ExcludedPlugins = new HashSet<string>(),
+                AllWeapons = new List<object>(),
+                AmmoMap = null,
+                Detector = detector,
+                Resolver = null,
+                LinkCache = null,
+                CancellationToken = cts.Token
+            };
 
-            // Act & Assert: invoking should result in a TargetInvocationException whose InnerException is OperationCanceledException
-            var ex = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, new object[] { results, reverseMap, new HashSet<string>(), new List<object>(), null, detector, null, null, cts.Token }));
-            Assert.IsType<OperationCanceledException>(ex.InnerException);
+            // Act & Assert: invoking should throw OperationCanceledException
+            Assert.Throws<OperationCanceledException>(() => confirmer.Confirm(candidates, context));
         }
     }
 }

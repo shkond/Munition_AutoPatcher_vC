@@ -198,6 +198,15 @@ jobs:
 
 以下はコードベースの現状に合わせて状態を更新しています。
 
+- [ ] PR #23 — Configure repository for GitHub Copilot Coding Agent
+   - 概要: リポジトリの Copilot 用ドキュメント・テンプレート・CI ワークフローを追加（`.github/copilot-instructions.md`, CI workflow, issue/PR テンプレート、`CONTRIBUTING.md` 等）。
+   - アクション:
+      1. 変更ファイルをレビュー（`.github/` 以下、`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`, `config/` 等）
+      2. Windows 環境でビルド & テストを実行して CI 設定を検証（WPF のため Windows ランナー推奨）
+      3. マージ後に `DECISIONS.md` に要約を追加してオンボーディング手順を明確化
+   - 推奨担当: @shkond
+   - リンク: https://github.com/shkond/Munition_AutoPatcher_vC/pull/23
+
 - [x] Mutagen統合: 実際のプラグイン読み込みと武器データ抽出 ✓ (実装済み: `WeaponsService` が Mutagen の `GameEnvironment` を使用しています)
 - [x] INI生成の実装: 実際のRobCo Patcher INIファイル生成 ✓ (実装済み: `RobCoIniGenerator`)
 - [x] ロードオーダー検証: 実際のプラグインロードオーダーの読み込みと検証 ✓
