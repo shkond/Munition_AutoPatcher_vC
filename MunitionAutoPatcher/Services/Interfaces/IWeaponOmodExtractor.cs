@@ -12,4 +12,9 @@ public interface IWeaponOmodExtractor
     /// Returns a list of OmodCandidate for inspection or CSV export.
     /// </summary>
     Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress = null);
+
+    /// <summary>
+    /// Extracts candidate OMOD/COBJ/CreatedWeapon entries with cancellation token support.
+    /// </summary>
+    Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress, CancellationToken cancellationToken);
 }
