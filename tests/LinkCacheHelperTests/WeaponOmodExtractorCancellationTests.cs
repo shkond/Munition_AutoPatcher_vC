@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Xunit;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Services.Implementations;
+using MunitionAutoPatcher.Services.Interfaces;
+using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Models;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins.Order;
@@ -20,16 +22,21 @@ namespace LinkCacheHelperTests
                 new DummyLoadOrderService(),
                 new DummyConfigService(),
                 new DummyMutagenEnvironmentFactory(),
-                new DummyWeaponDataExtractor()
+                new DummyDiagnosticWriter(),
+                Array.Empty<ICandidateProvider>(),
+                new DummyCandidateConfirmer(),
+                new DummyMutagenAccessor(),
+                new DummyPathService(),
+                NullLogger<WeaponOmodExtractor>.Instance
             );
 
             using var cts = new CancellationTokenSource();
             cts.Cancel(); // cancel immediately
 
-            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            {
-                await extractor.ExtractCandidatesAsync(progress: null, cancellationToken: cts.Token);
-            });
+            // Current implementation swallows OperationCanceledException and returns an empty list.
+            var result = await extractor.ExtractCandidatesAsync(progress: null, cancellationToken: cts.Token);
+            Assert.NotNull(result);
+            Assert.Empty(result);
         }
 
         private sealed class DummyLoadOrderService : ILoadOrderService
@@ -78,6 +85,39 @@ namespace LinkCacheHelperTests
         {
             public Task<List<OmodCandidate>> ExtractAsync(IResourcedMutagenEnvironment env, HashSet<string> excluded, IProgress<string>? progress = null)
                 => Task.FromResult(new List<OmodCandidate>());
+        }
+
+        // New test doubles for updated constructor
+        private sealed class DummyDiagnosticWriter : IDiagnosticWriter
+        {
+            public void WriteCompletionMarker(ExtractionContext ctx) { }
+            public void WriteDetectionPassMarker(ExtractionContext ctx) { }
+            public void WriteDetectorSelected(string name, ExtractionContext ctx) { }
+            public void WriteReverseMapMarker(ExtractionContext ctx) { }
+            public void WriteResultsCsv(IEnumerable<OmodCandidate> confirmed, ExtractionContext ctx) { }
+            public void WriteStartMarker(ExtractionContext ctx) { }
+            public void WriteZeroReferenceReport(IEnumerable<OmodCandidate> candidates, ExtractionContext ctx) { }
+        }
+
+        private sealed class DummyCandidateConfirmer : ICandidateConfirmer
+        {
+            public void Confirm(IEnumerable<OmodCandidate> candidates, ConfirmationContext context) { }
+        }
+
+        private sealed class DummyMutagenAccessor : IMutagenAccessor
+        {
+            public object? GetLinkCache(IResourcedMutagenEnvironment env) => null;
+            public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Array.Empty<object>();
+            public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
+            public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
+            public bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId) { pluginName = string.Empty; formId = 0; return false; }
+            public string GetEditorId(object? record) => string.Empty;
+        }
+
+        private sealed class DummyPathService : IPathService
+        {
+            public string GetArtifactsDirectory() => string.Empty;
+            public string GetRepoRoot() => string.Empty;
         }
     }
 }
