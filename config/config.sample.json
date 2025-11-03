@@ -1,0 +1,10 @@
+{
+  "gameDataPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Fallout 4\\Data",
+  "outputIniPath": "C:\\Users\\YourUsername\\Documents\\RobCoPatcher\\MunitionPatcher.ini",
+  "mappingStrategy": "NameBased",
+  "excludedPlugins": [
+    "Dank_ECO.esp"
+  ],
+  "logLevel": "Information",
+  "enableDiagnostics": false
+}

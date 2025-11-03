@@ -263,7 +263,7 @@ AsyncRelayCommand を使用して、長時間実行される処理（データ�
 - 注意: 現状リポジトリに `config/config.json` が含まれている状態です（環境固有のパスが記載されている可能性があります）。セキュリティと環境依存性を避けるため、通常はこのファイルをリポジトリで追跡しない運用を推奨します。
 - 既に `.gitignore` に `config/config.json` が記載されているため、追跡済みのファイルは `git rm --cached config/config.json` を実行してインデックスから外すことを推奨します（ファイルはローカルに残ります）。
 - なお、`ConfigService` はリポジトリローカルの `config/` 配下を優先して読み書きする実装になっているため、チームで共有するデフォルト値が必要な場合は `config/config.sample.json` のようなサンプルを用意して README に記載する運用が望ましいです。
-
+- **設定のセットアップ**: `config/config.sample.json` を `config/config.json` にコピーし、環境に合わせてパスを編集してください。詳細は `config/README.md` を参照してください。
 
 ## ライセンス
 
@@ -271,4 +271,8 @@ TBD
 
 ## 貢献
 
-TBD
+本プロジェクトへの貢献に興味をお持ちいただきありがとうございます！
+
+- 貢献ガイドラインは [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください
+- 行動規範は [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) を参照してください
+- バグ報告や機能リクエストは [Issues](https://github.com/shkond/Munition_AutoPatcher_vC/issues) から作成してください
