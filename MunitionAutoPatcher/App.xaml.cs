@@ -39,7 +39,8 @@ public partial class App : Application
                 services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
 
                 // Register extraction infrastructure
-                services.AddSingleton<IPathService, PathService>();
+                services.AddSingleton<IPathService>(provider => 
+                    new PathService(provider.GetRequiredService<IConfigService>()));
                 services.AddSingleton<IMutagenAccessor, MutagenAccessor>();
                 services.AddSingleton<IDiagnosticWriter, DiagnosticWriter>();
                 

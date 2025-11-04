@@ -16,7 +16,6 @@ namespace MunitionAutoPatcher.Services.Implementations;
 public class EspPatchService : IEspPatchService
 {
     private readonly IPathService _pathService;
-    private readonly IDiagnosticWriter _diagnosticWriter;
     private readonly ILogger<EspPatchService> _logger;
 
     public EspPatchService(
@@ -25,7 +24,8 @@ public class EspPatchService : IEspPatchService
         ILogger<EspPatchService> logger)
     {
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
-        _diagnosticWriter = diagnosticWriter ?? throw new ArgumentNullException(nameof(diagnosticWriter));
+        // diagnosticWriter is injected for potential future use (reserved for logging)
+        _ = diagnosticWriter ?? throw new ArgumentNullException(nameof(diagnosticWriter));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
