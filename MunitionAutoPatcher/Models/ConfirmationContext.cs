@@ -11,7 +11,7 @@ public sealed class ConfirmationContext
     /// <summary>
     /// Reverse-reference map: FormKey string -> list of records that reference it.
     /// </summary>
-    public Dictionary<string, List<(object Record, string PropName, object PropValue)>> ReverseMap { get; set; } 
+    public Dictionary<string, List<(object Record, string PropName, object PropValue)>> ReverseMap { get; set; }
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -37,12 +37,12 @@ public sealed class ConfirmationContext
     /// <summary>
     /// LinkResolver for resolving FormKeys.
     /// </summary>
-    public LinkResolver? Resolver { get; set; }
+    public ILinkResolver? Resolver { get; set; }
 
     /// <summary>
-    /// LinkCache for fallback resolution.
+    /// LinkResolver for fallback resolution (same as Resolver - kept for compatibility).
     /// </summary>
-    public object? LinkCache { get; set; }
+    public ILinkResolver? LinkCache { get; set; }
 
     /// <summary>
     /// Cancellation token for the confirmation operation.

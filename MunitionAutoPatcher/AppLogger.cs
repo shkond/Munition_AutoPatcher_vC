@@ -18,14 +18,14 @@ namespace MunitionAutoPatcher
         // This centralizes UI updates and keeps components decoupled.
         public static event Action<string>? LogMessagePublished;
 
-    // Prevent re-entrant forwarding storms. Use an interlocked flag process-wide.
-    private static int _isForwardingToUiFlag = 0;
+        // Prevent re-entrant forwarding storms. Use an interlocked flag process-wide.
+        private static int _isForwardingToUiFlag = 0;
 
-    // Background queue for async file writes to avoid synchronous disk I/O on caller threads.
-    private static readonly ConcurrentQueue<string> _fileWriteQueue = new();
-    private static readonly SemaphoreSlim _queueSignal = new(0);
-    private static readonly CancellationTokenSource _cts = new();
-    private static readonly Task _backgroundWriterTask;
+        // Background queue for async file writes to avoid synchronous disk I/O on caller threads.
+        private static readonly ConcurrentQueue<string> _fileWriteQueue = new();
+        private static readonly SemaphoreSlim _queueSignal = new(0);
+        private static readonly CancellationTokenSource _cts = new();
+        private static readonly Task _backgroundWriterTask;
 
         public static void Log(string message, Exception? ex = null)
         {
@@ -92,6 +92,27 @@ namespace MunitionAutoPatcher
 
         static AppLogger()
         {
+            // On startup, truncate/recreate the artifacts UI log so previous runs are cleared.
+            try
+            {
+                var repoRoot = RepoUtils.FindRepoRoot();
+                var artifactsDir = Path.Combine(repoRoot, "artifacts");
+                try { Directory.CreateDirectory(artifactsDir); } catch { }
+                var logPath = Path.Combine(artifactsDir, "munition_autopatcher_ui.log");
+                try
+                {
+                    // Create or overwrite the file with a run header
+                    using (var fs = new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                    using (var sw = new StreamWriter(fs, System.Text.Encoding.UTF8))
+                    {
+                        sw.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] munition_autopatcher_ui.log - new run (previous history cleared)");
+                        sw.Flush();
+                    }
+                }
+                catch { }
+            }
+            catch { }
+
             // Start background writer task
             _backgroundWriterTask = Task.Run(() => BackgroundWriterLoopAsync(_cts.Token));
 

@@ -39,7 +39,8 @@ Thumbs.db
 # Misc / Temp
 t
 }
- 
+
+ Munition_AutoPatcher_vC.code-workspace
 # Ignore temporary local mutagen clone and generated docs/tools
 /mutagen-tmp/
 

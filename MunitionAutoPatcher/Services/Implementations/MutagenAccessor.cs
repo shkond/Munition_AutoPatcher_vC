@@ -9,7 +9,7 @@ namespace MunitionAutoPatcher.Services.Implementations;
 public class MutagenAccessor : IMutagenAccessor
 {
     /// <inheritdoc/>
-    public object? GetLinkCache(IResourcedMutagenEnvironment env)
+    public ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env)
     {
         try
         {
@@ -28,9 +28,9 @@ public class MutagenAccessor : IMutagenAccessor
         try
         {
             var collections = env.EnumerateRecordCollections();
-            var targetCollection = collections.FirstOrDefault(t => 
+            var targetCollection = collections.FirstOrDefault(t =>
                 string.Equals(t.Name, collectionName, StringComparison.OrdinalIgnoreCase));
-            
+
             if (!targetCollection.Equals(default((string, IEnumerable<object>))) && targetCollection.Items != null)
             {
                 return targetCollection.Items;
@@ -40,7 +40,7 @@ public class MutagenAccessor : IMutagenAccessor
         {
             AppLogger.Log($"MutagenAccessor: failed to enumerate {collectionName} collection", ex);
         }
-        
+
         return Enumerable.Empty<object>();
     }
 
@@ -88,7 +88,7 @@ public class MutagenAccessor : IMutagenAccessor
     public string GetEditorId(object? record)
     {
         if (record == null) return string.Empty;
-        
+
         try
         {
             return record.GetType().GetProperty("EditorID")?.GetValue(record)?.ToString() ?? string.Empty;

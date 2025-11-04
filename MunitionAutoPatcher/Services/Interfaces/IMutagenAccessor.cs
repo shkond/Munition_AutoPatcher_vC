@@ -1,4 +1,5 @@
 using MunitionAutoPatcher.Services.Implementations;
+using MunitionAutoPatcher.Services.Interfaces;
 
 namespace MunitionAutoPatcher.Services.Interfaces;
 
@@ -8,9 +9,9 @@ namespace MunitionAutoPatcher.Services.Interfaces;
 public interface IMutagenAccessor
 {
     /// <summary>
-    /// Gets the LinkCache from the environment if available.
+    /// Gets an `ILinkResolver` (wrapper over LinkCache) from the environment if available.
     /// </summary>
-    object? GetLinkCache(IResourcedMutagenEnvironment env);
+    ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env);
 
     /// <summary>
     /// Enumerates record collections by name (e.g., "Weapon", "ObjectMod").

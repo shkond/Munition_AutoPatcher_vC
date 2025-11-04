@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using MunitionAutoPatcher;
+using System.Collections.Concurrent;
 
 namespace MunitionAutoPatcher.Utilities
 {
@@ -12,12 +13,39 @@ namespace MunitionAutoPatcher.Utilities
     /// </summary>
     public static class MutagenReflectionHelpers
     {
+        private static readonly ConcurrentDictionary<string, int> s_msgCounts = new();
+        private const int s_msgSuppressThreshold = 3;
+
+        private static void LogOnce(string key, string message, Exception? ex = null)
+        {
+            try
+            {
+                var newCount = s_msgCounts.AddOrUpdate(key, 1, (_, old) => old + 1);
+                if (newCount <= s_msgSuppressThreshold)
+                {
+                    AppLogger.Log(message, ex);
+                }
+                else if (newCount == s_msgSuppressThreshold + 1)
+                {
+                    AppLogger.Log($"{message} (further identical messages will be suppressed)");
+                }
+            }
+            catch { }
+        }
+
         public static bool TryGetFormKey(object? record, out object? formKey)
         {
             formKey = null;
             if (record == null) return false;
             try
             {
+                // If the object is already a FormKey, just return it.
+                if (record.GetType().FullName?.Contains("FormKey") == true)
+                {
+                    formKey = record;
+                    return true;
+                }
+
                 var prop = record.GetType().GetProperty("FormKey");
                 if (prop == null)
                 {
@@ -185,25 +213,25 @@ namespace MunitionAutoPatcher.Utilities
             {
                 if (record == null)
                 {
-                    AppLogger.Log("MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: record is null");
+                    LogOnce("mrh_record_null", "MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: record is null");
                     return false;
                 }
-                
+
                 if (!TryGetFormKey(record, out var fk))
                 {
-                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get FormKey from record type {record.GetType().Name}");
+                    LogOnce($"mrh_no_formkey_{record.GetType().Name}", $"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get FormKey from record type {record.GetType().Name}");
                     return false;
                 }
-                
+
                 if (fk == null)
                 {
-                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: FormKey is null for record type {record.GetType().Name}");
+                    LogOnce($"mrh_formkey_null_{record.GetType().Name}", $"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: FormKey is null for record type {record.GetType().Name}");
                     return false;
                 }
-                
+
                 if (!TryGetModKeyFromFormKey(fk, out var mk))
                 {
-                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get ModKey from FormKey (FormKey type: {fk.GetType().Name})");
+                    LogOnce($"mrh_no_modkey_{fk.GetType().Name}", $"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get ModKey from FormKey (FormKey type: {fk.GetType().Name})");
                     // Fallback: try parsing from ToString()
                     if (TryParseFormKeyString(fk, out plugin, out id))
                     {
@@ -211,31 +239,32 @@ namespace MunitionAutoPatcher.Utilities
                     }
                     return false;
                 }
-                
+
                 if (!TryGetFileNameFromModKey(mk, out plugin))
                 {
-                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get FileName from ModKey");
+                    LogOnce("mrh_no_filename", "MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get FileName from ModKey");
                     plugin = string.Empty;
                 }
-                
+
                 if (!TryGetIdFromFormKey(fk, out id))
                 {
-                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get ID from FormKey");
+                    LogOnce("mrh_no_id", "MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get ID from FormKey");
                 }
-                
+
                 bool success = !string.IsNullOrEmpty(plugin) && id != 0u;
                 if (!success)
                 {
                     string fkStr = string.Empty;
                     try { fkStr = fk?.ToString() ?? string.Empty; } catch { fkStr = string.Empty; }
-                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: validation failed - plugin='{plugin ?? "(null)"}', id={id:X8}, fk='{fkStr}'");
+                    // Use a constant key to avoid per-FormKey spam; still emit details in the first few occurrences.
+                    LogOnce("mrh_validation_failed", $"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: validation failed - plugin='{plugin ?? "(null)"}', id={id:X8}, fk='{fkStr}'");
                 }
-                
+
                 return success;
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: exception occurred", ex);
+                LogOnce("mrh_exception", "MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: exception occurred", ex);
                 plugin = string.Empty;
                 id = 0u;
                 return false;
@@ -304,7 +333,7 @@ namespace MunitionAutoPatcher.Utilities
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"MutagenReflectionHelpers: TryGetPropertyValue failed for {propName}", ex);
+                LogOnce($"mrh_trygetprop_{propName}", $"MutagenReflectionHelpers: TryGetPropertyValue failed for {propName}", ex);
                 value = default;
                 return false;
             }
@@ -333,7 +362,7 @@ namespace MunitionAutoPatcher.Utilities
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"MutagenReflectionHelpers: TryInvokeMethod failed for {methodName}", ex);
+                LogOnce($"mrh_tryinvokemethod_{methodName}", $"MutagenReflectionHelpers: TryInvokeMethod failed for {methodName}", ex);
                 result = null;
                 return false;
             }

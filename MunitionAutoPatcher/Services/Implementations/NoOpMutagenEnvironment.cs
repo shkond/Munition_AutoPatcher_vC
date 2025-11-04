@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using MunitionAutoPatcher.Services.Interfaces;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -17,7 +18,7 @@ public class NoOpMutagenEnvironment : IMutagenEnvironment, IDisposable
         yield break;
     }
 
-    public object? GetLinkCache() => null;
+    public ILinkResolver? GetLinkCache() => null;
 
     public Noggog.DirectoryPath? GetDataFolderPath() => null;
 
