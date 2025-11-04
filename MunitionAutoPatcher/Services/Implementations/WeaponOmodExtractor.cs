@@ -71,7 +71,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             }
 
             using var environment = _mutagenEnvironmentFactory.Create();
-            
+
             // Build extraction context
             var context = await BuildExtractionContextAsync(environment, progress, cancellationToken);
 
@@ -91,12 +91,12 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 foreach (var provider in _providers)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    
+
                     try
                     {
                         var providerCandidates = provider.GetCandidates(context);
                         candidates.AddRange(providerCandidates);
-                        _logger.LogInformation("Provider {ProviderType} found {Count} candidates", 
+                        _logger.LogInformation("Provider {ProviderType} found {Count} candidates",
                             provider.GetType().Name, providerCandidates.Count());
                     }
                     catch (OperationCanceledException)
@@ -105,7 +105,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Provider {ProviderType} failed (continuing with other providers)", 
+                        _logger.LogError(ex, "Provider {ProviderType} failed (continuing with other providers)",
                             provider.GetType().Name);
                     }
                 }
@@ -132,7 +132,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 var builder = new ReverseMapBuilder(mapEnv);
                 reverseMap = builder.Build(context.ExcludedPlugins);
                 _logger.LogInformation("Built reverse-reference map with {Count} keys", reverseMap.Count);
-                
+
                 try
                 {
                     _diagnosticWriter.WriteReverseMapMarker(context);
@@ -155,7 +155,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 var mutAsm = typeof(Mutagen.Bethesda.Environments.GameEnvironment).Assembly.GetName();
                 detector = DetectorFactory.GetDetector(mutAsm);
                 _logger.LogInformation("Selected detector: {DetectorName}", detector?.Name ?? "None");
-                
+
                 if (detector != null)
                 {
                     try
@@ -389,15 +389,15 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     }
 
     private ConfirmationContext BuildConfirmationContext(
-        Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap,
-        HashSet<string> excludedPlugins,
-        List<object> allWeapons,
-        Dictionary<string, object> ammoMap,
-        IAmmunitionChangeDetector? detector,
-        object? linkCache,
-        CancellationToken cancellationToken)
+    Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap,
+    HashSet<string> excludedPlugins,
+    List<object> allWeapons,
+    Dictionary<string, object> ammoMap,
+    IAmmunitionChangeDetector? detector,
+    MunitionAutoPatcher.Services.Interfaces.ILinkResolver? linkCache,
+    CancellationToken cancellationToken)
     {
-        LinkResolver? resolver = linkCache != null ? new LinkResolver(linkCache) : null;
+        var resolver = (ILinkResolver?)linkCache;
 
         return new ConfirmationContext
         {
@@ -407,7 +407,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             AmmoMap = ammoMap,
             Detector = detector,
             Resolver = resolver,
-            LinkCache = linkCache,
+            LinkCache = resolver,
             CancellationToken = cancellationToken
         };
     }
@@ -489,10 +489,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
                     var weaponKey = $"{fileName}:{id:X8}";
                     var editorId = _mutagenAccessor.GetEditorId(weapon);
-                    
+
                     int refCount = 0;
                     var srcPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    
+
                     if (reverseMap.TryGetValue(weaponKey, out var refs))
                     {
                         refCount = refs.Count;

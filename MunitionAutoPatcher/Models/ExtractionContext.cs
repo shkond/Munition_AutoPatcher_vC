@@ -13,9 +13,9 @@ public sealed class ExtractionContext
     public IResourcedMutagenEnvironment? Environment { get; set; }
 
     /// <summary>
-    /// LinkCache for resolving FormKeys if available.
+    /// LinkResolver for resolving FormKeys if available.
     /// </summary>
-    public object? LinkCache { get; set; }
+    public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? LinkCache { get; set; }
 
     /// <summary>
     /// Set of plugin names to exclude from extraction.

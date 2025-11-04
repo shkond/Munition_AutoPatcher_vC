@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Noggog;
+using MunitionAutoPatcher.Services.Interfaces;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -29,7 +30,7 @@ public sealed class ResourcedMutagenEnvironment : IResourcedMutagenEnvironment
     public IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections()
         => _env.EnumerateRecordCollections();
 
-    public object? GetLinkCache() => _env.GetLinkCache();
+    public ILinkResolver? GetLinkCache() => _env.GetLinkCache();
 
     public DirectoryPath? GetDataFolderPath() => _env.GetDataFolderPath();
 

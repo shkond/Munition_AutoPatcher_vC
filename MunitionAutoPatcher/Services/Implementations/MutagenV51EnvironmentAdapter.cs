@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Environments;
+using MunitionAutoPatcher.Services.Interfaces;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -82,9 +83,14 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
         }
     }
 
-    public object? GetLinkCache()
+    public ILinkResolver? GetLinkCache()
     {
-        try { return _env.GetType().GetProperty("LinkCache")?.GetValue(_env); }
+        try
+        {
+            var real = _env.GetType().GetProperty("LinkCache")?.GetValue(_env);
+            if (real == null) return null;
+            return new LinkResolver(real);
+        }
         catch (Exception ex) { AppLogger.Log("MutagenV51EnvironmentAdapter: failed to obtain LinkCache", ex); return null; }
     }
 

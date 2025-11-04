@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Mutagen.Bethesda.Installs;
+using MunitionAutoPatcher.Services.Interfaces;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -21,9 +22,9 @@ public interface IMutagenEnvironment
     IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections();
 
     /// <summary>
-    /// If available, return the LinkCache instance (unknown/dynamic type) else null.
+    /// If available, return a link resolver (wrapper over LinkCache) else null.
     /// </summary>
-    object? GetLinkCache();
+    ILinkResolver? GetLinkCache();
 
     /// <summary>
     /// If available, return the environment's data folder path (DirectoryPath) used by Mutagen.

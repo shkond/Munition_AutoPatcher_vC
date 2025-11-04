@@ -20,6 +20,9 @@ namespace MunitionAutoPatcher.Services.Implementations
         private static readonly ConcurrentDictionary<Type, MethodInfo?[]> s_linkCacheTryResolveMethods = new();
         private static readonly ConcurrentDictionary<Type, MethodInfo?> s_linkCacheResolveByKey = new();
         private static readonly System.Threading.AsyncLocal<HashSet<string>?> s_currentResolutionKeys = new();
+        private static readonly ConcurrentDictionary<string, int> s_errorCounts = new();
+        private const int s_errorSuppressThreshold = 3;
+        private static int s_singleArgIncompatLogged = 0;
 
         // Attempts multiple strategies to resolve a link-like value against a Mutagen LinkCache.
         // Returns the resolved object or null if not resolved.
@@ -82,14 +85,26 @@ namespace MunitionAutoPatcher.Services.Implementations
                 {
                     try
                     {
-                        var args = new object?[] { linkCache, null };
-                        var okObj = inst.Invoke(linkLike, args);
-                        if (okObj is bool ok && ok && args[1] != null)
-                            return args[1];
+                        if (inst.ContainsGenericParameters) // avoid invoking open generic instance methods
+                        {
+                            AppLogger.Log("LinkCacheHelper: skipping instance TryResolve - method contains generic parameters");
+                        }
+                        else
+                        {
+                            var args = new object?[] { linkCache, null };
+                            var okObj = inst.Invoke(linkLike, args);
+                            if (okObj is bool ok && ok && args[1] != null)
+                                return args[1];
+                        }
+                    }
+                    catch (TargetInvocationException tex)
+                    {
+                        var inner = tex.InnerException?.ToString() ?? tex.ToString();
+                        LogErrorOnce("instance_tryresolve_targetinvocation", $"LinkCacheHelper: instance TryResolve invocation TargetInvocationException: {inner}", tex);
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log($"LinkCacheHelper: instance TryResolve invocation failed: {ex.Message}", ex);
+                        LogErrorOnce("instance_tryresolve", $"LinkCacheHelper: instance TryResolve invocation failed: {ex.Message}", ex);
                     }
                 }
             }
@@ -112,7 +127,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                 }
 
                 try { MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(linkLike, "FormKey", out var formKeyObj); return formKeyObj; }
-                catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: helper-based FormKey extraction failed: {ex.Message}", ex); return null; }
+                catch (Exception ex) { LogErrorOnce("extract_formkey_helper_failed", $"LinkCacheHelper: helper-based FormKey extraction failed: {ex.Message}", ex); return null; }
             }
             catch (Exception ex)
             {
@@ -131,7 +146,15 @@ namespace MunitionAutoPatcher.Services.Implementations
                 {
                     if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(formKeyObj, out var plugin, out var id))
                     {
-                        keyString = $"{plugin}:{id:X8}";
+                        // Only treat as a valid identifier if plugin is non-empty and id is non-zero.
+                        if (!string.IsNullOrWhiteSpace(plugin) && id != 0u)
+                        {
+                            keyString = $"{plugin}:{id:X8}";
+                        }
+                        else
+                        {
+                            LogErrorOnce("formkey_invalid_pluginid", $"LinkCacheHelper: FormKey has empty plugin or zero id - plugin='{plugin}', id={id:X8}");
+                        }
                     }
                     else
                     {
@@ -146,36 +169,14 @@ namespace MunitionAutoPatcher.Services.Implementations
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log($"LinkCacheHelper: Failed to construct string key from FormKey object: {ex.Message}", ex);
+                    LogErrorOnce("formkey_string_construct_failed", $"LinkCacheHelper: Failed to construct string key from FormKey object: {ex.Message}", ex);
                     // continue; we'll attempt other resolve strategies
                 }
 
                 var lcType = linkCache.GetType();
 
-                // 2. Find a Resolve(string) method on the link cache and try it first if we have a string key.
-                if (!string.IsNullOrEmpty(keyString))
-                {
-                    var resolve = s_linkCacheResolveByKey.GetOrAdd(lcType, lc =>
-                        lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                          .FirstOrDefault(m =>
-                              string.Equals(m.Name, "Resolve", StringComparison.Ordinal) &&
-                              m.GetParameters().Length == 1 &&
-                              m.GetParameters()[0].ParameterType == typeof(string))
-                    );
-
-                    if (resolve != null)
-                    {
-                        try
-                        {
-                            var rr = resolve.Invoke(linkCache, new object?[] { keyString });
-                            if (rr != null) return rr;
-                        }
-                        catch (Exception ex)
-                        {
-                            AppLogger.Log($"LinkCacheHelper: linkCache.Resolve(string key) invocation failed: {ex.Message}", ex);
-                        }
-                    }
-                }
+                // 2. Disabled: Do not call Resolve(string) for FormKey-derived identifiers (expects EditorID).
+                // Intentionally skip attempting linkCache.Resolve(string) with plugin:ID or ToString()-based values.
 
                 // 3. If Resolve(string) didn't return anything (or we couldn't form a string key), try TryResolve(formKey, out object) variants.
                 try
@@ -201,40 +202,29 @@ namespace MunitionAutoPatcher.Services.Implementations
                                 try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}", ex); continue; }
                             }
 
-                            var p0 = invoke.GetParameters()![0]!.ParameterType;
+                            var paramInfos = invoke.GetParameters();
+                            if (paramInfos == null || paramInfos.Length < 1 || paramInfos[0] == null)
+                                continue;
+                            var p0 = paramInfos[0].ParameterType;
                             var fkActual = formKeyObj.GetType();
                             bool compatible = p0 == fkActual || p0.IsAssignableFrom(fkActual) || fkActual.IsAssignableFrom(p0);
                             if (!compatible)
                             {
-                                try
-                                {
-                                    AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) type mismatch - LinkCache={linkCache.GetType().FullName}, MethodParam={p0.FullName}, FormKeyType={fkActual.FullName}");
-                                }
-                                catch { }
-
-                                // If the method expects a string, attempt conversion and invoke the string-based overload instead
-                                if (p0 == typeof(string))
+                                // Suppress expected noise when method expects string
+                                if (p0 != typeof(string))
                                 {
                                     try
                                     {
-                                        if (TryConvertFormKeyToIdentifier(formKeyObj, out var conv))
-                                        {
-                                            // Try using Resolve(string) if present
-                                            var resolveStr = s_linkCacheResolveByKey.GetOrAdd(linkCache.GetType(), lc =>
-                                                lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                                                  .FirstOrDefault(m => string.Equals(m.Name, "Resolve", StringComparison.Ordinal) && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType == typeof(string))
-                                            );
-                                            if (resolveStr != null)
-                                            {
-                                                var rr2 = resolveStr.Invoke(linkCache, new object?[] { conv });
-                                                if (rr2 != null) return rr2;
-                                            }
-                                        }
+                                        LogErrorOnce("tryresolve_formkey_typemismatch", $"LinkCacheHelper: TryResolve(formKey) type mismatch - LinkCache={linkCache.GetType().FullName}, MethodParam={p0.FullName}, FormKeyType={fkActual.FullName}");
                                     }
-                                    catch (Exception ex)
-                                    {
-                                        AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) attempted string conversion but invocation failed: {ex.Message}", ex);
-                                    }
+                                    catch { }
+                                }
+
+                                // If the method expects a string, skip string-based fallback for FormKey.
+                                if (p0 == typeof(string))
+                                {
+                                    // Avoid calling Resolve(string) with FormKey-derived identifiers (expects EditorID).
+                                    continue;
                                 }
 
                                 continue;
@@ -247,18 +237,18 @@ namespace MunitionAutoPatcher.Services.Implementations
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) candidate invocation failed: {ex.Message}", ex);
+                            LogErrorOnce("tryresolve_formkey_candidate_failed", $"LinkCacheHelper: TryResolve(formKey) candidate invocation failed: {ex.Message}", ex);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log($"LinkCacheHelper: error while scanning TryResolve(formKey) candidates: {ex.Message}", ex);
+                    LogErrorOnce("tryresolve_formkey_scan_failed", $"LinkCacheHelper: error while scanning TryResolve(formkey) candidates: {ex.Message}", ex);
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"LinkCacheHelper: FormKey-based resolution failed: {ex.Message}", ex);
+                LogErrorOnce("formkey_based_resolution_failed", $"LinkCacheHelper: FormKey-based resolution failed: {ex.Message}", ex);
             }
             return null;
         }
@@ -285,42 +275,27 @@ namespace MunitionAutoPatcher.Services.Implementations
                             if (!linkType.IsGenericType) continue;
                             var genArg = linkType.GetGenericArguments().FirstOrDefault();
                             if (genArg == null) continue;
-                            try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(linkLike): {ex.Message}", ex); continue; }
+                            try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { LogErrorOnce("makegeneric_tryresolve_linklike_failed", $"LinkCacheHelper: MakeGenericMethod failed for TryResolve(linkLike): {ex.Message}", ex); continue; }
                         }
-
                         var p0 = invoke.GetParameters()![0]!.ParameterType;
                         var linkTypeActual = linkLike.GetType();
                         bool compatible = p0 == linkTypeActual || p0.IsAssignableFrom(linkTypeActual) || linkTypeActual.IsAssignableFrom(p0);
                         if (!compatible)
                         {
-                            try
-                            {
-                                AppLogger.Log($"LinkCacheHelper: TryResolve(linkLike) type mismatch - LinkCache={linkCache.GetType().FullName}, MethodParam={p0.FullName}, LinkLikeType={linkTypeActual.FullName}");
-                            }
-                            catch { }
-
-                            // If the method expects a string, attempt conversion from linkLike to identifier
-                            if (p0 == typeof(string))
+                            // Suppress expected noise when method expects string
+                            if (p0 != typeof(string))
                             {
                                 try
                                 {
-                                    if (TryConvertFormKeyToIdentifier(linkLike, out var conv))
-                                    {
-                                        var resolveStr = s_linkCacheResolveByKey.GetOrAdd(linkCache.GetType(), lc =>
-                                            lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                                              .FirstOrDefault(m => string.Equals(m.Name, "Resolve", StringComparison.Ordinal) && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType == typeof(string))
-                                        );
-                                        if (resolveStr != null)
-                                        {
-                                            var rr2 = resolveStr.Invoke(linkCache, new object?[] { conv });
-                                            if (rr2 != null) return rr2;
-                                        }
-                                    }
+                                    LogErrorOnce("tryresolve_linklike_typemismatch", $"LinkCacheHelper: TryResolve(linkLike) type mismatch - LinkCache={linkCache.GetType().FullName}, MethodParam={p0.FullName}, LinkLikeType={linkTypeActual.FullName}");
                                 }
-                                catch (Exception ex)
-                                {
-                                    AppLogger.Log($"LinkCacheHelper: TryResolve(linkLike) attempted string conversion but invocation failed: {ex.Message}", ex);
-                                }
+                                catch { }
+                            }
+
+                            // If the method expects a string, skip string-based fallback for LinkLike as well.
+                            if (p0 == typeof(string))
+                            {
+                                continue;
                             }
 
                             continue;
@@ -333,13 +308,13 @@ namespace MunitionAutoPatcher.Services.Implementations
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log($"LinkCacheHelper: TryResolve(linkLike) candidate invocation failed: {ex.Message}", ex);
+                        LogErrorOnce("tryresolve_linklike_candidate_failed", $"LinkCacheHelper: TryResolve(linkLike) candidate invocation failed: {ex.Message}", ex);
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("LinkCacheHelper: unexpected error in TryResolve fallback loop", ex);
+                LogErrorOnce("tryresolve_linklike_fallback_failed", "LinkCacheHelper: unexpected error in TryResolve fallback loop", ex);
             }
             return null;
         }
@@ -360,47 +335,65 @@ namespace MunitionAutoPatcher.Services.Implementations
                         var pType = m.GetParameters()[0].ParameterType;
                         var arg = formKeyObj ?? linkLike;
                         if (arg == null) continue;
+
+                        // If parameter type is not compatible, attempt conversion when appropriate
                         if (!pType.IsAssignableFrom(arg.GetType()) && pType != typeof(object))
                         {
-                            try
-                            {
-                                AppLogger.Log($"LinkCacheHelper: single-arg fallback incompatible - LinkCacheMethod={m.Name}, ParamType={pType.FullName}, ArgType={arg.GetType().FullName}");
-                            }
-                            catch { }
-
-                            // If the parameter expects a string, try converting the arg to an identifier and invoke with that
-                            if (pType == typeof(string))
+                            if (pType != typeof(string))
                             {
                                 try
                                 {
-                                    if (TryConvertFormKeyToIdentifier(arg, out var conv))
+                                    if (System.Threading.Interlocked.Exchange(ref s_singleArgIncompatLogged, 1) == 0)
                                     {
-                                        var r2 = m.Invoke(linkCache, new object?[] { conv });
-                                        if (r2 != null && !(r2 is bool)) return r2;
+                                        AppLogger.Log($"LinkCacheHelper: single-arg fallback incompatible - LinkCacheMethod={m.Name}, ParamType={pType.FullName}, ArgType={arg.GetType().FullName} (further identical messages will be suppressed)");
                                     }
                                 }
-                                catch (Exception ex)
-                                {
-                                    AppLogger.Log($"LinkCacheHelper: single-arg fallback attempted string conversion but invocation failed: {ex.Message}", ex);
-                                }
+                                catch { }
                             }
 
+                            if (pType == typeof(string))
+                            {
+                                // Do not attempt string-based single-arg fallbacks for FormKey/FormLink inputs.
+                                continue;
+                            }
+
+                            // not compatible -> continue to next candidate
                             continue;
                         }
-                        var r = m.Invoke(linkCache, new object?[] { arg });
-                        if (r == null) continue;
-                        if (r is bool) continue; // ignore sentinel bools like Equals
-                        return r;
+
+                        // Parameter is compatible, attempt invocation
+                        try
+                        {
+                            var r = m.Invoke(linkCache, new object?[] { arg });
+                            if (r != null && !(r is bool)) return r;
+                        }
+                        catch (TargetInvocationException tex)
+                        {
+                            var inner = tex.InnerException;
+                            var innerTypeName = inner?.GetType().FullName ?? string.Empty;
+                            if (innerTypeName.Contains("Mutagen.Bethesda.Plugins.Exceptions.MissingRecordException"))
+                            {
+                                LogErrorOnce("missing_record_resolve", $"LinkCacheHelper: single-arg invocation referenced record not found: {inner?.Message ?? tex.Message}");
+                            }
+                            else
+                            {
+                                LogErrorOnce("singlearg_targetinvocation", $"LinkCacheHelper: single-arg invocation TargetInvocationException: {inner?.Message ?? tex.Message}", tex);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log($"LinkCacheHelper: fallback single-arg method invocation failed: {ex.Message}", ex);
+                        }
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log($"LinkCacheHelper: fallback single-arg method invocation failed: {ex.Message}", ex);
+                        LogErrorOnce("singlearg_candidate_processing_failed", $"LinkCacheHelper: single-arg candidate processing failed: {ex.Message}", ex);
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("LinkCacheHelper: unexpected error in fallback single-arg discovery", ex);
+                LogErrorOnce("singlearg_discovery_failed", "LinkCacheHelper: unexpected error in fallback single-arg discovery", ex);
             }
             return null;
         }
@@ -479,7 +472,8 @@ namespace MunitionAutoPatcher.Services.Implementations
             try
             {
                 if (obj == null) return;
-                var dir = Path.Combine(Environment.CurrentDirectory ?? ".", "artifacts", "linkcache_conversion_dumps");
+                var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+                var dir = Path.Combine(repoRoot ?? Environment.CurrentDirectory ?? ".", "artifacts", "linkcache_conversion_dumps");
                 Directory.CreateDirectory(dir);
                 var now = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
                 var hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
@@ -524,6 +518,34 @@ namespace MunitionAutoPatcher.Services.Implementations
             {
                 AppLogger.Log($"LinkCacheHelper: failed to write conversion diagnostic dump: {ex.Message}", ex);
             }
+        }
+
+        private static bool IsMissingRecordException(Exception? ex)
+        {
+            if (ex == null) return false;
+            try
+            {
+                var tn = ex.GetType().FullName ?? string.Empty;
+                return tn.Contains("Mutagen.Bethesda.Plugins.Exceptions.MissingRecordException");
+            }
+            catch { return false; }
+        }
+
+        private static void LogErrorOnce(string key, string message, Exception? ex = null)
+        {
+            try
+            {
+                var newCount = s_errorCounts.AddOrUpdate(key, 1, (_, old) => old + 1);
+                if (newCount <= s_errorSuppressThreshold)
+                {
+                    AppLogger.Log(message, ex);
+                }
+                else if (newCount == s_errorSuppressThreshold + 1)
+                {
+                    AppLogger.Log($"{message} (further identical errors will be suppressed)");
+                }
+            }
+            catch { }
         }
 
         // LinkCacheHelper previously had an internal Log helper; use shared AppLogger instead.

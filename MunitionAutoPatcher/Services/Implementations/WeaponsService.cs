@@ -318,36 +318,29 @@ public class WeaponsService : IWeaponsService
                             AppLogger.Log($"WeaponsService: translation dump error: {ex.Message}", ex);
                         }
 
-                        // Try to resolve ammunition via the record's FormLink using adapter-provided LinkCache
+                        // Try to resolve ammunition via the record's FormLink using adapter-provided ILinkResolver
                         try
                         {
-                            var linkCache = envRes.GetLinkCache();
-                            MunitionAutoPatcher.Services.Implementations.LinkResolver? resolver = linkCache != null ? new MunitionAutoPatcher.Services.Implementations.LinkResolver(linkCache) : null;
+                            var resolver = envRes.GetLinkCache();
                             object? ammoResolved = null;
                             if (resolver != null)
                             {
-                                try { if (ammoObj != null) resolver.TryResolve(ammoObj, out ammoResolved); else ammoResolved = null; } catch (Exception ex) { AppLogger.Log($"WeaponsService: resolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
+                                try
+                                {
+                                    if (ammoObj != null) resolver.TryResolve(ammoObj, out ammoResolved);
+                                }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log($"WeaponsService: resolver.TryResolve failed: {ex.Message}", ex);
+                                    ammoResolved = null;
+                                }
                             }
                             else
                             {
-                                try
-                                {
-                                    if (linkCache != null)
-                                    {
-                                        try
-                                        {
-                                            var tmpResolver = new MunitionAutoPatcher.Services.Implementations.LinkResolver(linkCache);
-                                            try { if (ammoObj != null) tmpResolver.TryResolve(ammoObj, out ammoResolved); else ammoResolved = null; } catch (Exception ex) { AppLogger.Log($"WeaponsService: tmpResolver.TryResolve failed: {ex.Message}", ex); ammoResolved = null; }
-                                        }
-                                        catch (Exception ex) { AppLogger.Log($"WeaponsService: failed to create temporary LinkResolver: {ex.Message}", ex); ammoResolved = null; }
-                                    }
-                                    else
-                                    {
-                                        try { ammoResolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(ammoObj, linkCache); } catch (Exception ex) { AppLogger.Log($"WeaponsService: LinkCache fallback failed: {ex.Message}", ex); ammoResolved = null; }
-                                    }
-                                }
-                                catch (Exception ex) { AppLogger.Log($"WeaponsService: unexpected resolution error: {ex.Message}", ex); ammoResolved = null; }
+                                // No resolver available: best-effort read FormKey from ammoObj
+                                try { ammoResolved = null; } catch { ammoResolved = null; }
                             }
+
 
                             if (ammoResolved != null)
                             {
