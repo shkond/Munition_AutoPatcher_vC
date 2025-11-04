@@ -3,6 +3,9 @@ using System.Linq;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Windows;
+using System.IO;
+using System.Text.Json;
+using System.Collections.Generic;
 
 // Combined resolver: tries instance TryResolve on the link-like object, then FormKey->Resolve/TryResolve,
 // then falls back to LinkCache.TryResolve variants (including generic TryResolve<T>) with caching.
@@ -122,21 +125,29 @@ namespace MunitionAutoPatcher.Services.Implementations
         {
             try
             {
-                // 1. Convert the formKeyObj to a string representation.
+                // 1. Convert the formKeyObj to a string representation using the centralized helper.
                 string? keyString = null;
                 try
                 {
-                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(formKeyObj, "ModKey", out var modKey) && modKey != null &&
-                        MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(modKey, "FileName", out var fileName) && fileName is string fn &&
-                        MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<uint>(formKeyObj, "ID", out var id))
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(formKeyObj, out var plugin, out var id))
                     {
-                        keyString = $"{fn}:{id:X8}";
+                        keyString = $"{plugin}:{id:X8}";
+                    }
+                    else
+                    {
+                        // Fallback: try the older manual property extraction as a last resort
+                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(formKeyObj, "ModKey", out var modKey) && modKey != null &&
+                            MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<object>(modKey, "FileName", out var fileName) && fileName is string fn &&
+                            MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<uint>(formKeyObj, "ID", out var id2))
+                        {
+                            keyString = $"{fn}:{id2:X8}";
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     AppLogger.Log($"LinkCacheHelper: Failed to construct string key from FormKey object: {ex.Message}", ex);
-                    return null;
+                    // continue; we'll attempt other resolve strategies
                 }
 
                 var lcType = linkCache.GetType();
@@ -193,7 +204,41 @@ namespace MunitionAutoPatcher.Services.Implementations
                             var p0 = invoke.GetParameters()![0]!.ParameterType;
                             var fkActual = formKeyObj.GetType();
                             bool compatible = p0 == fkActual || p0.IsAssignableFrom(fkActual) || fkActual.IsAssignableFrom(p0);
-                            if (!compatible) continue;
+                            if (!compatible)
+                            {
+                                try
+                                {
+                                    AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) type mismatch - LinkCache={linkCache.GetType().FullName}, MethodParam={p0.FullName}, FormKeyType={fkActual.FullName}");
+                                }
+                                catch { }
+
+                                // If the method expects a string, attempt conversion and invoke the string-based overload instead
+                                if (p0 == typeof(string))
+                                {
+                                    try
+                                    {
+                                        if (TryConvertFormKeyToIdentifier(formKeyObj, out var conv))
+                                        {
+                                            // Try using Resolve(string) if present
+                                            var resolveStr = s_linkCacheResolveByKey.GetOrAdd(linkCache.GetType(), lc =>
+                                                lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                                                  .FirstOrDefault(m => string.Equals(m.Name, "Resolve", StringComparison.Ordinal) && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType == typeof(string))
+                                            );
+                                            if (resolveStr != null)
+                                            {
+                                                var rr2 = resolveStr.Invoke(linkCache, new object?[] { conv });
+                                                if (rr2 != null) return rr2;
+                                            }
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        AppLogger.Log($"LinkCacheHelper: TryResolve(formKey) attempted string conversion but invocation failed: {ex.Message}", ex);
+                                    }
+                                }
+
+                                continue;
+                            }
 
                             var args = new object?[] { formKeyObj, null };
                             var okObj = invoke.Invoke(linkCache, args);
@@ -246,7 +291,40 @@ namespace MunitionAutoPatcher.Services.Implementations
                         var p0 = invoke.GetParameters()![0]!.ParameterType;
                         var linkTypeActual = linkLike.GetType();
                         bool compatible = p0 == linkTypeActual || p0.IsAssignableFrom(linkTypeActual) || linkTypeActual.IsAssignableFrom(p0);
-                        if (!compatible) continue;
+                        if (!compatible)
+                        {
+                            try
+                            {
+                                AppLogger.Log($"LinkCacheHelper: TryResolve(linkLike) type mismatch - LinkCache={linkCache.GetType().FullName}, MethodParam={p0.FullName}, LinkLikeType={linkTypeActual.FullName}");
+                            }
+                            catch { }
+
+                            // If the method expects a string, attempt conversion from linkLike to identifier
+                            if (p0 == typeof(string))
+                            {
+                                try
+                                {
+                                    if (TryConvertFormKeyToIdentifier(linkLike, out var conv))
+                                    {
+                                        var resolveStr = s_linkCacheResolveByKey.GetOrAdd(linkCache.GetType(), lc =>
+                                            lc.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                                              .FirstOrDefault(m => string.Equals(m.Name, "Resolve", StringComparison.Ordinal) && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType == typeof(string))
+                                        );
+                                        if (resolveStr != null)
+                                        {
+                                            var rr2 = resolveStr.Invoke(linkCache, new object?[] { conv });
+                                            if (rr2 != null) return rr2;
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log($"LinkCacheHelper: TryResolve(linkLike) attempted string conversion but invocation failed: {ex.Message}", ex);
+                                }
+                            }
+
+                            continue;
+                        }
 
                         var args = new object?[] { linkLike, null };
                         var okObj = invoke.Invoke(linkCache, args);
@@ -283,7 +361,32 @@ namespace MunitionAutoPatcher.Services.Implementations
                         var arg = formKeyObj ?? linkLike;
                         if (arg == null) continue;
                         if (!pType.IsAssignableFrom(arg.GetType()) && pType != typeof(object))
+                        {
+                            try
+                            {
+                                AppLogger.Log($"LinkCacheHelper: single-arg fallback incompatible - LinkCacheMethod={m.Name}, ParamType={pType.FullName}, ArgType={arg.GetType().FullName}");
+                            }
+                            catch { }
+
+                            // If the parameter expects a string, try converting the arg to an identifier and invoke with that
+                            if (pType == typeof(string))
+                            {
+                                try
+                                {
+                                    if (TryConvertFormKeyToIdentifier(arg, out var conv))
+                                    {
+                                        var r2 = m.Invoke(linkCache, new object?[] { conv });
+                                        if (r2 != null && !(r2 is bool)) return r2;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    AppLogger.Log($"LinkCacheHelper: single-arg fallback attempted string conversion but invocation failed: {ex.Message}", ex);
+                                }
+                            }
+
                             continue;
+                        }
                         var r = m.Invoke(linkCache, new object?[] { arg });
                         if (r == null) continue;
                         if (r is bool) continue; // ignore sentinel bools like Equals
@@ -314,6 +417,113 @@ namespace MunitionAutoPatcher.Services.Implementations
             var name = t.Name ?? string.Empty;
             var lname = name.ToLowerInvariant();
             return lname.Contains("ammo") || lname.Contains("projectile") || lname.Contains("bullet");
+        }
+
+        // Attempt to convert a FormKey/FormLink/record into the identifier string expected by LinkCache string-based APIs.
+        // Returns true and sets identifier on success.
+        private static bool TryConvertFormKeyToIdentifier(object? maybeRecordOrFormKey, out string identifier)
+        {
+            identifier = string.Empty;
+            if (maybeRecordOrFormKey == null) return false;
+            try
+            {
+                // Prefer the centralized helper which can handle records or formkey-like objects
+                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(maybeRecordOrFormKey, out var plugin, out var id))
+                {
+                    if (!string.IsNullOrEmpty(plugin) && id != 0u)
+                    {
+                        identifier = $"{plugin}:{id:X8}";
+                        return true;
+                    }
+                }
+
+                // Try extracting a FormKey then parsing its ToString()
+                if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetFormKey(maybeRecordOrFormKey, out var fk))
+                {
+                    if (fk != null)
+                    {
+                        var fkStr = fk.ToString() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(fkStr))
+                        {
+                            identifier = fkStr;
+                            return true;
+                        }
+                    }
+                }
+
+                // As a last resort, use ToString() of the provided object
+                var s = maybeRecordOrFormKey.ToString() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(s))
+                {
+                    identifier = s;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"LinkCacheHelper: TryConvertFormKeyToIdentifier failed: {ex.Message}", ex);
+            }
+
+            // If we reach here, create a diagnostic dump to help debugging
+            try
+            {
+                WriteConversionDiagnosticDump(maybeRecordOrFormKey, "conversion_failed");
+            }
+            catch { }
+
+            return false;
+        }
+
+        private static void WriteConversionDiagnosticDump(object? obj, string reason)
+        {
+            try
+            {
+                if (obj == null) return;
+                var dir = Path.Combine(Environment.CurrentDirectory ?? ".", "artifacts", "linkcache_conversion_dumps");
+                Directory.CreateDirectory(dir);
+                var now = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
+                var hash = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+                var fname = Path.Combine(dir, $"dump_{now}_{hash}.json");
+
+                var info = new Dictionary<string, object?>();
+                try { info["TypeName"] = obj.GetType().FullName; } catch { info["TypeName"] = null; }
+                try { info["ToString"] = obj.ToString(); } catch { info["ToString"] = null; }
+                try
+                {
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetFormKey(obj, out var fk) && fk != null)
+                        info["FormKeyToString"] = fk.ToString();
+                }
+                catch { }
+
+                try
+                {
+                    if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(obj, out var plugin, out var id))
+                    {
+                        info["Plugin"] = plugin;
+                        info["FormId"] = id;
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    var props = obj.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                                  .Select(p => p.Name).ToArray();
+                    info["PublicProperties"] = props;
+                }
+                catch { }
+
+                info["Reason"] = reason;
+                info["TimestampUtc"] = DateTime.UtcNow.ToString("o");
+
+                var json = JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(fname, json);
+                AppLogger.Log($"LinkCacheHelper: wrote conversion diagnostic dump: {fname}");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"LinkCacheHelper: failed to write conversion diagnostic dump: {ex.Message}", ex);
+            }
         }
 
         // LinkCacheHelper previously had an internal Log helper; use shared AppLogger instead.
