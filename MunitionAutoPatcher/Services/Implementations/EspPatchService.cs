@@ -6,6 +6,7 @@ using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Records;
 using System.IO;
+using System.Linq;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
