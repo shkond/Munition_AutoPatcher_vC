@@ -21,8 +21,7 @@ namespace MunitionAutoPatcher.Utilities
                 var prop = record.GetType().GetProperty("FormKey");
                 if (prop == null)
                 {
-                    formKey = record;
-                    return true;
+                    return false;
                 }
                 formKey = prop.GetValue(record);
                 return formKey != null;
@@ -40,10 +39,39 @@ namespace MunitionAutoPatcher.Utilities
             if (formKey == null) return false;
             try
             {
-                var prop = formKey.GetType().GetProperty("ModKey");
-                if (prop == null) return false;
-                modKey = prop.GetValue(formKey);
-                return modKey != null;
+                var t = formKey.GetType();
+                // Primary: public property "ModKey"
+                var prop = t.GetProperty("ModKey", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (prop != null)
+                {
+                    modKey = prop.GetValue(formKey);
+                    if (modKey != null) return true;
+                }
+
+                // Fallback 1: public field "ModKey"
+                var field = t.GetField("ModKey", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (field != null)
+                {
+                    modKey = field.GetValue(formKey);
+                    if (modKey != null) return true;
+                }
+
+                // Fallback 2: alternative naming (some overlays might expose "Mod")
+                var altProp = t.GetProperty("Mod", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (altProp != null)
+                {
+                    modKey = altProp.GetValue(formKey);
+                    if (modKey != null) return true;
+                }
+
+                var altField = t.GetField("Mod", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (altField != null)
+                {
+                    modKey = altField.GetValue(formKey);
+                    if (modKey != null) return true;
+                }
+
+                return false;
             }
             catch
             {
@@ -58,12 +86,28 @@ namespace MunitionAutoPatcher.Utilities
             if (modKey == null) return false;
             try
             {
-                var prop = modKey.GetType().GetProperty("FileName");
-                if (prop == null) return false;
-                var v = prop.GetValue(modKey);
-                if (v == null) return false;
-                fileName = v.ToString() ?? string.Empty;
-                return !string.IsNullOrEmpty(fileName);
+                var t = modKey.GetType();
+                var prop = t.GetProperty("FileName", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                           ?? t.GetProperty("Name", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (prop != null)
+                {
+                    var v = prop.GetValue(modKey);
+                    if (v != null)
+                    {
+                        fileName = v.ToString() ?? string.Empty;
+                        if (!string.IsNullOrEmpty(fileName) && !IsNullSentinel(fileName)) return true;
+                    }
+                }
+
+                // Fallback: use ToString()
+                var s = modKey.ToString();
+                if (!string.IsNullOrEmpty(s) && !IsNullSentinel(s))
+                {
+                    fileName = s;
+                    return true;
+                }
+
+                return false;
             }
             catch
             {
@@ -72,18 +116,55 @@ namespace MunitionAutoPatcher.Utilities
             }
         }
 
+        private static bool IsNullSentinel(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return true;
+            var t = s.Trim();
+            return t.Equals("null", StringComparison.OrdinalIgnoreCase)
+                || t.Equals("(null)", StringComparison.OrdinalIgnoreCase)
+                || t.Equals("none", StringComparison.OrdinalIgnoreCase)
+                || t.Equals("<null>", StringComparison.OrdinalIgnoreCase);
+        }
+
         public static bool TryGetIdFromFormKey(object? formKey, out uint id)
         {
             id = 0u;
             if (formKey == null) return false;
             try
             {
-                var prop = formKey.GetType().GetProperty("ID");
-                if (prop == null) return false;
-                var v = prop.GetValue(formKey);
-                if (v == null) return false;
-                if (v is uint u) { id = u; return true; }
-                try { id = Convert.ToUInt32(v); return true; } catch { return false; }
+                var t = formKey.GetType();
+                var prop = t.GetProperty("ID", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                        ?? t.GetProperty("FormID", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                        ?? t.GetProperty("FormId", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (prop != null)
+                {
+                    var v = prop.GetValue(formKey);
+                    if (v != null)
+                    {
+                        if (v is uint u) { id = u; return true; }
+                        try { id = Convert.ToUInt32(v); return true; } catch { /* continue */ }
+                    }
+                }
+
+                // Fallback: field access
+                var field = t.GetField("ID", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                         ?? t.GetField("FormID", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                         ?? t.GetField("FormId", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (field != null)
+                {
+                    var v = field.GetValue(formKey);
+                    if (v != null)
+                    {
+                        if (v is uint u2) { id = u2; return true; }
+                        try { id = Convert.ToUInt32(v); return true; } catch { /* continue */ }
+                    }
+                }
+
+                // Fallback: parse from ToString() like "Plugin.esp:00123456"
+                if (TryParseFormKeyString(formKey, out _, out id))
+                    return true;
+
+                return false;
             }
             catch
             {
@@ -102,20 +183,106 @@ namespace MunitionAutoPatcher.Utilities
             id = 0u;
             try
             {
-                if (record == null) return false;
-                if (!TryGetFormKey(record, out var fk)) return false;
-                if (fk == null) return false;
-                if (!TryGetModKeyFromFormKey(fk, out var mk)) return false;
-                if (!TryGetFileNameFromModKey(mk, out plugin)) plugin = string.Empty;
-                TryGetIdFromFormKey(fk, out id);
-                return !string.IsNullOrEmpty(plugin) && id != 0u;
+                if (record == null)
+                {
+                    AppLogger.Log("MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: record is null");
+                    return false;
+                }
+                
+                if (!TryGetFormKey(record, out var fk))
+                {
+                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get FormKey from record type {record.GetType().Name}");
+                    return false;
+                }
+                
+                if (fk == null)
+                {
+                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: FormKey is null for record type {record.GetType().Name}");
+                    return false;
+                }
+                
+                if (!TryGetModKeyFromFormKey(fk, out var mk))
+                {
+                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get ModKey from FormKey (FormKey type: {fk.GetType().Name})");
+                    // Fallback: try parsing from ToString()
+                    if (TryParseFormKeyString(fk, out plugin, out id))
+                    {
+                        return true;
+                    }
+                    return false;
+                }
+                
+                if (!TryGetFileNameFromModKey(mk, out plugin))
+                {
+                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get FileName from ModKey");
+                    plugin = string.Empty;
+                }
+                
+                if (!TryGetIdFromFormKey(fk, out id))
+                {
+                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get ID from FormKey");
+                }
+                
+                bool success = !string.IsNullOrEmpty(plugin) && id != 0u;
+                if (!success)
+                {
+                    string fkStr = string.Empty;
+                    try { fkStr = fk?.ToString() ?? string.Empty; } catch { fkStr = string.Empty; }
+                    AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: validation failed - plugin='{plugin ?? "(null)"}', id={id:X8}, fk='{fkStr}'");
+                }
+                
+                return success;
             }
-            catch
+            catch (Exception ex)
             {
+                AppLogger.Log($"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: exception occurred", ex);
                 plugin = string.Empty;
                 id = 0u;
                 return false;
             }
+        }
+
+        // Fallback: parse plugin and id from FormKey.ToString() like "Plugin.esp:00123456"
+        private static bool TryParseFormKeyString(object formKey, out string plugin, out uint id)
+        {
+            plugin = string.Empty;
+            id = 0u;
+            try
+            {
+                var s = formKey?.ToString() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(s)) return false;
+                // Common patterns:
+                //  - "Plugin.esp:00123456"
+                //  - "00123456:Plugin.esp"
+                var parts = s.Split(':');
+                if (parts.Length == 2)
+                {
+                    string left = parts[0].Trim();
+                    string right = parts[1].Trim();
+
+                    // First try: right is hex id, left is plugin
+                    var rightId = right.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? right.Substring(2) : right;
+                    if (uint.TryParse(rightId, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out var idParsed)
+                        && !string.IsNullOrEmpty(left))
+                    {
+                        plugin = left;
+                        id = idParsed;
+                        return true;
+                    }
+
+                    // Second try: left is hex id, right is plugin
+                    var leftId = left.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? left.Substring(2) : left;
+                    if (uint.TryParse(leftId, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out idParsed)
+                        && !string.IsNullOrEmpty(right))
+                    {
+                        plugin = right;
+                        id = idParsed;
+                        return true;
+                    }
+                }
+            }
+            catch { /* ignore */ }
+            return false;
         }
 
         /// <summary>

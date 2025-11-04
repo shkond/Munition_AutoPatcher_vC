@@ -1,4 +1,9 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using System.Runtime.ExceptionServices;
 using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MunitionAutoPatcher.Services.Implementations;
@@ -16,6 +21,10 @@ namespace MunitionAutoPatcher;
 public partial class App : Application
 {
     private readonly IHost _host;
+    private static volatile bool _crashLogWritten = false;
+    private static Exception? _lastFirstChance;
+    private static volatile bool _cleanExit = false;
+    private static string? _sessionMarkerPath;
 
     public App()
     {
@@ -56,6 +65,13 @@ public partial class App : Application
                 services.AddSingleton<MainWindow>();
             })
             .Build();
+
+                // Global exception handlers to capture unexpected crashes and persist diagnostics
+                this.DispatcherUnhandledException += OnDispatcherUnhandledException;
+                AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+                TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+                AppDomain.CurrentDomain.FirstChanceException += OnFirstChanceException;
+                AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -98,6 +114,32 @@ public partial class App : Application
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
         var mainViewModel = _host.Services.GetRequiredService<MainViewModel>();
+        // Create a session marker so we can detect unexpected termination on next run
+        try
+        {
+            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+            var artifactsDir = Path.Combine(repoRoot, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+            _sessionMarkerPath = Path.Combine(artifactsDir, "app_session.marker");
+            File.WriteAllText(_sessionMarkerPath, $"started {DateTime.Now:u}\n");
+        }
+        catch { /* best-effort */ }
+
+        // If previous session marker still exists from last run (before we just created a new one),
+        // log a diagnostic to help identify silent crashes that bypass managed handlers
+        try
+        {
+            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+            var artifactsDir = Path.Combine(repoRoot, "artifacts");
+            var staleMarkerPath = Path.Combine(artifactsDir, "app_session_stale.marker");
+            // If there is an older stale marker, note it in the UI log for visibility
+            if (File.Exists(staleMarkerPath))
+            {
+                AppLogger.Log("Detected stale session marker from previous run (possible hard crash). Deleting stale marker.");
+                try { File.Delete(staleMarkerPath); } catch { }
+            }
+        }
+        catch { }
         // Log the Mutagen assembly information for diagnostics (useful when running under MO2)
             try
             {
@@ -122,9 +164,112 @@ public partial class App : Application
 #if DEBUG
     try { DebugConsole.Hide(); } catch (Exception ex) { try { AppLogger.Log($"App exit debug console hide failed: {ex.Message}", ex); } catch (Exception inner) { AppLogger.Log("App.xaml.OnExit: failed to add log to UI on debug console hide", inner); } }
 #endif
+        _cleanExit = true;
+        // Remove session marker on clean exit
+        try
+        {
+            if (!string.IsNullOrEmpty(_sessionMarkerPath) && File.Exists(_sessionMarkerPath))
+            {
+                File.Delete(_sessionMarkerPath);
+            }
+        }
+        catch { }
         await _host.StopAsync();
         _host.Dispose();
 
         base.OnExit(e);
+    }
+
+    private static void WriteCrashLog(string tag, Exception ex)
+    {
+        try
+        {
+            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+            var artifactsDir = Path.Combine(repoRoot, "artifacts");
+            if (!Directory.Exists(artifactsDir)) Directory.CreateDirectory(artifactsDir);
+
+            var fileName = $"crash_{DateTime.Now:yyyyMMdd_HHmmss_fff}.log";
+            var path = Path.Combine(artifactsDir, fileName);
+            File.WriteAllText(path, $"[{DateTime.Now:u}] {tag}: {ex}\n");
+            AppLogger.Log($"Crash log written: {path}");
+            _crashLogWritten = true;
+        }
+        catch
+        {
+            // Last-resort: write to console
+            var fallback = Path.Combine(Path.GetTempPath(), $"munition_autopatcher_{DateTime.Now:yyyyMMdd_HHmmss_fff}_crash.log");
+            try
+            {
+                File.WriteAllText(fallback, $"[{DateTime.Now:u}] {tag}: {ex}\n");
+            }
+            catch { }
+            try { Console.WriteLine($"[CRASH] {tag}: {ex}"); } catch { }
+        }
+    }
+
+    private static void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
+    {
+        try
+        {
+            var ex = e.ExceptionObject as Exception ?? new Exception("Unknown unhandled exception");
+            WriteCrashLog("AppDomain.CurrentDomain.UnhandledException", ex);
+        }
+        catch { }
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        try
+        {
+            WriteCrashLog("Application.DispatcherUnhandledException", e.Exception);
+        }
+        catch { }
+        // Let WPF continue default behavior (can set e.Handled=true if desired)
+    }
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        try
+        {
+            WriteCrashLog("TaskScheduler.UnobservedTaskException", e.Exception);
+        }
+        catch { }
+    }
+
+    private static void OnFirstChanceException(object? sender, FirstChanceExceptionEventArgs e)
+    {
+        // Keep only the last first-chance exception to avoid large logs
+        try { _lastFirstChance = e.Exception; } catch { }
+    }
+
+    private static void OnProcessExit(object? sender, EventArgs e)
+    {
+        try
+        {
+            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+            var artifactsDir = Path.Combine(repoRoot, "artifacts");
+            Directory.CreateDirectory(artifactsDir);
+
+            // If we did not exit cleanly and no crash log was captured, emit a minimal exit diagnostic
+            if (!_cleanExit && !_crashLogWritten)
+            {
+                var exitNote = Path.Combine(artifactsDir, $"exit_{DateTime.Now:yyyyMMdd_HHmmss_fff}_no_crashlog.log");
+                try
+                {
+                    var lastEx = _lastFirstChance != null ? $"LastFirstChance: {_lastFirstChance.GetType().Name} - {_lastFirstChance.Message}\n{_lastFirstChance}" : "LastFirstChance: <none>";
+                    File.WriteAllText(exitNote, $"[{DateTime.Now:u}] ProcessExit observed without clean exit and no crash log.\n{lastEx}\n");
+                }
+                catch { }
+
+                // Preserve a stale marker to detect on next run
+                try
+                {
+                    var stale = Path.Combine(artifactsDir, "app_session_stale.marker");
+                    File.WriteAllText(stale, $"stale {DateTime.Now:u}\n");
+                }
+                catch { }
+            }
+        }
+        catch { }
     }
 }

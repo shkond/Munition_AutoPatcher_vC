@@ -188,3 +188,62 @@ The following directories are gitignored:
 - [Mutagen Documentation](https://github.com/Mutagen-Modding/Mutagen)
 - See `README.md` for more details
 - See `REFACTORING_SUMMARY.md` for WeaponOmodExtractor architecture details
+
+## Mutagen API Reference (generated)
+
+A generated API reference for the `Mutagen` libraries is available in the repository for quick offline browsing and for tools (such as GitHub Copilot) to index XML documentation.
+
+- Location (generated outputs): `mutagen-tmp/docs/api_site/` (static HTML site) and `mutagen-tmp/docs/api_xml/` (raw XML documentation files).
+- MkDocs integration: a top-level navigation entry `API Reference` has been added to `mutagen-tmp/mkdocs.yml` that links to `docs/api_site/index.html` so the generated site is accessible from the main site navigation when browsing locally.
+- Viewing locally: open the generated HTML index in your browser, for example (PowerShell):
+
+```powershell
+ii E:\Munition_AutoPatcher_vC\mutagen-tmp\docs\api_site\index.html
+```
+
+- Regenerating the docs (summary):
+  1. Build the Mutagen assemblies with XML docs enabled (example uses the `Mutagen.Bethesda` project):
+
+```powershell
+dotnet build mutagen-tmp/Mutagen.Bethesda/Mutagen.Bethesda.csproj -c Release
+```
+
+  2. Run DocFX metadata and build pointing at the produced DLLs and XML files. DocFX may be run from an extracted binary (`tools/docfx/docfx.exe`) or via your preferred DocFX installation. Example (if `docfx.exe` is available):
+
+```powershell
+& .\mutagen-tmp\tools\docfx\docfx.exe metadata docfx.json
+& .\mutagen-tmp\tools\docfx\docfx.exe build docfx.json
+```
+
+Notes:
+- The `mutagen-tmp/` directory is intended as a temporary local clone used to generate API docs; it is ignored by `.gitignore` by default. If you want to commit the generated HTML site into the repository, remove or adjust the `.gitignore` entry and commit the files.
+- DocFX may emit warnings about unresolved external references; supplying referenced dependency assemblies to the metadata step reduces those warnings.
+- If you want CI to publish the API site automatically (e.g., to `gh-pages`), add a GitHub Actions workflow that performs the build and DocFX steps on the runner and publishes the `docs/api_site` output.
+
+## Serena MCP Server
+
+This repository is used with a Serena MCP Server integration to provide IDE-assist tools (onboarding, project memories, and symbolic editing helpers). The following notes explain how to activate the project and use the MCP tools for onboarding and memory management.
+
+- Activate the project in Serena (example project name in this repo): `Munition_AutoPatcher_vC`.
+  - Tool: `mcp_serena_activate_project` (provides project context to the MCP tools).
+- Check whether onboarding was already performed:
+  - Tool: `mcp_serena_check_onboarding_performed` (returns whether onboarding exists and which memories are present).
+- Useful memory tools:
+  - `mcp_serena_read_memory` — read an onboarding or project memory by name when you need context.
+  - `mcp_serena_write_memory` — persist short onboarding notes or new onboarding steps for future sessions.
+  - `mcp_serena_delete_memory` — remove stale onboarding/memory files when they are no longer needed.
+
+- Recommended workflow for updating onboarding with new docs (like the Mutagen API reference):
+  1. Activate the project with `mcp_serena_activate_project`.
+  2. Run `mcp_serena_check_onboarding_performed` to see existing onboarding and memory names.
+  3. Use `mcp_serena_read_memory` to inspect relevant memories (for example `project_overview`, `code_conventions`, `suggested_commands`).
+  4. Create a new memory summarizing the change (example: `mutagen_api_reference_onboarding`) with `mcp_serena_write_memory` and include regeneration steps, paths, and CI recommendations.
+
+- Additional MCP tools helpful during development:
+  - `manage_todo_list` — track multi-step tasks and progress inside the MCP tooling.
+  - `apply_patch` — use to edit repository files programmatically (preferred for deterministic edits).
+  - `file_search`, `read_file`, `create_file` — explore and modify repository contents safely.
+
+Notes:
+- The list of available memories may change; always run `mcp_serena_check_onboarding_performed` after activating the project to get the current set.
+- Keep onboarding memories concise and actionable — include where generated artifacts live, how to regenerate them, and any `.gitignore` decisions.

@@ -4,6 +4,8 @@ using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Environments;
 using Mutagen.Bethesda.Strings;
+using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Order;
 
 using MunitionAutoPatcher.Utilities;
 
@@ -110,7 +112,6 @@ public class WeaponsService : IWeaponsService
 
         try
         {
-            // Get the load order from the load order service
             var loadOrder = await _loadOrderService.GetLoadOrderAsync();
 
             if (loadOrder == null)
@@ -119,7 +120,26 @@ public class WeaponsService : IWeaponsService
                 return _weapons;
             }
 
+            return await Task.Run(() => ExtractWeaponsInternal(loadOrder, progress));
+        }
+        catch (Exception ex)
+        {
+            progress?.Report($"エラー: 武器データの抽出中にエラーが発生しました: {ex.Message}");
+            return _weapons;
+        }
+    }
+
+    private List<WeaponData> ExtractWeaponsInternal(ILoadOrder<IModListing<IFallout4ModGetter>> loadOrder, IProgress<string>? progress)
+    {
+        if (loadOrder.Count == 0)
+        {
+            progress?.Report("警告: ロードオーダーが空です。Mod Organizer 2 から起動するか、config/config.json の GameDataPath を正しい Fallout 4 の Data フォルダへ設定してください。");
+        }
+
+        try
+        {
             _weapons.Clear();
+            _ammo.Clear();
             int weaponCount = 0;
 
             // Try to use Mutagen's GameEnvironment (MO2) so we can resolve FormLinks via the env.LinkCache.
@@ -129,9 +149,20 @@ public class WeaponsService : IWeaponsService
             // Track seen ammo keys while building _ammo so we don't duplicate entries.
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            // Write an early snapshot so a log file exists even if the app terminates unexpectedly
+            try { WriteRecordsSnapshot(); } catch (Exception ex) { AppLogger.Log("WeaponsService: initial snapshot write failed", ex); }
+
             try
             {
                 using var envRes = _mutagenEnvironmentFactory.Create();
+                try
+                {
+                    var dataPath = envRes.GetDataFolderPath()?.ToString() ?? "(null)";
+                    var hasLinkCache = envRes.GetLinkCache() != null;
+                    AppLogger.Log($"WeaponsService: Env DataFolderPath={dataPath}, LinkCache={(hasLinkCache ? "available" : "null")}");
+                }
+                catch { /* diagnostics only */ }
+
                 var weaponGetters = envRes.GetWinningWeaponOverrides();
 
                 foreach (var weaponGetter in weaponGetters)
@@ -144,10 +175,37 @@ public class WeaponsService : IWeaponsService
                         string pluginName = string.Empty;
                         uint formId = 0;
                         if (!MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(weaponGetter, out pluginName, out formId))
-                            throw new InvalidOperationException("weapon record missing FormKey");
+                        {
+                            // Skip weapons with invalid FormKeys instead of throwing
+                            AppLogger.Log($"WeaponsService: skipping weapon record with missing or invalid FormKey (Type: {weaponGetter?.GetType().Name ?? "null"})");
+                            continue;
+                        }
 
-                        string editorId = string.Empty;
-                        try { MutagenReflectionHelpers.TryGetPropertyValue<string>(weaponGetter, "EditorID", out editorId); } catch { editorId = string.Empty; }
+                        string? editorId = null;
+                        if (weaponGetter is IWeaponGetter typedWeapon)
+                        {
+                            try
+                            {
+                                editorId = typedWeapon.EditorID;
+                            }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Log($"WeaponsService: typed EditorID access failed for {pluginName}:{formId:X8}", ex);
+                            }
+                        }
+
+                        if (string.IsNullOrEmpty(editorId))
+                        {
+                            try
+                            {
+                                MutagenReflectionHelpers.TryGetPropertyValue<string>(weaponGetter, "EditorID", out editorId);
+                            }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Log($"WeaponsService: reflection EditorID access failed for {pluginName}:{formId:X8}", ex);
+                                editorId = null;
+                            }
+                        }
 
                         // Name / Description may be ITranslatedStringGetter or simple strings
                         object? nameObj = null;
@@ -180,10 +238,56 @@ public class WeaponsService : IWeaponsService
                         try { MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Ammo", out ammoObj); } catch { ammoObj = null; }
 
                         float damage = 0f;
-                        try { if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "BaseDamage", out var bd) && bd != null) damage = Convert.ToSingle(bd); } catch { damage = 0f; }
+                        try
+                        {
+                            if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "BaseDamage", out var bd) && bd != null)
+                            {
+                                damage = ToSingleFlexible(bd);
+                            }
+                            else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Data", out var wdata) && wdata != null)
+                            {
+                                if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata, "BaseDamage", out var bd2) && bd2 != null)
+                                {
+                                    damage = ToSingleFlexible(bd2);
+                                }
+                                else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata, "Damage", out var bd3) && bd3 != null)
+                                {
+                                    damage = ToSingleFlexible(bd3);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log($"WeaponsService: damage extraction failed for {pluginName}:{formId:X8}", ex);
+                            damage = 0f;
+                        }
 
                         float fireRate = 0f;
-                        try { if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "AnimationAttackSeconds", out var aas) && aas != null) { var secs = Convert.ToSingle(aas); fireRate = secs > 0 ? 60f / secs : 0f; } } catch { fireRate = 0f; }
+                        try
+                        {
+                            float secs = 0f;
+                            if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "AnimationAttackSeconds", out var aas) && aas != null)
+                            {
+                                secs = ToSingleFlexible(aas);
+                            }
+                            else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Data", out var wdata2) && wdata2 != null)
+                            {
+                                if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata2, "AnimationAttackSeconds", out var aas2) && aas2 != null)
+                                {
+                                    secs = ToSingleFlexible(aas2);
+                                }
+                                else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata2, "AttackDelaySec", out var delay) && delay != null)
+                                {
+                                    secs = ToSingleFlexible(delay);
+                                }
+                            }
+                            fireRate = secs > 0 ? 60f / secs : 0f;
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Log($"WeaponsService: fire rate extraction failed for {pluginName}:{formId:X8}", ex);
+                            fireRate = 0f;
+                        }
 
                         var weaponData = new WeaponData
                         {
@@ -237,7 +341,7 @@ public class WeaponsService : IWeaponsService
                                         }
                                         catch (Exception ex) { AppLogger.Log($"WeaponsService: failed to create temporary LinkResolver: {ex.Message}", ex); ammoResolved = null; }
                                     }
-                                        else
+                                    else
                                     {
                                         try { ammoResolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(ammoObj, linkCache); } catch (Exception ex) { AppLogger.Log($"WeaponsService: LinkCache fallback failed: {ex.Message}", ex); ammoResolved = null; }
                                     }
@@ -280,12 +384,39 @@ public class WeaponsService : IWeaponsService
                             }
                             else
                             {
-                                // Fallback: try to read FormKey from the weaponGetter via reflection
+                                // Fallback: try to read FormKey directly from the weapon's Ammo property via reflection.
+                                // Even if we can't resolve the full record through LinkCache, we can still surface the ammo FormKey
+                                // in outputs and collect a minimal ammo entry so the Ammo table isn't empty.
                                 try
                                 {
                                     if (ammoObj != null && MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoObj, out string ammoPluginFallback, out uint ammoFormId))
                                     {
                                         weaponData.DefaultAmmo = new Models.FormKey { PluginName = ammoPluginFallback, FormId = ammoFormId };
+
+                                        // Try to read an EditorID directly off the object (works if it's already a record/overlay)
+                                        try
+                                        {
+                                            if (MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoObj, "EditorID", out string? eid) && !string.IsNullOrWhiteSpace(eid))
+                                            {
+                                                weaponData.DefaultAmmoName = eid;
+                                            }
+                                        }
+                                        catch { /* best-effort only */ }
+
+                                        // Also add to the _ammo set minimally so records log has entries even when LinkCache resolution isn't available
+                                        var key = $"{ammoPluginFallback}:{ammoFormId:X8}";
+                                        if (!seen.Contains(key))
+                                        {
+                                            seen.Add(key);
+                                            _ammo.Add(new AmmoData
+                                            {
+                                                FormKey = new Models.FormKey { PluginName = ammoPluginFallback, FormId = ammoFormId },
+                                                Name = weaponData.DefaultAmmoName ?? string.Empty,
+                                                EditorId = weaponData.DefaultAmmoName ?? string.Empty,
+                                                Damage = 0,
+                                                AmmoType = string.Empty
+                                            });
+                                        }
                                     }
                                 }
                                 catch { }
@@ -298,6 +429,12 @@ public class WeaponsService : IWeaponsService
 
                         _weapons.Add(weaponData);
                         weaponCount++;
+
+                        // Periodically write a snapshot to avoid losing diagnostics on unexpected exit
+                        if (weaponCount % 200 == 0)
+                        {
+                            try { WriteRecordsSnapshot(); } catch (Exception ex) { AppLogger.Log("WeaponsService: periodic snapshot write failed", ex); }
+                        }
 
                         if (weaponCount % 50 == 0)
                         {
@@ -316,12 +453,12 @@ public class WeaponsService : IWeaponsService
                 progress?.Report($"弾薬抽出(MO2 LinkCache 経由)完了: {_ammo.Count}個の弾薬を収集しました");
                 try { WriteRecordsLog(); } catch (Exception ex) { AppLogger.Log("WeaponsService: WriteRecordsLog failed", ex); /* non-fatal for extraction */ }
                 return _weapons;
-                }
-                catch (Exception ex)
-                {
-                    // GameEnvironment not available or initialization failed; log and fall back to data-folder based enumeration.
-                    AppLogger.Log("WeaponsService: GameEnvironment detection failed, falling back to non-MO2 enumeration", ex);
-                }
+            }
+            catch (Exception ex)
+            {
+                // GameEnvironment not available or initialization failed; log and fall back to data-folder based enumeration.
+                AppLogger.Log("WeaponsService: GameEnvironment detection failed, falling back to non-MO2 enumeration", ex);
+            }
 
             progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
             // Build an ammo list by scanning the weapons' DefaultAmmo entries (fallback)
@@ -367,7 +504,7 @@ public class WeaponsService : IWeaponsService
             return _weapons;
         }
     }
-    
+
 
     // 既存の GetWeaponAsync / GetAllWeapons / GetAllAmmo など...
     public Task<WeaponData?> GetWeaponAsync(Models.FormKey formKey)
@@ -440,7 +577,57 @@ public class WeaponsService : IWeaponsService
         }
     }
 
-        // RepoUtils.FindRepoRoot provides repository root lookup
+    // Write a snapshot of current records to a stable filename so a log exists even if the app exits early.
+    // This overwrites the same file each time to avoid clutter.
+    private void WriteRecordsSnapshot()
+    {
+        try
+        {
+            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+            var artifactsDir = Path.Combine(repoRoot, "artifacts");
+            if (!Directory.Exists(artifactsDir))
+                Directory.CreateDirectory(artifactsDir);
+
+            var path = Path.Combine(artifactsDir, "munition_records_latest.log");
+            using var sw = new StreamWriter(path, false, Encoding.UTF8);
+            sw.WriteLine($"Generated (snapshot): {DateTime.Now.ToString("u", CultureInfo.InvariantCulture)}");
+            sw.WriteLine("# Weapons");
+            sw.WriteLine("WeaponName\tEditorID\tFormKey\tDefaultAmmoName\tDefaultAmmoFormKey\tDamage\tFireRate");
+            foreach (var w in _weapons)
+            {
+                try
+                {
+                    var formKeyStr = w.FormKey != null ? $"{w.FormKey.PluginName}:{w.FormKey.FormId:X8}" : string.Empty;
+                    var defaultAmmoName = w.DefaultAmmoName ?? string.Empty;
+                    var defaultAmmoKey = w.DefaultAmmo != null ? $"{w.DefaultAmmo.PluginName}:{w.DefaultAmmo.FormId:X8}" : string.Empty;
+                    sw.WriteLine($"{w.Name}\t{w.EditorId}\t{formKeyStr}\t{defaultAmmoName}\t{defaultAmmoKey}\t{w.Damage.ToString(CultureInfo.InvariantCulture)}\t{w.FireRate.ToString(CultureInfo.InvariantCulture)}");
+                }
+                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write weapon row to snapshot log", ex); }
+            }
+
+            sw.WriteLine();
+            sw.WriteLine("# Ammo");
+            sw.WriteLine("AmmoName\tEditorID\tFormKey\tDamage\tAmmoType");
+            foreach (var a in _ammo)
+            {
+                try
+                {
+                    var aKey = a.FormKey != null ? $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}" : string.Empty;
+                    sw.WriteLine($"{a.Name}\t{a.EditorId}\t{aKey}\t{a.Damage.ToString(CultureInfo.InvariantCulture)}\t{a.AmmoType}");
+                }
+                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write ammo row to snapshot log", ex); }
+            }
+
+            sw.Flush();
+            AppLogger.Log($"WeaponsService: snapshot records log written to: {path}");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("WeaponsService: failed to write snapshot records log", ex);
+        }
+    }
+
+    // RepoUtils.FindRepoRoot provides repository root lookup
 
     // Append all translation entries from an ITranslatedStringGetter to a diagnostic file.
     private void AppendTranslationsDump(ITranslatedStringGetter t, Models.FormKey? formKey, string tag)
@@ -471,6 +658,50 @@ public class WeaponsService : IWeaponsService
             AppLogger.Log("WeaponsService: failed to append translations dump", ex);
         }
     }
+
+    // Flexible numeric conversion: supports common numeric primitives, boxed types, strings, and value wrappers exposing Value
+    private static float ToSingleFlexible(object? v)
+    {
+        if (v == null) return 0f;
+        try
+        {
+            switch (v)
+            {
+                case float f: return f;
+                case double d: return (float)d;
+                case decimal m: return (float)m;
+                case byte b: return b;
+                case sbyte sb: return sb;
+                case short s: return s;
+                case ushort us: return us;
+                case int i: return i;
+                case uint ui: return ui;
+                case long l: return l;
+                case ulong ul:
+                    {
+                        var d = (double)ul;
+                        return d > float.MaxValue ? float.MaxValue : (float)d;
+                    }
+                case string ss:
+                    if (float.TryParse(ss, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fp)) return fp;
+                    if (float.TryParse(ss, out fp)) return fp;
+                    break;
+            }
+
+            // Try Value property commonly used by wrapper structs
+            try
+            {
+                if (MutagenReflectionHelpers.TryGetPropertyValue<object>(v, "Value", out var inner) && inner != null)
+                    return ToSingleFlexible(inner);
+            }
+            catch { /* ignore */ }
+
+            return Convert.ToSingle(v, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            try { return Convert.ToSingle(v); } catch { return 0f; }
+        }
+    }
 }
 
-    

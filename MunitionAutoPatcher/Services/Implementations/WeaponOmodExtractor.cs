@@ -251,7 +251,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         {
             _logger.LogInformation("Extraction was cancelled");
             progress?.Report("抽出がキャンセルされました");
-            return candidates;
+            throw;
         }
         catch (Exception ex)
         {

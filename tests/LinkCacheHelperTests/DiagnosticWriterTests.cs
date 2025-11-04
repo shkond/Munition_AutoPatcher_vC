@@ -78,9 +78,13 @@ namespace LinkCacheHelperTests
             // find row that starts with our key
             var dataRow = lines.FirstOrDefault(l => l.StartsWith(key, StringComparison.OrdinalIgnoreCase));
             Assert.NotNull(dataRow);
-            Assert.Contains("WPN_EDID", dataRow);
-            Assert.Contains(",1,", dataRow); // reverse ref count should be 1
-            Assert.EndsWith(",1", dataRow); // confirmed candidates count should be 1
+            var fields = dataRow.Split(',');
+            Assert.Equal(5, fields.Length); // Expecting 5 fields: WeaponFormKey,EditorId,ReverseRefCount,ReverseSourcePlugins,ConfirmedCandidatesCount
+            Assert.Equal(key, fields[0]);
+            Assert.Equal("WPN_EDID", fields[1]);
+            Assert.Equal("1", fields[2]); // ReverseRefCount
+            Assert.Equal(""SourcePlugin"", fields[3]); // ReverseSourcePlugins (quoted)
+            Assert.Equal("1", fields[4]); // ConfirmedCandidatesCount
         }
     }
 }

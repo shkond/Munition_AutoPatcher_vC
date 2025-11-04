@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Xunit;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Services.Implementations;
-using MunitionAutoPatcher.Services.Interfaces;
 using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Models;
 using Mutagen.Bethesda.Fallout4;

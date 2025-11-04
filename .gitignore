@@ -39,3 +39,15 @@ Thumbs.db
 # Misc / Temp
 t
 }
+ 
+# Ignore temporary local mutagen clone and generated docs/tools
+/mutagen-tmp/
+
+# If DocFX or other tools are extracted under the temp clone, ignore them too
+/mutagen-tmp/tools/
+/mutagen-tmp/docs/api_site/
+/mutagen-tmp/docs/api_xml/
+
+# IDE/workspace
+.vscode/
+.idea/
