@@ -54,6 +54,7 @@ public partial class App : Application
                 // Register weapon data extractor (transient: new instance per operation)
                 services.AddTransient<IWeaponDataExtractor, WeaponDataExtractor>();
                 services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
+                services.AddSingleton<IEspPatchService, EspPatchService>();
                 services.AddSingleton<IOrchestrator, OrchestratorService>();
 
                 // Register ViewModels

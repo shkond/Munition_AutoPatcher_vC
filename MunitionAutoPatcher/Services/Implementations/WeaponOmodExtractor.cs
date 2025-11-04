@@ -18,6 +18,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     private readonly IMutagenAccessor _mutagenAccessor;
     private readonly IPathService _pathService;
     private readonly ILogger<WeaponOmodExtractor> _logger;
+    private readonly IEspPatchService? _espPatchService;
 
     public WeaponOmodExtractor(
         ILoadOrderService loadOrderService,
@@ -28,7 +29,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         ICandidateConfirmer confirmer,
         IMutagenAccessor mutagenAccessor,
         IPathService pathService,
-        ILogger<WeaponOmodExtractor> logger)
+        ILogger<WeaponOmodExtractor> logger,
+        IEspPatchService? espPatchService = null)
     {
         _loadOrderService = loadOrderService ?? throw new ArgumentNullException(nameof(loadOrderService));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
@@ -39,6 +41,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _espPatchService = espPatchService; // optional for backward compatibility
     }
 
     /// <summary>
@@ -175,9 +178,10 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             }
 
             // Confirm candidates via reverse-reference analysis
+            ConfirmationContext confirmationContext;
             try
             {
-                var confirmationContext = BuildConfirmationContext(
+                confirmationContext = BuildConfirmationContext(
                     reverseMap,
                     context.ExcludedPlugins,
                     context.AllWeapons,
@@ -207,6 +211,17 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             {
                 _logger.LogError(ex, "Error during candidate confirmation");
                 progress?.Report($"警告: 候補の確認中にエラーが発生しました: {ex.Message}");
+                // Create empty confirmation context for fallback
+                confirmationContext = new ConfirmationContext
+                {
+                    ReverseMap = reverseMap,
+                    ExcludedPlugins = context.ExcludedPlugins,
+                    AllWeapons = context.AllWeapons,
+                    AmmoMap = context.AmmoMap,
+                    Detector = detector,
+                    LinkCache = context.LinkCache,
+                    CancellationToken = cancellationToken
+                };
             }
 
             // Post-process: fill ConfirmReason for unconfirmed candidates
@@ -217,6 +232,37 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Error during post-processing (non-fatal)");
+            }
+
+            // Generate output based on config.output.mode
+            try
+            {
+                var outputMode = _configService.GetOutputMode();
+                _logger.LogInformation("Output mode: {OutputMode}", outputMode);
+
+                if (string.Equals(outputMode, "esp", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Generate ESP patch
+                    if (_espPatchService != null)
+                    {
+                        _logger.LogInformation("Generating ESP patch from confirmed candidates");
+                        progress?.Report("ESP パッチを生成しています...");
+                        
+                        await _espPatchService.BuildAsync(context, confirmationContext, candidates, cancellationToken);
+                        
+                        progress?.Report("ESP パッチの生成が完了しました");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("ESP patch service not available, skipping ESP generation");
+                    }
+                }
+                // else: ini mode - no action here, INI generation handled separately
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate output patch");
+                progress?.Report($"エラー: 出力の生成に失敗しました: {ex.Message}");
             }
 
             // Write diagnostic reports

@@ -27,4 +27,20 @@ public class PathService : IPathService
         
         return artifactsDir;
     }
+
+    /// <inheritdoc/>
+    public string GetOutputDirectory()
+    {
+        // Default output directory is "artifacts" under repo root
+        // ConfigService can override this if needed
+        var repoRoot = GetRepoRoot();
+        var outputDir = System.IO.Path.Combine(repoRoot, "artifacts");
+        
+        if (!System.IO.Directory.Exists(outputDir))
+        {
+            System.IO.Directory.CreateDirectory(outputDir);
+        }
+        
+        return outputDir;
+    }
 }
