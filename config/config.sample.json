@@ -6,5 +6,9 @@
     "Dank_ECO.esp"
   ],
   "logLevel": "Information",
-  "enableDiagnostics": false
+  "enableDiagnostics": false,
+  "output": {
+    "mode": "esp",
+    "directory": "artifacts"
+  }
 }

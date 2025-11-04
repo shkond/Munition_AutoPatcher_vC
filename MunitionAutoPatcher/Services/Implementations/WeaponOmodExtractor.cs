@@ -17,6 +17,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     private readonly ICandidateConfirmer _confirmer;
     private readonly IMutagenAccessor _mutagenAccessor;
     private readonly IPathService _pathService;
+    private readonly IEspPatchService? _espPatchService;
     private readonly ILogger<WeaponOmodExtractor> _logger;
 
     public WeaponOmodExtractor(
@@ -28,7 +29,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         ICandidateConfirmer confirmer,
         IMutagenAccessor mutagenAccessor,
         IPathService pathService,
-        ILogger<WeaponOmodExtractor> logger)
+        ILogger<WeaponOmodExtractor> logger,
+        IEspPatchService? espPatchService = null)
     {
         _loadOrderService = loadOrderService ?? throw new ArgumentNullException(nameof(loadOrderService));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
@@ -39,6 +41,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _espPatchService = espPatchService;
     }
 
     /// <summary>
@@ -240,6 +243,41 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to write completion marker (non-fatal)");
+            }
+
+            // Generate ESP patch if configured
+            try
+            {
+                var outputMode = _configService.GetOutputMode();
+                if (string.Equals(outputMode, "esp", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Output mode is 'esp', generating ESPFE patch");
+                    progress?.Report("ESP パッチを生成しています...");
+
+                    if (_espPatchService != null)
+                    {
+                        await _espPatchService.BuildAsync(candidates, context, cancellationToken);
+                        progress?.Report("ESP パッチの生成が完了しました");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("EspPatchService not available, skipping ESP generation");
+                        progress?.Report("警告: ESP パッチサービスが利用できません");
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("Output mode is '{Mode}', skipping ESP generation", outputMode);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate ESP patch (continuing with extraction)");
+                progress?.Report($"警告: ESP パッチの生成に失敗しました: {ex.Message}");
             }
 
             progress?.Report($"抽出完了: {candidates.Count} 件の候補を検出しました");

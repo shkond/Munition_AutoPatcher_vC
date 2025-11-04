@@ -26,6 +26,14 @@ public class ConfigService : IConfigService
         public bool ExcludeCcEsl { get; set; } = true;
         // Prefer EditorID display when available (default: false)
         public bool PreferEditorIdForDisplay { get; set; } = false;
+        // Output configuration
+        public OutputConfig Output { get; set; } = new OutputConfig();
+    }
+
+    private class OutputConfig
+    {
+        public string Mode { get; set; } = "esp";
+        public string Directory { get; set; } = "artifacts";
     }
 
     public ConfigService()
@@ -212,6 +220,36 @@ public class ConfigService : IConfigService
     {
         EnsureLoaded();
         _loaded!.ExcludedPlugins = new System.Collections.Generic.List<string>(plugins ?? System.Array.Empty<string>());
+        _ = SaveAllAsync();
+    }
+
+    public string GetOutputMode()
+    {
+        EnsureLoaded();
+        return _loaded!.Output?.Mode ?? "esp";
+    }
+
+    public void SetOutputMode(string mode)
+    {
+        EnsureLoaded();
+        if (_loaded!.Output == null)
+            _loaded.Output = new OutputConfig();
+        _loaded.Output.Mode = mode;
+        _ = SaveAllAsync();
+    }
+
+    public string GetOutputDirectory()
+    {
+        EnsureLoaded();
+        return _loaded!.Output?.Directory ?? "artifacts";
+    }
+
+    public void SetOutputDirectory(string directory)
+    {
+        EnsureLoaded();
+        if (_loaded!.Output == null)
+            _loaded.Output = new OutputConfig();
+        _loaded.Output.Directory = directory;
         _ = SaveAllAsync();
     }
 
