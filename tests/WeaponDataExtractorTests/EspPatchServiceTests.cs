@@ -72,7 +72,15 @@ namespace WeaponDataExtractorTestsProject
             {
                 if (Directory.Exists(outputDir))
                 {
-                    try { Directory.Delete(outputDir, true); } catch { }
+                    try
+                    {
+                        Directory.Delete(outputDir, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Cleanup failed, but test already passed/failed
+                        System.Diagnostics.Debug.WriteLine($"Test cleanup failed: {ex.Message}");
+                    }
                 }
             }
         }
@@ -112,7 +120,15 @@ namespace WeaponDataExtractorTestsProject
             {
                 if (Directory.Exists(outputDir))
                 {
-                    try { Directory.Delete(outputDir, true); } catch { }
+                    try
+                    {
+                        Directory.Delete(outputDir, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Cleanup failed, but test already passed/failed
+                        System.Diagnostics.Debug.WriteLine($"Test cleanup failed: {ex.Message}");
+                    }
                 }
             }
         }

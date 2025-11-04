@@ -118,10 +118,8 @@ public class EspPatchService : IEspPatchService
 
             _logger.LogInformation("Writing patch to {OutputPath}", outputPath);
 
-            await Task.Run(() =>
-            {
-                patch.WriteToBinaryParallel(outputPath);
-            }, ct);
+            // WriteToBinaryParallel is already parallelized internally, no need for Task.Run wrapper
+            patch.WriteToBinaryParallel(outputPath);
 
             _logger.LogInformation("ESPFE patch written successfully to {OutputPath}", outputPath);
         }
@@ -139,31 +137,43 @@ public class EspPatchService : IEspPatchService
 
     /// <summary>
     /// Attempts to get a typed ILinkCache from the object returned by the environment.
+    /// Note: This method uses reflection to access internal Mutagen LinkCache structure.
+    /// It's brittle and may break with Mutagen library updates. Used as a fallback when
+    /// the LinkResolver wrapper doesn't expose the typed interface directly.
     /// </summary>
     private ILinkCache<IFallout4Mod, IFallout4ModGetter> GetTypedLinkCache(object linkCacheObj)
     {
         // The LinkResolver wraps the actual LinkCache
         // We need to extract the underlying _linkCache field
-        var linkCacheType = linkCacheObj.GetType();
-        var linkCacheField = linkCacheType.GetField("_linkCache",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        if (linkCacheField != null)
+        try
         {
-            var actualLinkCache = linkCacheField.GetValue(linkCacheObj);
-            if (actualLinkCache is ILinkCache<IFallout4Mod, IFallout4ModGetter> typedCache)
+            var linkCacheType = linkCacheObj.GetType();
+            var linkCacheField = linkCacheType.GetField("_linkCache",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (linkCacheField != null)
             {
-                return typedCache;
+                var actualLinkCache = linkCacheField.GetValue(linkCacheObj);
+                if (actualLinkCache is ILinkCache<IFallout4Mod, IFallout4ModGetter> typedCache)
+                {
+                    return typedCache;
+                }
+            }
+
+            // Fallback: try direct cast
+            if (linkCacheObj is ILinkCache<IFallout4Mod, IFallout4ModGetter> directCast)
+            {
+                return directCast;
             }
         }
-
-        // Fallback: try direct cast
-        if (linkCacheObj is ILinkCache<IFallout4Mod, IFallout4ModGetter> directCast)
+        catch (Exception ex)
         {
-            return directCast;
+            _logger.LogError(ex, "Failed to extract LinkCache via reflection");
         }
 
-        throw new InvalidOperationException("Could not extract typed LinkCache from environment");
+        throw new InvalidOperationException(
+            "Could not extract typed LinkCache from environment. " +
+            "This may indicate a Mutagen library version mismatch or API change.");
     }
 
     /// <summary>

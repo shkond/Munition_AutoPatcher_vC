@@ -40,6 +40,8 @@ ESP モードでは、確認済みの武器-弾薬マッピングを直接 Fallo
 - ESL フラグにより MOD スロットを消費しない
 
 **設定方法**:
+
+設定ファイル（`config/config.json`）に以下を追加：
 ```json
 {
   "output": {
@@ -49,6 +51,9 @@ ESP モードでは、確認済みの武器-弾薬マッピングを直接 Fallo
 }
 ```
 
+- `mode`: 出力モードを指定します。`"esp"` (デフォルト) または `"ini"` を設定できます
+- `directory`: 出力先ディレクトリを指定します。相対パスの場合はリポジトリルートからの相対パスになります
+
 出力ファイル: `<output.directory>/MunitionAutoPatcher_Patch.esp`
 
 ### INI モード（レガシー）
@@ -56,6 +61,8 @@ ESP モードでは、確認済みの武器-弾薬マッピングを直接 Fallo
 INI モードでは、RobCo Patcher 用の設定ファイル（INI）を生成します。RobCo Patcher を使用してゲームにパッチを適用する従来の方法です。
 
 **設定方法**:
+
+設定ファイル（`config/config.json`）で `output.mode` を `"ini"` に変更：
 ```json
 {
   "output": {
@@ -65,7 +72,11 @@ INI モードでは、RobCo Patcher 用の設定ファイル（INI）を生成�
 }
 ```
 
-**注意**: INI モードに切り替える場合は、設定ファイル（`config/config.json`）で `output.mode` を `"ini"` に変更してください。
+**注意**: この設定を変更すると、ESP パッチの代わりに INI ファイルが生成されるようになります。RobCo Patcher を別途インストールして使用する必要があります。
+
+### 設定ファイルのサンプル
+
+`config/config.sample.json` に完全な設定例があります。初回起動時は `config/config.json` を作成し、必要に応じて設定をカスタマイズしてください。
 
 ## 技術スタック
 

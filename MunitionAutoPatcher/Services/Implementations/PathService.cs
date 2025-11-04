@@ -8,11 +8,15 @@ namespace MunitionAutoPatcher.Services.Implementations;
 /// </summary>
 public class PathService : IPathService
 {
-    private readonly IConfigService _configService;
+    private readonly IConfigService? _configService;
 
-    public PathService(IConfigService configService)
+    public PathService() : this(null)
     {
-        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+    }
+
+    public PathService(IConfigService? configService)
+    {
+        _configService = configService;
     }
 
     /// <inheritdoc/>
@@ -42,7 +46,7 @@ public class PathService : IPathService
     public string GetOutputDirectory()
     {
         var repoRoot = GetRepoRoot();
-        var outputDir = _configService.GetOutputDirectory();
+        var outputDir = _configService?.GetOutputDirectory() ?? "artifacts";
         
         // Resolve relative paths against repository root
         var resolvedPath = System.IO.Path.IsPathRooted(outputDir)
