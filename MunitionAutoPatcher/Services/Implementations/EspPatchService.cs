@@ -247,9 +247,15 @@ public class EspPatchService : IEspPatchService
             var weaponOverride = patchMod.Weapons.GetOrAddAsOverride(weaponGetter);
 
             // Set the ammo on the weapon
-            if (weaponOverride.AttackAnimation != null)
+            // In Fallout 4, weapon ammo is in the Data.Ammo field (DNAM subrecord)
+            if (weaponOverride.Data != null)
             {
-                weaponOverride.AttackAnimation.Ammo.SetTo(ammoFormKey);
+                weaponOverride.Data.Ammo.SetTo(ammoFormKey);
+            }
+            else
+            {
+                _logger.LogWarning("Weapon Data field is null, cannot set ammo");
+                return null;
             }
 
             return weaponOverride;
