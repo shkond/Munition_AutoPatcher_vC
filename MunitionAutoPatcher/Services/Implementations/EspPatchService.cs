@@ -61,7 +61,10 @@ public class EspPatchService : IEspPatchService
             }
 
             // Try to get the typed ILinkCache from the object
-            // The linkCacheObj should be convertible to ILinkCache<IFallout4Mod, IFallout4ModGetter>
+            // NOTE: The repository uses ILinkResolver wrapper which abstracts the actual Mutagen LinkCache.
+            // This is an architectural decision to support version-agnostic code across Mutagen versions.
+            // The reflection-based extraction below is a necessary bridge until the abstraction layer
+            // exposes typed LinkCache access. See GetTypedLinkCache() for implementation details.
             var linkCache = GetTypedLinkCache(linkCacheObj);
 
             // Create new Fallout4Mod for the patch
@@ -118,7 +121,10 @@ public class EspPatchService : IEspPatchService
 
             _logger.LogInformation("Writing patch to {OutputPath}", outputPath);
 
-            // WriteToBinaryParallel is already parallelized internally, no need for Task.Run wrapper
+            // WriteToBinaryParallel is synchronous but internally parallelized by Mutagen.
+            // We avoid Task.Run wrapper to prevent unnecessary thread pool overhead.
+            // This may block briefly, but is acceptable since we're already in an async workflow
+            // and the operation is I/O bound with internal parallelization.
             patch.WriteToBinaryParallel(outputPath);
 
             _logger.LogInformation("ESPFE patch written successfully to {OutputPath}", outputPath);
