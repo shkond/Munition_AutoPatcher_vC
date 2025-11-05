@@ -35,7 +35,7 @@ namespace LinkCacheHelperTests
                 yield break;
             }
 
-            public object? GetLinkCache() => null;
+            public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
 
             public Noggog.DirectoryPath? GetDataFolderPath() => null;
 

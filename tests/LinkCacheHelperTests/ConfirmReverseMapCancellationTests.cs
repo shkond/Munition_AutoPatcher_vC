@@ -30,7 +30,7 @@ namespace LinkCacheHelperTests
 
         private class MockMutagenAccessor : IMutagenAccessor
         {
-            public object? GetLinkCache(IResourcedMutagenEnvironment env) => null;
+            public ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env) => null;
             public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Array.Empty<object>();
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();

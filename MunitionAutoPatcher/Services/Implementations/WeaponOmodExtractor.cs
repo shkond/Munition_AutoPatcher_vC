@@ -247,9 +247,19 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     {
                         _logger.LogInformation("Generating ESP patch from confirmed candidates");
                         progress?.Report("ESP パッチを生成しています...");
-                        
+                        try
+                        {
+                            var hasFormLinkCache = context.FormLinkCache != null;
+                            var hasResolver = context.LinkCache != null;
+                            _logger.LogInformation("ESP debug: FormLinkCachePresent={HasFormLinkCache}, ResolverPresent={HasResolver}, ResolverType={ResolverType}",
+                                hasFormLinkCache,
+                                hasResolver,
+                                context.LinkCache?.GetType().FullName ?? "<null>");
+                        }
+                        catch { /* best effort */ }
+
                         await _espPatchService.BuildAsync(context, confirmationContext, candidates, cancellationToken);
-                        
+
                         progress?.Report("ESP パッチの生成が完了しました");
                     }
                     else

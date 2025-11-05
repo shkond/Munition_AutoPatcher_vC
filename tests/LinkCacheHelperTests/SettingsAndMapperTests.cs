@@ -34,10 +34,11 @@ namespace LinkCacheHelperTests
         private class DummyOrchestrator : IOrchestrator
         {
             public bool IsInitialized => true;
-            public Task<bool> ExtractWeaponsAsync(IProgress<string>? progress = null) => Task.FromResult(true);
-            public Task<bool> GenerateIniAsync(string outputPath, List<WeaponMapping> mappings, IProgress<string>? progress = null) => Task.FromResult(true);
-            public Task<bool> GenerateMappingsAsync(IProgress<string>? progress = null) => Task.FromResult(true);
             public Task<bool> InitializeAsync() => Task.FromResult(true);
+            public Task<List<WeaponData>> ExtractWeaponsAsync(IProgress<string>? progress = null) => Task.FromResult(new List<WeaponData>());
+            public Task<bool> GenerateMappingsAsync(List<WeaponData> weapons, IProgress<string>? progress = null) => Task.FromResult(true);
+            public Task<bool> GenerateIniAsync(string outputPath, List<WeaponMapping> mappings, IProgress<string>? progress = null) => Task.FromResult(true);
+            public Task<bool> GeneratePatchAsync(string outputPath, List<WeaponData> weapons, IProgress<string>? progress = null) => Task.FromResult(true);
         }
 
         private class DummyWeaponsService : IWeaponsService

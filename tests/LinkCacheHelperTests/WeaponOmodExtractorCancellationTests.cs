@@ -63,6 +63,10 @@ namespace LinkCacheHelperTests
             public void SetExcludedPlugins(IEnumerable<string> plugins) { }
             public Task<StrategyConfig> LoadConfigAsync() => Task.FromResult(new StrategyConfig());
             public Task SaveConfigAsync(StrategyConfig config) => Task.CompletedTask;
+            public string GetOutputMode() => string.Empty;
+            public void SetOutputMode(string mode) { }
+            public string GetOutputDirectory() => string.Empty;
+            public void SetOutputDirectory(string directory) { }
         }
 
         private sealed class DummyMutagenEnvironmentFactory : IMutagenEnvironmentFactory
@@ -74,7 +78,7 @@ namespace LinkCacheHelperTests
                 public IEnumerable<object> GetWinningWeaponOverrides() => Array.Empty<object>();
                 public IEnumerable<object> GetWinningConstructibleObjectOverrides() => Array.Empty<object>();
                 public IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections() => Array.Empty<(string, IEnumerable<object>)>();
-                public object? GetLinkCache() => null;
+                public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
                 public Noggog.DirectoryPath? GetDataFolderPath() => null;
                 public void Dispose() { }
             }
@@ -105,7 +109,7 @@ namespace LinkCacheHelperTests
 
         private sealed class DummyMutagenAccessor : IMutagenAccessor
         {
-            public object? GetLinkCache(IResourcedMutagenEnvironment env) => null;
+            public ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env) => null;
             public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Array.Empty<object>();
             public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
@@ -117,6 +121,7 @@ namespace LinkCacheHelperTests
         {
             public string GetArtifactsDirectory() => string.Empty;
             public string GetRepoRoot() => string.Empty;
+            public string GetOutputDirectory() => string.Empty;
         }
     }
 }

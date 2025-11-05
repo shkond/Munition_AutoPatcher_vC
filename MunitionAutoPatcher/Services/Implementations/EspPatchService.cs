@@ -1,12 +1,17 @@
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Records;
-using System.IO;
-using System.Linq;
 using InternalFormKey = MunitionAutoPatcher.Models.FormKey;
 using MutagenFormKey = Mutagen.Bethesda.Plugins.FormKey;
 
@@ -40,136 +45,86 @@ public class EspPatchService : IEspPatchService
     /// <inheritdoc/>
     public async Task BuildAsync(ExtractionContext extraction, ConfirmationContext confirmation, List<OmodCandidate> candidates, CancellationToken ct)
     {
-        _logger.LogInformation("Starting ESP patch generation");
+        if (extraction == null) throw new ArgumentNullException(nameof(extraction));
+
+        _logger.LogInformation("ESP generation: start");
+
+        var baseCache = extraction.FormLinkCache;
+        var resolver = extraction.LinkCache;
+        if (baseCache == null && resolver == null)
+        {
+            _logger.LogError("EspPatchService: No resolver available. Both FormLinkCache and LinkCache are null.");
+            throw new InvalidOperationException("A link resolver (ILinkCache or ILinkResolver) is required for ESP generation");
+        }
 
         try
         {
-            // Filter to confirmed candidates only
-            var confirmedCandidates = candidates.Where(c => c.ConfirmedAmmoChange).ToList();
-            _logger.LogInformation("Processing {Count} confirmed candidates out of {Total} total",
-                confirmedCandidates.Count, candidates.Count);
+            ct.ThrowIfCancellationRequested();
 
-            if (confirmedCandidates.Count == 0)
-            {
-                _logger.LogWarning("No confirmed candidates to process, creating empty patch");
-            }
-
-            // Create a new Fallout4Mod with ESL flag
+            // Create ESPFE patch mod
             var modKey = new ModKey("MunitionAutoPatcher_Patch", ModType.Plugin);
             var patchMod = new Fallout4Mod(modKey, Fallout4Release.Fallout4);
+            // Mark as ESL-flagged (Small Master)
+            patchMod.IsSmallMaster = true;
 
-            // Set the ESP to ESL-flagged (ESPFE)
-            patchMod.ModHeader.Flags |= (int)Fallout4Mod.HeaderFlag.Light;
-
-            _logger.LogInformation("Created patch mod with ModKey: {ModKey}, ESL-flagged", modKey);
-
-            // Get LinkCache from extraction context
-            var linkCache = extraction.LinkCache;
-            if (linkCache == null)
+            int success = 0, skipped = 0;
+            foreach (var c in (candidates ?? Enumerable.Empty<OmodCandidate>()))
             {
-                _logger.LogError("LinkCache is not available in extraction context");
-                throw new InvalidOperationException("LinkCache is required for ESP patch generation");
-            }
-
-            int successCount = 0;
-            int skipCount = 0;
-
-            foreach (var candidate in confirmedCandidates)
-            {
+                if (c == null || !c.ConfirmedAmmoChange) continue;
                 ct.ThrowIfCancellationRequested();
 
-                try
-                {
-                    // Determine the weapon FormKey to patch
-                    var weaponFormKey = GetWeaponFormKey(candidate);
-                    if (weaponFormKey == null)
-                    {
-                        _logger.LogWarning("Skipping candidate: unable to determine weapon FormKey");
-                        skipCount++;
-                        continue;
-                    }
+                var wKey = GetWeaponFormKey(c);
+                if (wKey == null) { skipped++; continue; }
+                var mwKey = ToMutagenFormKey(wKey);
+                if (!TryResolve<IWeaponGetter>(baseCache, resolver, mwKey, out var weaponGetter))
+                { skipped++; continue; }
 
-                    // Resolve the winning override for the weapon
-                    var weaponRecord = ResolveWeaponRecord(linkCache, weaponFormKey);
-                    if (weaponRecord == null)
-                    {
-                        _logger.LogWarning("Skipping candidate: weapon record not found for FormKey {FormKey}", weaponFormKey);
-                        skipCount++;
-                        continue;
-                    }
+                var aKey = c.CandidateAmmo;
+                if (aKey == null) { skipped++; continue; }
+                var maKey = ToMutagenFormKey(aKey);
+                if (!TryResolve<IAmmunitionGetter>(baseCache, resolver, maKey, out var ammoGetter))
+                { skipped++; continue; }
 
-                    // Get the target ammo FormKey
-                    var ammoFormKey = candidate.CandidateAmmo;
-                    if (ammoFormKey == null)
-                    {
-                        _logger.LogWarning("Skipping candidate: no ammo FormKey specified");
-                        skipCount++;
-                        continue;
-                    }
+                var weapOverride = patchMod.Weapons.GetOrAddAsOverride(weaponGetter!);
+                weapOverride.Ammo.SetTo(ammoGetter);
 
-                    // Convert to Mutagen FormKey
-                    var mutagenAmmoFormKey = ConvertToMutagenFormKey(ammoFormKey);
-                    if (mutagenAmmoFormKey == null)
-                    {
-                        _logger.LogWarning("Skipping candidate: unable to convert ammo FormKey {AmmoFormKey}", ammoFormKey);
-                        skipCount++;
-                        continue;
-                    }
-
-                    // Add an override of the weapon to the patch
-                    var weaponOverride = CreateWeaponOverride(patchMod, weaponRecord, mutagenAmmoFormKey.Value);
-                    if (weaponOverride != null)
-                    {
-                        _logger.LogDebug("Added weapon override for {EditorId} with ammo {AmmoFormKey}",
-                            candidate.CandidateEditorId, ammoFormKey);
-                        successCount++;
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Failed to create weapon override for {EditorId}", candidate.CandidateEditorId);
-                        skipCount++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error processing candidate {EditorId}, skipping", candidate.CandidateEditorId);
-                    skipCount++;
-                }
+                EnsureMaster(patchMod, weaponGetter!.FormKey.ModKey);
+                EnsureMaster(patchMod, ammoGetter!.FormKey.ModKey);
+                success++;
             }
 
-            _logger.LogInformation("Processed candidates: {Success} succeeded, {Skipped} skipped", successCount, skipCount);
+            _logger.LogInformation("ESP generation: success={Success}, skipped={Skipped}", success, skipped);
 
-            // Ensure output directory exists
             var repoRoot = _pathService.GetRepoRoot();
             var outputDirConfig = _configService.GetOutputDirectory();
-            var outputDir = Path.IsPathRooted(outputDirConfig)
-                ? outputDirConfig
-                : Path.Combine(repoRoot, outputDirConfig);
-
-            if (!Directory.Exists(outputDir))
-            {
-                Directory.CreateDirectory(outputDir);
-                _logger.LogInformation("Created output directory: {OutputDir}", outputDir);
-            }
-
-            // Write the patch to file
+            var outputDir = Path.IsPathRooted(outputDirConfig) ? outputDirConfig : Path.Combine(repoRoot, outputDirConfig);
+            if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
             var outputPath = Path.Combine(outputDir, "MunitionAutoPatcher_Patch.esp");
-            patchMod.WriteToBinaryParallel(outputPath);
-
-            _logger.LogInformation("ESP patch written to: {OutputPath}", outputPath);
+            patchMod.WriteToBinary(outputPath);
+            _logger.LogInformation("ESP written: {Path}", outputPath);
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("ESP patch generation was cancelled");
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during ESP patch generation");
+            _logger.LogInformation("ESP generation cancelled");
             throw;
         }
 
         await Task.CompletedTask;
+    }
+
+    private static void EnsureMaster(Fallout4Mod mod, ModKey master)
+    {
+        var masters = mod.ModHeader.MasterReferences;
+        if (!masters.Any(m => m.Master == master))
+        {
+            masters.Add(new MasterReference() { Master = master });
+        }
+    }
+
+    private static MutagenFormKey ToMutagenFormKey(InternalFormKey key)
+    {
+        var mk = new ModKey(key.PluginName, ModType.Plugin);
+        return new MutagenFormKey(mk, key.FormId);
     }
 
     private InternalFormKey? GetWeaponFormKey(OmodCandidate candidate)
@@ -189,83 +144,38 @@ public class EspPatchService : IEspPatchService
         return null;
     }
 
-    private object? ResolveWeaponRecord(ILinkResolver linkCache, InternalFormKey formKey)
+    private static bool TryResolve<TGetter>(ILinkCache? cache, ILinkResolver? resolver, MutagenFormKey key, out TGetter? result)
+        where TGetter : class
     {
+        result = null;
         try
         {
-            // Use the LinkResolver abstraction to resolve the weapon record
-            var formKeyStr = $"{formKey.PluginName}:{formKey.FormId:X8}";
-            return linkCache.TryResolve(formKeyStr, "Weapon");
+            if (cache != null)
+            {
+                if (cache.TryResolve(key, typeof(TGetter), out var major) && major is TGetter t)
+                {
+                    result = t;
+                    return true;
+                }
+            }
         }
-        catch (Exception ex)
+        catch
         {
-            _logger.LogWarning(ex, "Failed to resolve weapon record for {FormKey}", formKey);
-            return null;
+            // Fall through to resolver
         }
-    }
 
-    private MutagenFormKey? ConvertToMutagenFormKey(InternalFormKey formKey)
-    {
         try
         {
-            // Convert our internal FormKey to Mutagen's FormKey
-            var modKey = new ModKey(formKey.PluginName, ModType.Plugin);
-            return new MutagenFormKey(modKey, formKey.FormId);
+            if (resolver != null)
+            {
+                return resolver.TryResolve<TGetter>(key, out result);
+            }
         }
-        catch (Exception ex)
+        catch
         {
-            _logger.LogWarning(ex, "Failed to convert FormKey {PluginName}:{FormId}", formKey.PluginName, formKey.FormId);
-            return null;
+            // Give up
         }
-    }
 
-    private Weapon? CreateWeaponOverride(Fallout4Mod patchMod, object weaponRecord, MutagenFormKey ammoFormKey)
-    {
-        try
-        {
-            // Use reflection to get the weapon's FormKey
-            var formKeyProp = weaponRecord.GetType().GetProperty("FormKey");
-            if (formKeyProp == null)
-            {
-                _logger.LogWarning("Unable to find FormKey property on weapon record");
-                return null;
-            }
-
-            var weaponFormKey = formKeyProp.GetValue(weaponRecord) as MutagenFormKey?;
-            if (weaponFormKey == null)
-            {
-                _logger.LogWarning("Unable to extract FormKey from weapon record");
-                return null;
-            }
-
-            // Cast to IWeaponGetter if possible
-            if (weaponRecord is not IWeaponGetter weaponGetter)
-            {
-                _logger.LogWarning("Weapon record does not implement IWeaponGetter");
-                return null;
-            }
-
-            // Create an override in the patch mod
-            var weaponOverride = patchMod.Weapons.GetOrAddAsOverride(weaponGetter);
-
-            // Set the ammo on the weapon
-            // In Fallout 4, weapon ammo is in the Data.Ammo field (DNAM subrecord)
-            if (weaponOverride.Data != null)
-            {
-                weaponOverride.Data.Ammo.SetTo(ammoFormKey);
-            }
-            else
-            {
-                _logger.LogWarning("Weapon Data field is null, cannot set ammo");
-                return null;
-            }
-
-            return weaponOverride;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to create weapon override");
-            return null;
-        }
+        return false;
     }
 }

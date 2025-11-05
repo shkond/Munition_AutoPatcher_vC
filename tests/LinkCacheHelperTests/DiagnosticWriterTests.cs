@@ -59,7 +59,7 @@ namespace LinkCacheHelperTests
 
             var reverseMap = new Dictionary<string, List<(object, string, object)>>(StringComparer.OrdinalIgnoreCase)
             {
-                [key] = new List<(object, string, object)>{ (srcRec, "SomeProp", new object()) }
+                [key] = new List<(object, string, object)> { (srcRec, "SomeProp", new object()) }
             };
 
             // results: include one confirmed candidate for the base weapon
@@ -83,7 +83,7 @@ namespace LinkCacheHelperTests
             Assert.Equal(key, fields[0]);
             Assert.Equal("WPN_EDID", fields[1]);
             Assert.Equal("1", fields[2]); // ReverseRefCount
-            Assert.Equal(""SourcePlugin"", fields[3]); // ReverseSourcePlugins (quoted)
+            Assert.Equal("\"SourcePlugin\"", fields[3]); // ReverseSourcePlugins (quoted)
             Assert.Equal("1", fields[4]); // ConfirmedCandidatesCount
         }
     }

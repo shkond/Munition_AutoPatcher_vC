@@ -32,7 +32,7 @@ namespace LinkCacheHelperTests
             public IEnumerable<object> GetWinningWeaponOverrides() => _weapons;
             public IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections()
                 => new[] { ("ConstructibleObject", _cobjs), ("Weapon", _weapons) };
-            public object? GetLinkCache() => null;
+            public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
             public void Dispose() { }
         }
 

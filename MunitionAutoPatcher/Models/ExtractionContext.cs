@@ -1,4 +1,6 @@
 using MunitionAutoPatcher.Services.Implementations;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins.Cache;
 
 namespace MunitionAutoPatcher.Models;
 
@@ -16,6 +18,12 @@ public sealed class ExtractionContext
     /// LinkResolver for resolving FormKeys if available.
     /// </summary>
     public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? LinkCache { get; set; }
+
+    /// <summary>
+    /// Non-generic Mutagen link cache for broad API compatibility.
+    /// Prefer this when using non-generic resolve helpers.
+    /// </summary>
+    public ILinkCache? FormLinkCache { get; set; }
 
     /// <summary>
     /// Set of plugin names to exclude from extraction.

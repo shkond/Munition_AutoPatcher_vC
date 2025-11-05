@@ -132,11 +132,11 @@ public class MapperViewModel : ViewModelBase
                 AppLogger.Log(msg);
             });
 
-            await _orchestrator.GenerateMappingsAsync(progress);
+            var weapons = _weaponsService.GetAllWeapons();
+            await _orchestrator.GenerateMappingsAsync(weapons, progress);
 
             // Create some stub mappings for demonstration
             WeaponMappings.Clear();
-            var weapons = _weaponsService.GetAllWeapons();
             // Populate ammo candidates from extracted ammo records (preferred)
             AmmoCandidates.Clear();
             try

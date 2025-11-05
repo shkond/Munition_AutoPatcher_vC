@@ -14,7 +14,7 @@ namespace WeaponDataExtractorTestsProject
         private class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
         private class FakeAmmoLink { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public bool IsNull => false; }
         private class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public FakeAmmoLink Ammo { get; set; } = new FakeAmmoLink(); }
-    private class FakeConstructibleObject { public object CreatedObject { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = string.Empty; public FakeFormKey? FormKey { get; set; } }
+        private class FakeConstructibleObject { public object CreatedObject { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = string.Empty; public FakeFormKey? FormKey { get; set; } }
 
         private class NoOpResourcedMutagenEnvironment : IResourcedMutagenEnvironment
         {
@@ -34,7 +34,7 @@ namespace WeaponDataExtractorTestsProject
                 yield break;
             }
 
-            public object? GetLinkCache() => null;
+            public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
 
             public Noggog.DirectoryPath? GetDataFolderPath() => null;
 

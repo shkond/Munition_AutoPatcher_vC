@@ -37,10 +37,11 @@ namespace LinkCacheHelperTests
         [Fact]
         public void ResolveString_ReturnsResolveStringResult()
         {
-            var fk = new { ModKey = new { FileName = "moda" }, ID = (uint)0xABCD };
+            // When providing a string link-like, single-arg fallback should invoke Resolve(string)
+            var linkLike = "editorOrIdentifier";
             var cache = new FakeLinkCacheResolve();
 
-            var res = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(new { FormKey = fk }, cache);
+            var res = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(linkLike, cache);
             Assert.NotNull(res);
             Assert.IsType<string>(res);
             Assert.StartsWith("resolved:", (string)res!);
