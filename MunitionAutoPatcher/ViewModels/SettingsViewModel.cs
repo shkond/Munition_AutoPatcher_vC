@@ -28,6 +28,7 @@ public class SettingsViewModel : ViewModelBase
     private bool _excludeCcEsl = true;
     private bool _preferEditorIdForDisplay = false;
     private bool _isProcessing;
+    private string _outputMode = "esp";
     private OmodCandidate? _selectedOmodCandidate;
     private ObservableCollection<string> _excludedPlugins = new();
     private string _newExcludedPlugin = string.Empty;
@@ -50,7 +51,7 @@ public class SettingsViewModel : ViewModelBase
         GenerateEspPatchCommand = new AsyncRelayCommand(GenerateEspPatch, () => !IsProcessing);
         ExtractOmodsCommand = new AsyncRelayCommand(StartOmodExtraction, () => !IsProcessing);
         GenerateIniFromSelectedCommand = new AsyncRelayCommand(GenerateIniFromSelected, () => !IsProcessing && SelectedOmodCandidate != null);
-        
+
         LoadSettings();
         OmodCandidates = new ObservableCollection<OmodCandidate>();
         // Load excluded plugins into observable collection
@@ -68,6 +69,39 @@ public class SettingsViewModel : ViewModelBase
     {
         get => _outputPath;
         set => SetProperty(ref _outputPath, value);
+    }
+
+    public string OutputMode
+    {
+        get => _outputMode;
+        set
+        {
+            if (SetProperty(ref _outputMode, value))
+            {
+                try { _configService.SetOutputMode(value); } catch { }
+                // Notify helper bool properties
+                (this as SettingsViewModel)?.RaiseOutputModeChanged();
+            }
+        }
+    }
+
+    private void RaiseOutputModeChanged()
+    {
+        // Notify UI for radio button bindings
+        OnPropertyChanged(nameof(IsOutputEsp));
+        OnPropertyChanged(nameof(IsOutputIni));
+    }
+
+    public bool IsOutputEsp
+    {
+        get => string.Equals(_outputMode, "esp", StringComparison.OrdinalIgnoreCase);
+        set { if (value) OutputMode = "esp"; }
+    }
+
+    public bool IsOutputIni
+    {
+        get => string.Equals(_outputMode, "ini", StringComparison.OrdinalIgnoreCase);
+        set { if (value) OutputMode = "ini"; }
     }
 
     public bool AutoMapByName
@@ -197,6 +231,12 @@ public class SettingsViewModel : ViewModelBase
         ExcludeDlcEsms = _configService.GetExcludeDlcEsms();
         ExcludeCcEsl = _configService.GetExcludeCcEsl();
         PreferEditorIdForDisplay = _configService.GetPreferEditorIdForDisplay();
+        try
+        {
+            _outputMode = _configService.GetOutputMode() ?? "esp";
+        }
+        catch { _outputMode = "esp"; }
+        RaiseOutputModeChanged();
     }
 
     private void BrowseGameData()
@@ -331,19 +371,19 @@ public class SettingsViewModel : ViewModelBase
             catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to populate OmodCandidates collection", ex); }
 
             // Diagnostic: write exit marker to indicate the command returned
-                try
+            try
+            {
+                var repoRoot2 = RepoUtils.FindRepoRoot();
+                var artifactsDir2 = System.IO.Path.Combine(repoRoot2, "artifacts", "RobCo_Patcher");
+                if (!System.IO.Directory.Exists(artifactsDir2)) System.IO.Directory.CreateDirectory(artifactsDir2);
+                var exitPath = System.IO.Path.Combine(artifactsDir2, $"settings_extract_exit_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
+                using (var w2 = new System.IO.StreamWriter(exitPath, false, Encoding.UTF8))
                 {
-                    var repoRoot2 = RepoUtils.FindRepoRoot();
-                    var artifactsDir2 = System.IO.Path.Combine(repoRoot2, "artifacts", "RobCo_Patcher");
-                    if (!System.IO.Directory.Exists(artifactsDir2)) System.IO.Directory.CreateDirectory(artifactsDir2);
-                    var exitPath = System.IO.Path.Combine(artifactsDir2, $"settings_extract_exit_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
-                    using (var w2 = new System.IO.StreamWriter(exitPath, false, Encoding.UTF8))
-                    {
-                        w2.WriteLine($"SettingsViewModel.StartOmodExtraction exit at {DateTime.Now:O}");
-                    }
-                    AppLogger.Log($"Settings extract exit marker written: {exitPath}");
+                    w2.WriteLine($"SettingsViewModel.StartOmodExtraction exit at {DateTime.Now:O}");
                 }
-                catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to write extract exit marker", ex); }
+                AppLogger.Log($"Settings extract exit marker written: {exitPath}");
+            }
+            catch (Exception ex) { AppLogger.Log("SettingsViewModel: failed to write extract exit marker", ex); }
         }
         finally
         {
@@ -367,7 +407,7 @@ public class SettingsViewModel : ViewModelBase
             }
             NewExcludedPlugin = string.Empty;
         }
-    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in SettingsViewModel.AddExcludedPlugin", ex); }
+        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in SettingsViewModel.AddExcludedPlugin", ex); }
     }
 
     private void RemoveExcludedPlugin()
@@ -384,7 +424,7 @@ public class SettingsViewModel : ViewModelBase
             }
             SelectedExcludedPlugin = null;
         }
-    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in SettingsViewModel.RemoveExcludedPlugin", ex); }
+        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in SettingsViewModel.RemoveExcludedPlugin", ex); }
     }
 
     private async Task GenerateIniFromSelected()
@@ -441,8 +481,8 @@ public class SettingsViewModel : ViewModelBase
             IsManualMapping = true
         };
 
-    // Choose output path under artifacts/RobCo_Patcher by default
-    var repoRoot = RepoUtils.FindRepoRoot();
+        // Choose output path under artifacts/RobCo_Patcher by default
+        var repoRoot = RepoUtils.FindRepoRoot();
         var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher", SelectedOmodCandidate.SourcePlugin ?? "");
         if (!System.IO.Directory.Exists(artifactsDir))
             System.IO.Directory.CreateDirectory(artifactsDir);
@@ -468,5 +508,5 @@ public class SettingsViewModel : ViewModelBase
         await _iniGenerator.GenerateIniAsync(outputPath, mappings, progress);
     }
 
-        // RepoUtils.FindRepoRoot provides repository root lookup
+    // RepoUtils.FindRepoRoot provides repository root lookup
 }
