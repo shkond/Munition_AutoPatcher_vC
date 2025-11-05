@@ -46,9 +46,10 @@ public class SettingsViewModel : ViewModelBase
         BrowseOutputPathCommand = new RelayCommand(BrowseOutputPath);
         AddExcludedPluginCommand = new RelayCommand(AddExcludedPlugin, () => !string.IsNullOrWhiteSpace(NewExcludedPlugin));
         RemoveExcludedPluginCommand = new RelayCommand(RemoveExcludedPlugin, () => !string.IsNullOrWhiteSpace(SelectedExcludedPlugin));
-    StartExtractionCommand = new AsyncRelayCommand(StartExtraction, () => !IsProcessing);
-    ExtractOmodsCommand = new AsyncRelayCommand(StartOmodExtraction, () => !IsProcessing);
-    GenerateIniFromSelectedCommand = new AsyncRelayCommand(GenerateIniFromSelected, () => !IsProcessing && SelectedOmodCandidate != null);
+        StartExtractionCommand = new AsyncRelayCommand(StartExtraction, () => !IsProcessing);
+        GenerateEspPatchCommand = new AsyncRelayCommand(GenerateEspPatch, () => !IsProcessing);
+        ExtractOmodsCommand = new AsyncRelayCommand(StartOmodExtraction, () => !IsProcessing);
+        GenerateIniFromSelectedCommand = new AsyncRelayCommand(GenerateIniFromSelected, () => !IsProcessing && SelectedOmodCandidate != null);
         
         LoadSettings();
         OmodCandidates = new ObservableCollection<OmodCandidate>();
@@ -138,6 +139,7 @@ public class SettingsViewModel : ViewModelBase
     public ICommand BrowseGameDataCommand { get; }
     public ICommand BrowseOutputPathCommand { get; }
     public ICommand StartExtractionCommand { get; }
+    public ICommand GenerateEspPatchCommand { get; }
     public ICommand ExtractOmodsCommand { get; }
 
     public ObservableCollection<OmodCandidate> OmodCandidates { get; }
@@ -248,6 +250,21 @@ public class SettingsViewModel : ViewModelBase
         {
             IsProcessing = false;
         }
+    }
+
+    private async Task GenerateEspPatch()
+    {
+        try
+        {
+            _configService.SetOutputMode("esp");
+            AppLogger.Log("ESP 出力モードを有効化しました。ESP パッチを生成します...");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("ESP 出力モードの設定に失敗しました", ex);
+        }
+
+        await StartExtraction();
     }
 
     private async Task StartOmodExtraction()
