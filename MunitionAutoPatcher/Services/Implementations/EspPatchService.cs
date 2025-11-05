@@ -7,6 +7,8 @@ using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Records;
 using System.IO;
 using System.Linq;
+using InternalFormKey = MunitionAutoPatcher.Models.FormKey;
+using MutagenFormKey = Mutagen.Bethesda.Plugins.FormKey;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -44,7 +46,7 @@ public class EspPatchService : IEspPatchService
         {
             // Filter to confirmed candidates only
             var confirmedCandidates = candidates.Where(c => c.ConfirmedAmmoChange).ToList();
-            _logger.LogInformation("Processing {Count} confirmed candidates out of {Total} total", 
+            _logger.LogInformation("Processing {Count} confirmed candidates out of {Total} total",
                 confirmedCandidates.Count, candidates.Count);
 
             if (confirmedCandidates.Count == 0)
@@ -170,7 +172,7 @@ public class EspPatchService : IEspPatchService
         await Task.CompletedTask;
     }
 
-    private FormKey? GetWeaponFormKey(OmodCandidate candidate)
+    private InternalFormKey? GetWeaponFormKey(OmodCandidate candidate)
     {
         // Determine the weapon to patch based on candidate type
         // For most candidates, we want to patch the base weapon or the created weapon
@@ -187,7 +189,7 @@ public class EspPatchService : IEspPatchService
         return null;
     }
 
-    private object? ResolveWeaponRecord(ILinkResolver linkCache, FormKey formKey)
+    private object? ResolveWeaponRecord(ILinkResolver linkCache, InternalFormKey formKey)
     {
         try
         {
@@ -202,13 +204,13 @@ public class EspPatchService : IEspPatchService
         }
     }
 
-    private Mutagen.Bethesda.Plugins.FormKey? ConvertToMutagenFormKey(FormKey formKey)
+    private MutagenFormKey? ConvertToMutagenFormKey(InternalFormKey formKey)
     {
         try
         {
             // Convert our internal FormKey to Mutagen's FormKey
             var modKey = new ModKey(formKey.PluginName, ModType.Plugin);
-            return new Mutagen.Bethesda.Plugins.FormKey(modKey, formKey.FormId);
+            return new MutagenFormKey(modKey, formKey.FormId);
         }
         catch (Exception ex)
         {
@@ -217,7 +219,7 @@ public class EspPatchService : IEspPatchService
         }
     }
 
-    private Weapon? CreateWeaponOverride(Fallout4Mod patchMod, object weaponRecord, Mutagen.Bethesda.Plugins.FormKey ammoFormKey)
+    private Weapon? CreateWeaponOverride(Fallout4Mod patchMod, object weaponRecord, MutagenFormKey ammoFormKey)
     {
         try
         {
@@ -229,7 +231,7 @@ public class EspPatchService : IEspPatchService
                 return null;
             }
 
-            var weaponFormKey = formKeyProp.GetValue(weaponRecord) as Mutagen.Bethesda.Plugins.FormKey?;
+            var weaponFormKey = formKeyProp.GetValue(weaponRecord) as MutagenFormKey?;
             if (weaponFormKey == null)
             {
                 _logger.LogWarning("Unable to extract FormKey from weapon record");
