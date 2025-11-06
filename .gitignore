@@ -44,6 +44,10 @@ coverage/
 /mutagen-tmp/
 /mutagen-tmp/**
 
+# Local vendor folder (third-party sources / generated docs)
+/vendor/
+/vendor/**
+
 ## Local config / secrets
 /config/config.json
 config/*.local.json
