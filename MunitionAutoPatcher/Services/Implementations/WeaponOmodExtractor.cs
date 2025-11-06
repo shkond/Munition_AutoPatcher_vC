@@ -18,6 +18,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     private readonly IMutagenAccessor _mutagenAccessor;
     private readonly IPathService _pathService;
     private readonly ILogger<WeaponOmodExtractor> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly IEspPatchService? _espPatchService;
 
     public WeaponOmodExtractor(
@@ -30,6 +31,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         IMutagenAccessor mutagenAccessor,
         IPathService pathService,
         ILogger<WeaponOmodExtractor> logger,
+        ILoggerFactory loggerFactory,
         IEspPatchService? espPatchService = null)
     {
         _loadOrderService = loadOrderService ?? throw new ArgumentNullException(nameof(loadOrderService));
@@ -41,6 +43,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _espPatchService = espPatchService; // optional for backward compatibility
     }
 
@@ -132,7 +135,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             try
             {
                 using var mapEnv = _mutagenEnvironmentFactory.Create();
-                var builder = new ReverseMapBuilder(mapEnv);
+                var builder = new ReverseMapBuilder(mapEnv, _loggerFactory.CreateLogger<ReverseMapBuilder>());
                 reverseMap = builder.Build(context.ExcludedPlugins);
                 _logger.LogInformation("Built reverse-reference map with {Count} keys", reverseMap.Count);
 
@@ -156,7 +159,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             try
             {
                 var mutAsm = typeof(Mutagen.Bethesda.Environments.GameEnvironment).Assembly.GetName();
-                detector = DetectorFactory.GetDetector(mutAsm);
+                detector = DetectorFactory.GetDetector(mutAsm, _loggerFactory);
                 _logger.LogInformation("Selected detector: {DetectorName}", detector?.Name ?? "None");
 
                 if (detector != null)
@@ -174,7 +177,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to select detector, using fallback");
-                detector = new ReflectionFallbackDetector();
+                detector = new ReflectionFallbackDetector(_loggerFactory.CreateLogger<ReflectionFallbackDetector>());
             }
 
             // Confirm candidates via reverse-reference analysis

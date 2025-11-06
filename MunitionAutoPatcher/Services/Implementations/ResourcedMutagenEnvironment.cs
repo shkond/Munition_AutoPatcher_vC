@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.Extensions.Logging;
 using Noggog;
 using MunitionAutoPatcher.Services.Interfaces;
 
@@ -15,12 +16,14 @@ public sealed class ResourcedMutagenEnvironment : IResourcedMutagenEnvironment
 {
     private readonly IMutagenEnvironment _env;
     private readonly IDisposable _resource;
+    private readonly ILogger _logger;
     private bool _disposed;
 
-    public ResourcedMutagenEnvironment(IMutagenEnvironment env, IDisposable resource)
+    public ResourcedMutagenEnvironment(IMutagenEnvironment env, IDisposable resource, ILogger logger)
     {
         _env = env ?? throw new ArgumentNullException(nameof(env));
         _resource = resource ?? throw new ArgumentNullException(nameof(resource));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public IEnumerable<object> GetWinningWeaponOverrides() => _env.GetWinningWeaponOverrides();
@@ -44,7 +47,7 @@ public sealed class ResourcedMutagenEnvironment : IResourcedMutagenEnvironment
         catch (Exception ex)
         {
             // Disposal should not throw to callers; log and swallow.
-            AppLogger.Log("ResourcedMutagenEnvironment: exception while disposing resource", ex);
+            _logger.LogError(ex, "ResourcedMutagenEnvironment: exception while disposing resource");
         }
         _disposed = true;
     }

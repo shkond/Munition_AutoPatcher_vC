@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.Extensions.Logging;
 
 namespace MunitionAutoPatcher.Services.Helpers
 {
@@ -16,23 +17,23 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <param name="priorityRoot">The PriorityOrder root object to scan</param>
         /// <param name="excluded">Set of plugin names to exclude</param>
         /// <returns>Dictionary mapping FormKey strings to lists of referencing records</returns>
-        public static Dictionary<string, List<(object Record, string PropName, object PropValue)>> Build(object priorityRoot, HashSet<string> excluded)
+        public static Dictionary<string, List<(object Record, string PropName, object PropValue)>> Build(object priorityRoot, HashSet<string> excluded, Microsoft.Extensions.Logging.ILogger logger)
         {
             var reverseMap = new Dictionary<string, List<(object, string, object)>>(StringComparer.OrdinalIgnoreCase);
-            
+
             try
             {
-                var methods = GetCollectionMethods(priorityRoot);
-                
+                var methods = GetCollectionMethods(priorityRoot, logger);
+
                 foreach (var method in methods)
                 {
-                    var records = GetRecordsFromMethod(method, priorityRoot);
-                    ProcessRecords(records, excluded, reverseMap);
+                    var records = GetRecordsFromMethod(method, priorityRoot, logger);
+                    ProcessRecords(records, excluded, reverseMap, logger);
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("ReverseMapBuilder: Build failed", ex);
+                logger.LogError(ex, "ReverseMapBuilder: Build failed");
             }
 
             return reverseMap;
@@ -41,18 +42,18 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <summary>
         /// Gets collection methods from the priority root object.
         /// </summary>
-        private static IEnumerable<MethodInfo> GetCollectionMethods(object priorityRoot)
+        private static IEnumerable<MethodInfo> GetCollectionMethods(object priorityRoot, Microsoft.Extensions.Logging.ILogger? logger = null)
         {
             try
             {
                 return priorityRoot.GetType()
                     .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                    .Where(m => m.GetParameters().Length == 0 && 
+                    .Where(m => m.GetParameters().Length == 0 &&
                                 typeof(System.Collections.IEnumerable).IsAssignableFrom(m.ReturnType));
             }
             catch (Exception ex)
             {
-                AppLogger.Log("ReverseMapBuilder: failed to get collection methods", ex);
+                logger?.LogError(ex, "ReverseMapBuilder: failed to get collection methods");
                 return Enumerable.Empty<MethodInfo>();
             }
         }
@@ -60,7 +61,7 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <summary>
         /// Gets records from a collection method by invoking it and obtaining WinningOverrides.
         /// </summary>
-        private static System.Collections.IEnumerable GetRecordsFromMethod(MethodInfo method, object priorityRoot)
+        private static System.Collections.IEnumerable GetRecordsFromMethod(MethodInfo method, object priorityRoot, Microsoft.Extensions.Logging.ILogger? logger = null)
         {
             try
             {
@@ -80,9 +81,9 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"ReverseMapBuilder: failed to get records from method {method.Name}", ex);
+                logger?.LogError(ex, "ReverseMapBuilder: failed to get records from method {Method}", method.Name);
             }
-            
+
             return Enumerable.Empty<object>();
         }
 
@@ -90,21 +91,22 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// Processes a collection of records and adds their references to the reverse map.
         /// </summary>
         private static void ProcessRecords(
-            System.Collections.IEnumerable records, 
-            HashSet<string> excluded, 
-            Dictionary<string, List<(object, string, object)>> reverseMap)
+            System.Collections.IEnumerable records,
+            HashSet<string> excluded,
+            Dictionary<string, List<(object, string, object)>> reverseMap,
+            Microsoft.Extensions.Logging.ILogger? logger = null)
         {
             foreach (var rec in records)
             {
                 if (rec == null) continue;
-                
+
                 try
                 {
-                    ProcessRecord(rec, excluded, reverseMap);
+                    ProcessRecord(rec, excluded, reverseMap, logger);
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log("ReverseMapBuilder: failed processing record", ex);
+                    logger?.LogError(ex, "ReverseMapBuilder: failed processing record");
                 }
             }
         }
@@ -113,21 +115,22 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// Processes a single record and extracts FormKey references from its properties.
         /// </summary>
         private static void ProcessRecord(
-            object rec, 
-            HashSet<string> excluded, 
-            Dictionary<string, List<(object, string, object)>> reverseMap)
+            object rec,
+            HashSet<string> excluded,
+            Dictionary<string, List<(object, string, object)>> reverseMap,
+            Microsoft.Extensions.Logging.ILogger? logger = null)
         {
             var props = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            
+
             foreach (var prop in props)
             {
                 try
                 {
-                    ProcessProperty(rec, prop, excluded, reverseMap);
+                    ProcessProperty(rec, prop, excluded, reverseMap, logger);
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log($"ReverseMapBuilder: failed processing property {prop.Name}", ex);
+                    logger?.LogError(ex, "ReverseMapBuilder: failed processing property {Prop}", prop.Name);
                 }
             }
         }
@@ -136,20 +139,21 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// Processes a single property and adds it to the reverse map if it contains a FormKey reference.
         /// </summary>
         private static void ProcessProperty(
-            object rec, 
-            PropertyInfo prop, 
-            HashSet<string> excluded, 
-            Dictionary<string, List<(object, string, object)>> reverseMap)
+            object rec,
+            PropertyInfo prop,
+            HashSet<string> excluded,
+            Dictionary<string, List<(object, string, object)>> reverseMap,
+            Microsoft.Extensions.Logging.ILogger? logger = null)
         {
             var val = prop.GetValue(rec);
             if (val == null) return;
 
             // Try to extract FormKey from the property value
-            var formKeyRef = TryExtractFormKeyReference(val);
+            var formKeyRef = TryExtractFormKeyReference(val, logger);
             if (formKeyRef == null) return;
 
             var (plugin, id) = formKeyRef.Value;
-            
+
             // Check exclusion
             if (IsExcluded(plugin, excluded)) return;
 
@@ -167,7 +171,7 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// Attempts to extract a FormKey reference (plugin, ID) from a property value.
         /// </summary>
         /// <returns>Tuple of (plugin, id) if extraction succeeded, null otherwise</returns>
-        private static (string Plugin, uint Id)? TryExtractFormKeyReference(object val)
+        private static (string Plugin, uint Id)? TryExtractFormKeyReference(object val, Microsoft.Extensions.Logging.ILogger? logger = null)
         {
             try
             {
@@ -186,27 +190,27 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
             catch (Exception ex)
             {
-                AppLogger.Log("ReverseMapBuilder: failed extracting FormKey reference", ex);
+                logger?.LogError(ex, "ReverseMapBuilder: failed extracting FormKey reference");
             }
-            
+
             return null;
         }
 
         /// <summary>
         /// Checks if a plugin name is in the exclusion set.
         /// </summary>
-        private static bool IsExcluded(string? plugin, HashSet<string>? excluded)
+        private static bool IsExcluded(string? plugin, HashSet<string>? excluded, Microsoft.Extensions.Logging.ILogger? logger = null)
         {
             if (string.IsNullOrEmpty(plugin) || excluded == null || excluded.Count == 0)
                 return false;
-            
+
             try
             {
                 return excluded.Contains(plugin);
             }
             catch (Exception ex)
             {
-                AppLogger.Log("ReverseMapBuilder: failed checking excluded plugin", ex);
+                logger?.LogError(ex, "ReverseMapBuilder: failed checking excluded plugin");
                 return false;
             }
         }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.Extensions.Logging;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -13,10 +14,12 @@ namespace MunitionAutoPatcher.Services.Implementations;
 public class ReverseMapBuilder
 {
     private readonly IMutagenEnvironment _env;
+    private readonly ILogger<ReverseMapBuilder> _logger;
 
-    public ReverseMapBuilder(IMutagenEnvironment env)
+    public ReverseMapBuilder(IMutagenEnvironment env, ILogger<ReverseMapBuilder> logger)
     {
         _env = env;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public Dictionary<string, List<(object Record, string PropName, object PropValue)>> Build(HashSet<string> excluded)
@@ -62,13 +65,22 @@ public class ReverseMapBuilder
                                 }
                                 list.Add((rec, p.Name, val));
                             }
-                            catch (Exception ex) { AppLogger.Log("ReverseMapBuilder: exception while scanning properties", ex); }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "ReverseMapBuilder: exception while scanning properties");
+                            }
                         }
                     }
-                    catch (Exception ex) { AppLogger.Log("ReverseMapBuilder: exception while processing record", ex); }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "ReverseMapBuilder: exception while processing record");
+                    }
                 }
             }
-            catch (Exception ex) { AppLogger.Log($"ReverseMapBuilder: failed while enumerating collection {col.Name}", ex); }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ReverseMapBuilder: failed while enumerating collection {Name}", col.Name);
+            }
         }
 
         return reverseMap;

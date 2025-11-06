@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Utilities;
 using System.Reflection;
@@ -11,7 +12,15 @@ namespace MunitionAutoPatcher.Services.Implementations;
 /// </summary>
 public class MutagenV51Detector : IAmmunitionChangeDetector
 {
-    private readonly ReflectionFallbackDetector _fallback = new ReflectionFallbackDetector();
+    private readonly ReflectionFallbackDetector _fallback;
+    private readonly ILogger<MutagenV51Detector> _logger;
+
+    public MutagenV51Detector(ILogger<MutagenV51Detector> logger, ILoggerFactory loggerFactory)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        if (loggerFactory == null) throw new ArgumentNullException(nameof(loggerFactory));
+        _fallback = new ReflectionFallbackDetector(loggerFactory.CreateLogger<ReflectionFallbackDetector>());
+    }
 
     public string Name => "MutagenV51Detector";
 
@@ -32,7 +41,7 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
             {
                 var props = omod.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
                 // Prefer properties which contain ammo-like names
-                    foreach (var p in props.OrderByDescending(p => IsAmmoLikeName(p.Name)))
+                foreach (var p in props.OrderByDescending(p => IsAmmoLikeName(p.Name)))
                 {
                     try
                     {
@@ -62,7 +71,7 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
                             }
                             catch (Exception ex)
                             {
-                                AppLogger.Log("MutagenV51Detector: failing to read original FormKey during detection", ex);
+                                _logger?.LogError(ex, "MutagenV51Detector: failing to read original FormKey during detection");
                             }
                         }
 
@@ -72,14 +81,14 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
                     catch (Exception ex)
                     {
                         // Log the property-level error but continue scanning other properties.
-                        AppLogger.Log($"MutagenV51Detector: error inspecting property '{p.Name}' on type {omod.GetType().FullName}", ex);
+                        _logger?.LogError(ex, "MutagenV51Detector: error inspecting property '{Property}' on type {Type}", p.Name, omod.GetType().FullName);
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            AppLogger.Log("MutagenV51Detector: fast-path detection failed, falling back to reflection detector", ex);
+            _logger?.LogError(ex, "MutagenV51Detector: fast-path detection failed, falling back to reflection detector");
         }
 
         // Fallback to the resilient reflection detector
@@ -89,7 +98,7 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
         }
         catch (Exception ex)
         {
-            AppLogger.Log("MutagenV51Detector: reflection fallback detector threw an exception", ex);
+            _logger?.LogError(ex, "MutagenV51Detector: reflection fallback detector threw an exception");
             newAmmoLink = null;
             return false;
         }
@@ -111,7 +120,7 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
         }
         catch (Exception ex)
         {
-            AppLogger.Log($"MutagenV51Detector.IsLikelyFormLinkProperty: failed for property {p.Name}", ex);
+            System.Diagnostics.Debug.WriteLine($"MutagenV51Detector.IsLikelyFormLinkProperty: failed for property {p.Name}: {ex}");
             return false;
         }
     }

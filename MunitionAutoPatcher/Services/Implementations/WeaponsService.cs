@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
 using Mutagen.Bethesda.Fallout4;
@@ -25,11 +26,26 @@ public class WeaponsService : IWeaponsService
     private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
     private readonly List<WeaponData> _weapons = new();
     private readonly List<AmmoData> _ammo = new();
+    private readonly ILogger<WeaponsService> _logger;
 
-    public WeaponsService(ILoadOrderService loadOrderService, IMutagenEnvironmentFactory mutagenEnvironmentFactory)
+    private void LogInfo(string message)
+    {
+        _logger.LogInformation(message);
+    }
+
+    private void LogError(string message, Exception? ex = null)
+    {
+        if (ex != null)
+            _logger.LogError(ex, message);
+        else
+            _logger.LogError(message);
+    }
+
+    public WeaponsService(ILoadOrderService loadOrderService, IMutagenEnvironmentFactory mutagenEnvironmentFactory, ILogger<WeaponsService> logger)
     {
         _loadOrderService = loadOrderService;
         _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     // Mojibake repair was implemented here but is disabled per user request.
@@ -150,7 +166,7 @@ public class WeaponsService : IWeaponsService
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // Write an early snapshot so a log file exists even if the app terminates unexpectedly
-            try { WriteRecordsSnapshot(); } catch (Exception ex) { AppLogger.Log("WeaponsService: initial snapshot write failed", ex); }
+            try { WriteRecordsSnapshot(); } catch (Exception ex) { LogError("WeaponsService: initial snapshot write failed", ex); }
 
             try
             {
@@ -159,7 +175,7 @@ public class WeaponsService : IWeaponsService
                 {
                     var dataPath = envRes.GetDataFolderPath()?.ToString() ?? "(null)";
                     var hasLinkCache = envRes.GetLinkCache() != null;
-                    AppLogger.Log($"WeaponsService: Env DataFolderPath={dataPath}, LinkCache={(hasLinkCache ? "available" : "null")}");
+                    LogInfo($"WeaponsService: Env DataFolderPath={dataPath}, LinkCache={(hasLinkCache ? "available" : "null")}");
                 }
                 catch { /* diagnostics only */ }
 
@@ -177,7 +193,7 @@ public class WeaponsService : IWeaponsService
                         if (!MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(weaponGetter, out pluginName, out formId))
                         {
                             // Skip weapons with invalid FormKeys instead of throwing
-                            AppLogger.Log($"WeaponsService: skipping weapon record with missing or invalid FormKey (Type: {weaponGetter?.GetType().Name ?? "null"})");
+                            LogInfo($"WeaponsService: skipping weapon record with missing or invalid FormKey (Type: {weaponGetter?.GetType().Name ?? "null"})");
                             continue;
                         }
 
@@ -190,7 +206,7 @@ public class WeaponsService : IWeaponsService
                             }
                             catch (Exception ex)
                             {
-                                AppLogger.Log($"WeaponsService: typed EditorID access failed for {pluginName}:{formId:X8}", ex);
+                                LogError($"WeaponsService: typed EditorID access failed for {pluginName}:{formId:X8}", ex);
                             }
                         }
 
@@ -202,7 +218,7 @@ public class WeaponsService : IWeaponsService
                             }
                             catch (Exception ex)
                             {
-                                AppLogger.Log($"WeaponsService: reflection EditorID access failed for {pluginName}:{formId:X8}", ex);
+                                LogError($"WeaponsService: reflection EditorID access failed for {pluginName}:{formId:X8}", ex);
                                 editorId = null;
                             }
                         }
@@ -258,7 +274,7 @@ public class WeaponsService : IWeaponsService
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Log($"WeaponsService: damage extraction failed for {pluginName}:{formId:X8}", ex);
+                            _logger.LogError(ex, "WeaponsService: damage extraction failed for {Plugin}:{FormId:X8}", pluginName, formId);
                             damage = 0f;
                         }
 
@@ -285,7 +301,7 @@ public class WeaponsService : IWeaponsService
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Log($"WeaponsService: fire rate extraction failed for {pluginName}:{formId:X8}", ex);
+                            _logger.LogError(ex, "WeaponsService: fire rate extraction failed for {Plugin}:{FormId:X8}", pluginName, formId);
                             fireRate = 0f;
                         }
 
@@ -315,7 +331,7 @@ public class WeaponsService : IWeaponsService
                         catch (Exception ex)
                         {
                             // Log via centralized logger rather than touching UI directly
-                            AppLogger.Log($"WeaponsService: translation dump error: {ex.Message}", ex);
+                            LogError($"WeaponsService: translation dump error: {ex.Message}", ex);
                         }
 
                         // Try to resolve ammunition via the record's FormLink using adapter-provided ILinkResolver
@@ -331,7 +347,7 @@ public class WeaponsService : IWeaponsService
                                 }
                                 catch (Exception ex)
                                 {
-                                    AppLogger.Log($"WeaponsService: resolver.TryResolve failed: {ex.Message}", ex);
+                                    LogError($"WeaponsService: resolver.TryResolve failed: {ex.Message}", ex);
                                     ammoResolved = null;
                                 }
                             }
@@ -373,7 +389,7 @@ public class WeaponsService : IWeaponsService
                                         }
                                     }
                                 }
-                                catch (Exception ex) { AppLogger.Log($"WeaponsService: ammo resolved but processing failed: {ex.Message}", ex); }
+                                catch (Exception ex) { LogError($"WeaponsService: ammo resolved but processing failed: {ex.Message}", ex); }
                             }
                             else
                             {
@@ -417,7 +433,7 @@ public class WeaponsService : IWeaponsService
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Log($"WeaponsService: ammo resolve error: {ex.Message}", ex);
+                            _logger.LogError(ex, "WeaponsService: ammo resolve error: {Message}", ex.Message);
                         }
 
                         _weapons.Add(weaponData);
@@ -426,7 +442,7 @@ public class WeaponsService : IWeaponsService
                         // Periodically write a snapshot to avoid losing diagnostics on unexpected exit
                         if (weaponCount % 200 == 0)
                         {
-                            try { WriteRecordsSnapshot(); } catch (Exception ex) { AppLogger.Log("WeaponsService: periodic snapshot write failed", ex); }
+                            try { WriteRecordsSnapshot(); } catch (Exception ex) { LogError("WeaponsService: periodic snapshot write failed", ex); }
                         }
 
                         if (weaponCount % 50 == 0)
@@ -437,20 +453,20 @@ public class WeaponsService : IWeaponsService
                     catch (Exception ex)
                     {
                         // Record details so the root cause is available in artifacts/ logs and Debug output
-                        AppLogger.Log("WeaponsService: failed while parsing a weapon record", ex);
+                        LogError("WeaponsService: failed while parsing a weapon record", ex);
                         progress?.Report($"警告: 武器の解析に失敗しました: {ex.Message}");
                     }
                 }
 
                 progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
                 progress?.Report($"弾薬抽出(MO2 LinkCache 経由)完了: {_ammo.Count}個の弾薬を収集しました");
-                try { WriteRecordsLog(); } catch (Exception ex) { AppLogger.Log("WeaponsService: WriteRecordsLog failed", ex); /* non-fatal for extraction */ }
+                try { WriteRecordsLog(); } catch (Exception ex) { LogError("WeaponsService: WriteRecordsLog failed", ex); /* non-fatal for extraction */ }
                 return _weapons;
             }
             catch (Exception ex)
             {
                 // GameEnvironment not available or initialization failed; log and fall back to data-folder based enumeration.
-                AppLogger.Log("WeaponsService: GameEnvironment detection failed, falling back to non-MO2 enumeration", ex);
+                LogError("WeaponsService: GameEnvironment detection failed, falling back to non-MO2 enumeration", ex);
             }
 
             progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
@@ -483,12 +499,12 @@ public class WeaponsService : IWeaponsService
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log($"WeaponsService: ammo fallback scan error: {ex.Message}", ex);
+                    _logger.LogError(ex, "WeaponsService: ammo fallback scan error: {Message}", ex.Message);
                 }
             }
 
             progress?.Report($"弾薬抽出(武器参照から)完了: {_ammo.Count}個の弾薬を収集しました");
-            try { WriteRecordsLog(); } catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in WeaponsService.WriteRecordsLog", ex); }
+            try { WriteRecordsLog(); } catch (Exception ex) { LogError("Suppressed exception (empty catch) in WeaponsService.WriteRecordsLog", ex); }
             return _weapons;
         }
         catch (Exception ex)
@@ -544,7 +560,7 @@ public class WeaponsService : IWeaponsService
                     var defaultAmmoKey = w.DefaultAmmo != null ? $"{w.DefaultAmmo.PluginName}:{w.DefaultAmmo.FormId:X8}" : string.Empty;
                     sw.WriteLine($"{w.Name}\t{w.EditorId}\t{formKeyStr}\t{defaultAmmoName}\t{defaultAmmoKey}\t{w.Damage.ToString(CultureInfo.InvariantCulture)}\t{w.FireRate.ToString(CultureInfo.InvariantCulture)}");
                 }
-                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write weapon row to records log", ex); }
+                catch (Exception ex) { LogError("WeaponsService: failed to write weapon row to records log", ex); }
             }
 
             sw.WriteLine();
@@ -557,16 +573,16 @@ public class WeaponsService : IWeaponsService
                     var aKey = a.FormKey != null ? $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}" : string.Empty;
                     sw.WriteLine($"{a.Name}\t{a.EditorId}\t{aKey}\t{a.Damage.ToString(CultureInfo.InvariantCulture)}\t{a.AmmoType}");
                 }
-                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write ammo row to records log", ex); }
+                catch (Exception ex) { LogError("WeaponsService: failed to write ammo row to records log", ex); }
             }
 
             sw.Flush();
-            AppLogger.Log($"WeaponsService: records log written to: {path}");
+            LogInfo($"WeaponsService: records log written to: {path}");
         }
         catch (Exception ex)
         {
             // Do not throw — logging is only for diagnostics. Persist details for investigation.
-            AppLogger.Log("WeaponsService: failed to write records log", ex);
+            _logger.LogError(ex, "WeaponsService: failed to write records log");
         }
     }
 
@@ -595,7 +611,7 @@ public class WeaponsService : IWeaponsService
                     var defaultAmmoKey = w.DefaultAmmo != null ? $"{w.DefaultAmmo.PluginName}:{w.DefaultAmmo.FormId:X8}" : string.Empty;
                     sw.WriteLine($"{w.Name}\t{w.EditorId}\t{formKeyStr}\t{defaultAmmoName}\t{defaultAmmoKey}\t{w.Damage.ToString(CultureInfo.InvariantCulture)}\t{w.FireRate.ToString(CultureInfo.InvariantCulture)}");
                 }
-                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write weapon row to snapshot log", ex); }
+                catch (Exception ex) { _logger.LogError(ex, "WeaponsService: failed to write weapon row to snapshot log"); }
             }
 
             sw.WriteLine();
@@ -608,15 +624,15 @@ public class WeaponsService : IWeaponsService
                     var aKey = a.FormKey != null ? $"{a.FormKey.PluginName}:{a.FormKey.FormId:X8}" : string.Empty;
                     sw.WriteLine($"{a.Name}\t{a.EditorId}\t{aKey}\t{a.Damage.ToString(CultureInfo.InvariantCulture)}\t{a.AmmoType}");
                 }
-                catch (Exception ex) { AppLogger.Log("WeaponsService: failed to write ammo row to snapshot log", ex); }
+                catch (Exception ex) { _logger.LogError(ex, "WeaponsService: failed to write ammo row to snapshot log"); }
             }
 
             sw.Flush();
-            AppLogger.Log($"WeaponsService: snapshot records log written to: {path}");
+            LogInfo($"WeaponsService: snapshot records log written to: {path}");
         }
         catch (Exception ex)
         {
-            AppLogger.Log("WeaponsService: failed to write snapshot records log", ex);
+            _logger.LogError(ex, "WeaponsService: failed to write snapshot records log");
         }
     }
 
@@ -644,11 +660,11 @@ public class WeaponsService : IWeaponsService
             }
             sw.WriteLine();
             sw.Flush();
-            AppLogger.Log($"WeaponsService: translations dump appended to: {path}");
+            LogInfo($"WeaponsService: translations dump appended to: {path}");
         }
         catch (Exception ex)
         {
-            AppLogger.Log("WeaponsService: failed to append translations dump", ex);
+            LogError("WeaponsService: failed to append translations dump", ex);
         }
     }
 

@@ -26,7 +26,8 @@ namespace LinkCacheHelperTests
                 new DummyCandidateConfirmer(),
                 new DummyMutagenAccessor(),
                 new DummyPathService(),
-                NullLogger<WeaponOmodExtractor>.Instance
+                NullLogger<WeaponOmodExtractor>.Instance,
+                NullLoggerFactory.Instance
             );
 
             using var cts = new CancellationTokenSource();

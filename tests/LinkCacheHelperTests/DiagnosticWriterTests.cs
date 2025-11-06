@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Helpers;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace LinkCacheHelperTests
@@ -32,7 +33,7 @@ namespace LinkCacheHelperTests
         public void WriteReverseMapMarker_CreatesMarkerFile()
         {
             var reverseMap = new Dictionary<string, List<(object Record, string PropName, object PropValue)>>(StringComparer.OrdinalIgnoreCase);
-            var marker = DiagnosticWriter.WriteReverseMapMarker(reverseMap, _tmpRoot);
+            var marker = DiagnosticWriter.WriteReverseMapMarker(reverseMap, _tmpRoot, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             Assert.True(File.Exists(marker));
             var content = File.ReadAllText(marker);
@@ -67,7 +68,7 @@ namespace LinkCacheHelperTests
             var results = new[] { candidate };
 
             // Act
-            var diagFile = DiagnosticWriter.WriteNoveskeDiagnostic(reverseMap, weaponsList, results, Array.Empty<string>(), _tmpRoot);
+            var diagFile = DiagnosticWriter.WriteNoveskeDiagnostic(reverseMap, weaponsList, results, Array.Empty<string>(), _tmpRoot, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             // Assert
             Assert.True(File.Exists(diagFile));

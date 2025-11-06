@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Mutagen.Bethesda.Plugins.Cache;
+using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Utilities;
@@ -23,6 +24,7 @@ public class OrchestratorService : IOrchestrator
     private readonly IMutagenAccessor _mutagenAccessor;
     private readonly IConfigService _configService;
     private bool _isInitialized;
+    private readonly ILogger<OrchestratorService> _logger;
 
     public OrchestratorService(
         IWeaponsService weaponsService,
@@ -32,7 +34,8 @@ public class OrchestratorService : IOrchestrator
         IMutagenEnvironmentFactory mutagenEnvironmentFactory,
         IMutagenAccessor mutagenAccessor,
         IConfigService configService,
-        IEspPatchService espPatchService)
+        IEspPatchService espPatchService,
+        ILogger<OrchestratorService> logger)
     {
         _weaponsService = weaponsService ?? throw new ArgumentNullException(nameof(weaponsService));
         _iniGenerator = iniGenerator ?? throw new ArgumentNullException(nameof(iniGenerator));
@@ -42,6 +45,7 @@ public class OrchestratorService : IOrchestrator
         _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _espPatchService = espPatchService ?? throw new ArgumentNullException(nameof(espPatchService));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public bool IsInitialized => _isInitialized;
@@ -61,7 +65,7 @@ public class OrchestratorService : IOrchestrator
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: initialization failed", ex);
+            _logger.LogError(ex, "OrchestratorService: initialization failed");
             _isInitialized = false;
             return false;
         }
@@ -84,7 +88,7 @@ public class OrchestratorService : IOrchestrator
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: weapon extraction failed", ex);
+            _logger.LogError(ex, "OrchestratorService: weapon extraction failed");
             progress?.Report($"エラー: 武器データの抽出に失敗しました: {ex.Message}");
         }
 
@@ -101,6 +105,7 @@ public class OrchestratorService : IOrchestrator
                 ? await _omodExtractor.ExtractCandidatesAsync(progress)
                 : new List<OmodCandidate>();
             progress?.Report($"候補を {candidates.Count} 件検出しました");
+            _logger.LogInformation("OrchestratorService: ExtractCandidatesAsync returned {Count} candidates", candidates?.Count ?? 0);
             return true;
         }
         catch (OperationCanceledException)
@@ -110,7 +115,7 @@ public class OrchestratorService : IOrchestrator
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: mapping generation failed", ex);
+            _logger.LogError(ex, "OrchestratorService: mapping generation failed");
             progress?.Report($"エラー: マッピング生成中に例外が発生しました: {ex.Message}");
             return false;
         }
@@ -128,7 +133,7 @@ public class OrchestratorService : IOrchestrator
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: INI generation failed", ex);
+            _logger.LogError(ex, "OrchestratorService: INI generation failed");
             progress?.Report($"エラー: INI 生成に失敗しました: {ex.Message}");
             return false;
         }
@@ -148,7 +153,7 @@ public class OrchestratorService : IOrchestrator
             }
             catch (Exception ex)
             {
-                AppLogger.Log("OrchestratorService: failed to apply output directory override for ESP", ex);
+                _logger.LogWarning(ex, "OrchestratorService: failed to apply output directory override for ESP");
             }
         }
 
@@ -197,6 +202,8 @@ public class OrchestratorService : IOrchestrator
             try
             {
                 candidates = await _omodExtractor.ExtractCandidatesAsync(progress, cancellationToken);
+                progress?.Report($"候補を {candidates.Count} 件検出しました");
+                _logger.LogInformation("OrchestratorService: ExtractCandidatesAsync returned {Count} candidates (ESP flow)", candidates?.Count ?? 0);
             }
             catch (OperationCanceledException)
             {
@@ -204,48 +211,49 @@ public class OrchestratorService : IOrchestrator
                 return false;
             }
 
+            candidates ??= new List<OmodCandidate>();
             await _espPatchService.BuildAsync(extraction, confirmation, candidates, cancellationToken);
             progress?.Report("ESP パッチ生成が完了しました");
             return true;
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: ESP generation failed", ex);
+            _logger.LogError(ex, "OrchestratorService: ESP generation failed");
             progress?.Report($"エラー: ESP 生成に失敗しました: {ex.Message}");
             return false;
         }
     }
 
-    private static ILinkCache? TryGetNativeLinkCache(ILinkResolver? resolver)
+    private ILinkCache? TryGetNativeLinkCache(ILinkResolver? resolver)
     {
         if (resolver == null)
         {
-            AppLogger.Log("TryGetNativeLinkCache: resolver is null");
+            _logger.LogWarning("TryGetNativeLinkCache: resolver is null");
             return null;
         }
 
         try
         {
-            AppLogger.Log($"TryGetNativeLinkCache: resolverType={resolver.GetType().FullName}");
+            _logger.LogDebug("TryGetNativeLinkCache: resolverType={ResolverType}", resolver.GetType().FullName);
             var field = resolver.GetType().GetField("_linkCache", BindingFlags.NonPublic | BindingFlags.Instance);
             if (field == null)
             {
-                AppLogger.Log("TryGetNativeLinkCache: _linkCache field not found on resolver");
+                _logger.LogWarning("TryGetNativeLinkCache: _linkCache field not found on resolver");
             }
             var value = field?.GetValue(resolver);
-            AppLogger.Log($"TryGetNativeLinkCache: fieldType={field?.FieldType.FullName}, valueType={value?.GetType().FullName}");
+            _logger.LogDebug("TryGetNativeLinkCache: fieldType={FieldType}, valueType={ValueType}", field?.FieldType.FullName, value?.GetType().FullName);
             if (value is ILinkCache cache)
             {
                 return cache;
             }
             else
             {
-                AppLogger.Log("TryGetNativeLinkCache: underlying value is not Mutagen ILinkCache");
+                _logger.LogWarning("TryGetNativeLinkCache: underlying value is not Mutagen ILinkCache");
             }
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: failed to unwrap native LinkCache", ex);
+            _logger.LogError(ex, "OrchestratorService: failed to unwrap native LinkCache");
         }
 
         return null;
@@ -285,13 +293,13 @@ public class OrchestratorService : IOrchestrator
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: failed to build excluded plugin set", ex);
+            _logger.LogWarning(ex, "OrchestratorService: failed to build excluded plugin set");
         }
 
         return excluded;
     }
 
-    private static string ResolveRepoRoot()
+    private string ResolveRepoRoot()
     {
         try
         {
@@ -299,7 +307,7 @@ public class OrchestratorService : IOrchestrator
         }
         catch (Exception ex)
         {
-            AppLogger.Log("OrchestratorService: failed to resolve repository root", ex);
+            _logger.LogWarning(ex, "OrchestratorService: failed to resolve repository root");
             return Directory.GetCurrentDirectory();
         }
     }

@@ -217,6 +217,8 @@ jobs:
      - デフォルト: `"artifacts"` (リポジトリルート相対)
      - 絶対パスまたは相対パスを指定可能
 
+    確認: `output.mode` が `"esp"` に設定されていること、`output.directory` が実行ユーザーから書き込み可能なディレクトリ（絶対パスまたはリポジトリルート相対）に設定されていることを確認してください。例: `"output": { "mode": "esp", "directory": "artifacts" }`。
+
    **ESPモード（デフォルト）の動作**:
    - 確認済みの武器→弾薬マッピングから `MunitionAutoPatcher_Patch.esp` を生成
    - パッチは ESL-flagged（ESPFE）として出力され、ロードオーダーの負荷を最小化
@@ -227,8 +229,14 @@ jobs:
    - `config/config.json` で `"mode": "ini"` に設定
    - 従来のRobCo Patcher INI出力を使用する場合に選択
 
-4. **ログ確認**:
-   - 画面下部のログパネルで処理状況を確認
+4. **ログ確認 / 統合ログ出力**:
+   - **UIログ**: 画面下部のログパネルで処理状況を確認できます（`AppLogger` のイベント購読により表示）。
+   - **ファイル出力**: すべての UI ログは非同期で `artifacts/munition_autopatcher_ui.log` に追記されます（起動時に新規ヘッダで上書きして開始します）。
+   - **ILogger → AppLogger の転送**: アプリは `ILogger` 出力を `AppLogger` に転送する `AppLoggerProvider` をホストに登録しています。これにより、`ILogger<T>` を使って出力された `Debug`/`Information`/`Error` 等のメッセージは UI パネルと `artifacts/munition_autopatcher_ui.log` に統合されます。
+   - **デバッグ/コンソール**: Debug ビルド時は `DebugConsole` によりコンソールが割り当てられ、コンソールにもログが表示されます。`LogDebug` レベルのメッセージを常に確認したい場合はホストのロギング設定で最小ログレベルを `Debug` にしてください。
+   - **ログの確認 (PowerShell)**:
+     - リアルタイム追跡: `Get-Content -Path .\artifacts\munition_autopatcher_ui.log -Wait -Tail 200`
+     - TEMP の per-run ログを探す: `Get-ChildItem $env:TEMP -Filter "munition_autopatcher_ui_*.log" | Select-Object -Last 5`
 
 ## 今後の実装予定 (TODOs)
 

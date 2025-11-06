@@ -1,5 +1,6 @@
 using System;
 using Xunit;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LinkCacheHelperTests
 {

@@ -15,7 +15,7 @@ namespace LinkCacheHelperTests
         [Fact]
         public void ConfigService_ExcludedPlugins_PersistAndRestore()
         {
-            var cfg = new ConfigService();
+            var cfg = new MunitionAutoPatcher.Services.Implementations.ConfigService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MunitionAutoPatcher.Services.Implementations.ConfigService>.Instance);
             var orig = cfg.GetExcludedPlugins().ToList();
             var testList = new List<string> { "UT_Test_Plugin.esp" };
             try
@@ -60,7 +60,7 @@ namespace LinkCacheHelperTests
         {
             var orchestrator = new DummyOrchestrator();
             var weapons = new DummyWeaponsService();
-            var config = new ConfigService();
+            var config = new MunitionAutoPatcher.Services.Implementations.ConfigService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MunitionAutoPatcher.Services.Implementations.ConfigService>.Instance);
             var omodExtractor = new DummyOmodExtractor();
 
             var vm = new MapperViewModel(orchestrator, weapons, config, omodExtractor);

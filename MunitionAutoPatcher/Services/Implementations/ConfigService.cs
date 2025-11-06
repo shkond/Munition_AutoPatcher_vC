@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -12,6 +13,7 @@ public class ConfigService : IConfigService
     private readonly string _configDir;
     private readonly string _configFile;
     private ConfigFile? _loaded;
+    private readonly ILogger<ConfigService> _logger;
 
     private class ConfigFile
     {
@@ -36,11 +38,12 @@ public class ConfigService : IConfigService
         public string Directory { get; set; } = "artifacts"; // relative to repo root
     }
 
-    public ConfigService()
+    public ConfigService(ILogger<ConfigService> logger)
     {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         // Prefer a repository-local config folder if we can locate the solution file.
         // Walk up from the application's base directory to find MunitionAutoPatcher.sln
-        string? repoRoot = FindRepoRoot(AppContext.BaseDirectory);
+        string? repoRoot = FindRepoRoot(AppContext.BaseDirectory, _logger);
         if (!string.IsNullOrEmpty(repoRoot))
         {
             _configDir = Path.Combine(repoRoot, "config");
@@ -53,7 +56,7 @@ public class ConfigService : IConfigService
         _configFile = Path.Combine(_configDir, "config.json");
     }
 
-    private static string? FindRepoRoot(string start)
+    private static string? FindRepoRoot(string start, ILogger? logger = null)
     {
         try
         {
@@ -68,11 +71,7 @@ public class ConfigService : IConfigService
         }
         catch (Exception ex)
         {
-            try
-            {
-                AppLogger.Log($"ConfigService.FindRepoRoot error: {ex.Message}", ex);
-            }
-            catch (Exception ex2) { AppLogger.Log("ConfigService: failed to add log to UI in FindRepoRoot", ex2); }
+            logger?.LogError(ex, "ConfigService.FindRepoRoot error: {Message}", ex.Message);
         }
         return null;
     }
@@ -96,7 +95,7 @@ public class ConfigService : IConfigService
         catch (Exception ex)
         {
             // Loading the config failed — do NOT silently overwrite the user's configuration.
-            AppLogger.Log($"ConfigService: failed to load config file '{_configFile}'", ex);
+            _logger.LogError(ex, "ConfigService: failed to load config file '{ConfigFile}'", _configFile);
             // Surface the error to the caller so it can decide how to proceed (avoids silently creating defaults).
             throw;
         }
@@ -121,7 +120,7 @@ public class ConfigService : IConfigService
         }
         catch (Exception ex)
         {
-            AppLogger.Log($"ConfigService: failed to save config file '{_configFile}'", ex);
+            _logger.LogError(ex, "ConfigService: failed to save config file '{ConfigFile}'", _configFile);
             // Surface failure to caller so UI can notify user or retry.
             throw;
         }
@@ -260,7 +259,7 @@ public class ConfigService : IConfigService
         }
         catch (Exception ex)
         {
-            AppLogger.Log($"ConfigService: failed to persist configuration to '{_configFile}'", ex);
+            _logger.LogError(ex, "ConfigService: failed to persist configuration to '{ConfigFile}'", _configFile);
             throw;
         }
     }

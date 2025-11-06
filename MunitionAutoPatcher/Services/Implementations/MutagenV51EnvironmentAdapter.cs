@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.Extensions.Logging;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Environments;
 using MunitionAutoPatcher.Services.Interfaces;
@@ -11,10 +12,12 @@ namespace MunitionAutoPatcher.Services.Implementations;
 public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
 {
     private readonly IGameEnvironment<IFallout4Mod, IFallout4ModGetter> _env;
+    private readonly ILogger<MutagenV51EnvironmentAdapter> _logger;
 
-    public MutagenV51EnvironmentAdapter(IGameEnvironment<IFallout4Mod, IFallout4ModGetter> env)
+    public MutagenV51EnvironmentAdapter(IGameEnvironment<IFallout4Mod, IFallout4ModGetter> env, ILogger<MutagenV51EnvironmentAdapter> logger)
     {
         _env = env;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public void Dispose()
@@ -25,20 +28,20 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Log("MutagenV51EnvironmentAdapter: failed while disposing inner GameEnvironment", ex);
+            _logger.LogError(ex, "MutagenV51EnvironmentAdapter: failed while disposing inner GameEnvironment");
         }
     }
 
     public IEnumerable<object> GetWinningWeaponOverrides()
     {
         try { return _env.LoadOrder.PriorityOrder.Weapon().WinningOverrides().Cast<object>(); }
-        catch { return Enumerable.Empty<object>(); }
+        catch (Exception ex) { _logger?.LogWarning(ex, "MutagenV51EnvironmentAdapter: GetWinningWeaponOverrides failed"); return Enumerable.Empty<object>(); }
     }
 
     public IEnumerable<object> GetWinningConstructibleObjectOverrides()
     {
         try { return _env.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides().Cast<object>(); }
-        catch { return Enumerable.Empty<object>(); }
+        catch (Exception ex) { _logger?.LogWarning(ex, "MutagenV51EnvironmentAdapter: GetWinningConstructibleObjectOverrides failed"); return Enumerable.Empty<object>(); }
     }
 
     public IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections()
@@ -56,7 +59,7 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"MutagenV51EnvironmentAdapter: failed to invoke {m.Name}", ex);
+                _logger.LogWarning(ex, "MutagenV51EnvironmentAdapter: failed to invoke {Method}", m.Name);
                 continue;
             }
 
@@ -74,7 +77,7 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"MutagenV51EnvironmentAdapter: failed to obtain items from {m.Name}", ex);
+                _logger.LogWarning(ex, "MutagenV51EnvironmentAdapter: failed to obtain items from {Method}", m.Name);
                 items = null;
             }
 
@@ -91,12 +94,20 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
             if (real == null) return null;
             return new LinkResolver(real);
         }
-        catch (Exception ex) { AppLogger.Log("MutagenV51EnvironmentAdapter: failed to obtain LinkCache", ex); return null; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MutagenV51EnvironmentAdapter: failed to obtain LinkCache");
+            return null;
+        }
     }
 
     public Noggog.DirectoryPath? GetDataFolderPath()
     {
         try { return _env.DataFolderPath; }
-        catch (Exception ex) { AppLogger.Log("MutagenV51EnvironmentAdapter: failed to obtain DataFolderPath", ex); return null; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MutagenV51EnvironmentAdapter: failed to obtain DataFolderPath");
+            return null;
+        }
     }
 }

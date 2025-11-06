@@ -15,7 +15,7 @@ internal class Program
         public MunitionAutoPatcher.Services.Implementations.IResourcedMutagenEnvironment Create()
         {
             var noop = new MunitionAutoPatcher.Services.Implementations.NoOpMutagenEnvironment();
-            return new MunitionAutoPatcher.Services.Implementations.ResourcedMutagenEnvironment(noop, noop);
+            return new MunitionAutoPatcher.Services.Implementations.ResourcedMutagenEnvironment(noop, noop, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         }
     }
     // Mainメソッドを同期処理に戻し、シンプルにします
@@ -69,7 +69,7 @@ internal class Program
                             {
                                 object? ammoRec = null;
                                 bool resolved = false;
-                                try { resolved = (bool) ((dynamic)linkObj).TryResolve(env.GetLinkCache(), out ammoRec); } catch { resolved = false; }
+                                try { resolved = (bool)((dynamic)linkObj).TryResolve(env.GetLinkCache(), out ammoRec); } catch { resolved = false; }
                                 if (resolved && ammoRec != null)
                                 {
                                     dynamic ar = ammoRec;
@@ -279,11 +279,11 @@ internal class Program
         finally
         {
 #if DEBUG
-        Console.WriteLine("\nテストを終了するには何かキーを押して下さい...");
-        Console.ReadLine();
-        try { MunitionAutoPatcher.DebugConsole.Hide(); } catch (Exception ex) { Console.WriteLine("AutoTests: DebugConsole.Hide failed: " + ex.Message); }
+            Console.WriteLine("\nテストを終了するには何かキーを押して下さい...");
+            Console.ReadLine();
+            try { MunitionAutoPatcher.DebugConsole.Hide(); } catch (Exception ex) { Console.WriteLine("AutoTests: DebugConsole.Hide failed: " + ex.Message); }
 #endif
+        }
     }
-}
 
 }

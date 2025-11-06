@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MunitionAutoPatcher.Services.Helpers;
+using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Models;
 using Xunit;
 
@@ -44,7 +45,7 @@ namespace LinkCacheHelperTests
             var priority = new FakePriorityOrder(new[] { cobj }, new[] { weapon });
             var env = new FakeEnv(new FakeLoadOrder(priority));
 
-            var results = CandidateEnumerator.EnumerateCandidates(env, new HashSet<string>(StringComparer.OrdinalIgnoreCase), null);
+            var results = CandidateEnumerator.EnumerateCandidates(env, new HashSet<string>(StringComparer.OrdinalIgnoreCase), null, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             Assert.Contains(results, r => r.CandidateType == "COBJ" && r.SourcePlugin == "SourcePlugin" && r.CandidateFormKey.PluginName == "TestPlugin");
         }
@@ -66,7 +67,7 @@ namespace LinkCacheHelperTests
             var env = new FakeEnv(new FakeLoadOrder(priority));
 
             var excluded = new HashSet<string>(new[] { "SourcePlugin" }, StringComparer.OrdinalIgnoreCase);
-            var results = CandidateEnumerator.EnumerateCandidates(env, excluded, null);
+            var results = CandidateEnumerator.EnumerateCandidates(env, excluded, null, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             Assert.DoesNotContain(results, r => r.SourcePlugin == "SourcePlugin");
         }

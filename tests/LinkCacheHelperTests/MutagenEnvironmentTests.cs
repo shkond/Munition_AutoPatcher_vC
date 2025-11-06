@@ -55,7 +55,7 @@ namespace LinkCacheHelperTests
             var fakeEnv = new FakeEnv();
             var resource = new FakeResource();
 
-            var r = new ResourcedMutagenEnvironment(fakeEnv, resource);
+            var r = new ResourcedMutagenEnvironment(fakeEnv, resource, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             var weapons = r.GetWinningWeaponOverrides().ToList();
             Assert.Single(weapons);
@@ -84,7 +84,7 @@ namespace LinkCacheHelperTests
         {
             var fakeEnv = new FakeEnv();
             var resource = new FakeResource();
-            var r = new ResourcedMutagenEnvironment(fakeEnv, resource);
+            var r = new ResourcedMutagenEnvironment(fakeEnv, resource, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             r.Dispose();
             Assert.True(resource.Disposed);

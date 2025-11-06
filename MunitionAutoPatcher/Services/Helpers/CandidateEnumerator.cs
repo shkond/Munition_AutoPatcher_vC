@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher;
+using Microsoft.Extensions.Logging;
 using Mutagen.Bethesda.Environments;
 
 namespace MunitionAutoPatcher.Services.Helpers
@@ -18,7 +19,7 @@ namespace MunitionAutoPatcher.Services.Helpers
         private const string CobjTypeName = "ConstructibleObject";
         private const string WeaponTypeName = "Weapon";
         private const string CreatedObjectPropertyName = "CreatedObject";
-        
+
         /// <summary>
         /// Enumerates all OMOD/COBJ candidates from the game environment.
         /// </summary>
@@ -26,23 +27,23 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <param name="excluded">Set of plugin names to exclude from enumeration</param>
         /// <param name="progress">Optional progress reporter</param>
         /// <returns>List of discovered candidates</returns>
-        public static List<OmodCandidate> EnumerateCandidates(dynamic env, HashSet<string>? excluded, IProgress<string>? progress)
+        public static List<OmodCandidate> EnumerateCandidates(dynamic env, HashSet<string>? excluded, IProgress<string>? progress, ILogger logger)
         {
             var results = new List<OmodCandidate>();
-            
+
             try
             {
                 // Enumerate COBJ candidates
-                var cobjCandidates = EnumerateCobjCandidates(env, excluded);
+                var cobjCandidates = EnumerateCobjCandidates(env, excluded, logger);
                 results.AddRange(cobjCandidates);
-                
+
                 // Enumerate reflection-based candidates
-                var reflectedCandidates = EnumerateReflectedCandidates(env, excluded);
+                var reflectedCandidates = EnumerateReflectedCandidates(env, excluded, logger);
                 results.AddRange(reflectedCandidates);
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: EnumerateCandidates failed", ex);
+                logger.LogError(ex, "CandidateEnumerator: EnumerateCandidates failed");
             }
 
             return results;
@@ -51,19 +52,19 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <summary>
         /// Enumerates candidates from ConstructibleObject records (COBJ).
         /// </summary>
-        private static List<OmodCandidate> EnumerateCobjCandidates(dynamic env, HashSet<string>? excluded)
+        private static List<OmodCandidate> EnumerateCobjCandidates(dynamic env, HashSet<string>? excluded, ILogger? logger = null)
         {
             var results = new List<OmodCandidate>();
-            
+
             try
             {
                 var cobjs = env.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides();
-                
+
                 foreach (var cobj in cobjs)
                 {
                     try
                     {
-                        var candidate = TryCreateCobjCandidate(env, cobj, excluded);
+                        var candidate = TryCreateCobjCandidate(env, cobj, excluded, logger);
                         if (candidate != null)
                         {
                             results.Add(candidate);
@@ -71,22 +72,22 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log("CandidateEnumerator: failed processing COBJ loop item", ex);
+                        logger?.LogError(ex, "CandidateEnumerator: failed processing COBJ loop item");
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: COBJ CreatedObject scan failed", ex);
+                logger?.LogError(ex, "CandidateEnumerator: COBJ CreatedObject scan failed");
             }
-            
+
             return results;
         }
 
         /// <summary>
         /// Attempts to create a candidate from a ConstructibleObject record.
         /// </summary>
-        private static OmodCandidate? TryCreateCobjCandidate(dynamic env, dynamic cobj, HashSet<string>? excluded)
+        private static OmodCandidate? TryCreateCobjCandidate(dynamic env, dynamic cobj, HashSet<string>? excluded, ILogger? logger = null)
         {
             var created = cobj.CreatedObject;
             if (created.IsNull) return null;
@@ -98,17 +99,17 @@ namespace MunitionAutoPatcher.Services.Helpers
             // Extract created object details
             var createdPlugin = created.FormKey?.ModKey?.FileName ?? string.Empty;
             var createdId = created.FormKey?.ID ?? 0u;
-            
+
             // Try to detect ammo for the created weapon
-            var createdAmmoKey = TryDetectAmmoForWeapon(env, createdPlugin, createdId);
-            
+            var createdAmmoKey = TryDetectAmmoForWeapon(env, createdPlugin, createdId, logger);
+
             return new OmodCandidate
             {
                 CandidateType = "COBJ",
                 CandidateFormKey = new Models.FormKey { PluginName = createdPlugin, FormId = createdId },
                 CandidateEditorId = cobj.EditorID ?? string.Empty,
-                CandidateAmmo = createdAmmoKey != null 
-                    ? new Models.FormKey { PluginName = createdAmmoKey.PluginName ?? string.Empty, FormId = createdAmmoKey.FormId } 
+                CandidateAmmo = createdAmmoKey != null
+                    ? new Models.FormKey { PluginName = createdAmmoKey.PluginName ?? string.Empty, FormId = createdAmmoKey.FormId }
                     : null,
                 CandidateAmmoName = string.Empty,
                 SourcePlugin = srcPlugin ?? string.Empty,
@@ -120,10 +121,10 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <summary>
         /// Attempts to detect ammo key for a weapon identified by plugin and ID.
         /// </summary>
-        private static Models.FormKey? TryDetectAmmoForWeapon(dynamic env, string plugin, uint id)
+        private static Models.FormKey? TryDetectAmmoForWeapon(dynamic env, string plugin, uint id, ILogger? logger = null)
         {
             if (string.IsNullOrEmpty(plugin) || id == 0) return null;
-            
+
             try
             {
                 var weaponsSeq = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides();
@@ -141,52 +142,52 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log("CandidateEnumerator: error iterating weapons for ammo detection", ex);
+                        logger?.LogError(ex, "CandidateEnumerator: error iterating weapons for ammo detection");
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed to detect ammo for weapon", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed to detect ammo for weapon");
             }
-            
+
             return null;
         }
 
         /// <summary>
         /// Enumerates candidates via reflection over PriorityOrder collections.
         /// </summary>
-        private static List<OmodCandidate> EnumerateReflectedCandidates(dynamic env, HashSet<string>? excluded)
+        private static List<OmodCandidate> EnumerateReflectedCandidates(dynamic env, HashSet<string>? excluded, ILogger? logger = null)
         {
             var results = new List<OmodCandidate>();
-            
+
             try
             {
-                var weapons = CollectWeapons(env);
-                var weaponKeys = BuildWeaponKeySet(weapons);
-                var methods = GetPriorityOrderMethods(env);
+                var weapons = CollectWeapons(env, logger);
+                var weaponKeys = BuildWeaponKeySet(weapons, logger);
+                var methods = GetPriorityOrderMethods(env, logger);
 
                 foreach (var method in methods)
                 {
-                    var candidates = ProcessCollectionMethod(env, method, weapons, weaponKeys, excluded);
+                    var candidates = ProcessCollectionMethod(env, method, weapons, weaponKeys, excluded, logger);
                     results.AddRange(candidates);
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: reflection-based scan failed", ex);
+                logger?.LogError(ex, "CandidateEnumerator: reflection-based scan failed");
             }
-            
+
             return results;
         }
 
         /// <summary>
         /// Collects all weapon records from the environment.
         /// </summary>
-        private static List<dynamic> CollectWeapons(dynamic env)
+        private static List<dynamic> CollectWeapons(dynamic env, ILogger? logger = null)
         {
             var weapons = new List<dynamic>();
-            
+
             try
             {
                 var weaponsSeq = env.LoadOrder.PriorityOrder.Weapon().WinningOverrides();
@@ -194,40 +195,40 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed to add weapons from PriorityOrder.Weapon() sequence", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed to add weapons from PriorityOrder.Weapon() sequence");
             }
 
             // Fallback: reflect if direct access failed
             if (weapons.Count == 0)
             {
-                weapons = CollectWeaponsViaReflection(env);
+                weapons = CollectWeaponsViaReflection(env, logger);
             }
-            
+
             return weapons;
         }
 
         /// <summary>
         /// Collects weapons via reflection (fallback method).
         /// </summary>
-        private static List<dynamic> CollectWeaponsViaReflection(dynamic env)
+        private static List<dynamic> CollectWeaponsViaReflection(dynamic env, ILogger? logger = null)
         {
             var weapons = new List<dynamic>();
-            
+
             try
             {
                 var priorityForWeapons = env.LoadOrder.PriorityOrder;
                 var pt = priorityForWeapons.GetType();
                 var pmethods = pt.GetMethods(BindingFlags.Public | BindingFlags.Instance);
-                
+
                 foreach (var mm in pmethods)
                 {
                     try
                     {
-                        if (mm.GetParameters().Length == 0 && 
-                            string.Equals(mm.Name, WeaponTypeName, StringComparison.OrdinalIgnoreCase) && 
+                        if (mm.GetParameters().Length == 0 &&
+                            string.Equals(mm.Name, WeaponTypeName, StringComparison.OrdinalIgnoreCase) &&
                             typeof(System.Collections.IEnumerable).IsAssignableFrom(mm.ReturnType))
                         {
-                            var items = InvokeAndGetWinningOverrides(mm, priorityForWeapons);
+                            var items = InvokeAndGetWinningOverrides(mm, priorityForWeapons, logger);
                             if (items != null)
                             {
                                 foreach (var w in items)
@@ -239,25 +240,25 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log("CandidateEnumerator: failed collecting weapons via reflection", ex);
+                        logger?.LogError(ex, "CandidateEnumerator: failed collecting weapons via reflection");
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed reflecting PriorityOrder for weapons", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed reflecting PriorityOrder for weapons");
             }
-            
+
             return weapons;
         }
 
         /// <summary>
         /// Builds a set of weapon keys for quick lookup.
         /// </summary>
-        private static HashSet<(string Plugin, uint Id)> BuildWeaponKeySet(List<dynamic> weapons)
+        private static HashSet<(string Plugin, uint Id)> BuildWeaponKeySet(List<dynamic> weapons, ILogger? logger = null)
         {
             var weaponKeys = new HashSet<(string Plugin, uint Id)>();
-            
+
             foreach (var w in weapons)
             {
                 try
@@ -271,31 +272,31 @@ namespace MunitionAutoPatcher.Services.Helpers
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Log("CandidateEnumerator: failed to read FormKey from weapon record", ex);
+                    logger?.LogError(ex, "CandidateEnumerator: failed to read FormKey from weapon record");
                 }
             }
-            
+
             return weaponKeys;
         }
 
         /// <summary>
         /// Gets collection methods from PriorityOrder via reflection.
         /// </summary>
-        private static List<MethodInfo> GetPriorityOrderMethods(dynamic env)
+        private static List<MethodInfo> GetPriorityOrderMethods(dynamic env, ILogger? logger = null)
         {
             var methods = new List<MethodInfo>();
-            
+
             try
             {
                 var priority = env.LoadOrder.PriorityOrder;
                 var type = priority.GetType();
                 var allMethods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance);
-                
+
                 foreach (var mm in allMethods)
                 {
                     try
                     {
-                        if (mm.GetParameters().Length == 0 && 
+                        if (mm.GetParameters().Length == 0 &&
                             typeof(System.Collections.IEnumerable).IsAssignableFrom(mm.ReturnType))
                         {
                             methods.Add(mm);
@@ -303,15 +304,15 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log("CandidateEnumerator: failed inspecting PriorityOrder method", ex);
+                        logger?.LogError(ex, "CandidateEnumerator: failed inspecting PriorityOrder method");
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed to get PriorityOrder methods", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed to get PriorityOrder methods");
             }
-            
+
             return methods;
         }
 
@@ -319,25 +320,26 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// Processes a single collection method and extracts candidates.
         /// </summary>
         private static List<OmodCandidate> ProcessCollectionMethod(
-            dynamic env, 
-            MethodInfo method, 
-            List<dynamic> weapons, 
-            HashSet<(string Plugin, uint Id)> weaponKeys, 
-            HashSet<string>? excluded)
+            dynamic env,
+            MethodInfo method,
+            List<dynamic> weapons,
+            HashSet<(string Plugin, uint Id)> weaponKeys,
+            HashSet<string>? excluded,
+            ILogger? logger = null)
         {
             var results = new List<OmodCandidate>();
-            
+
             try
             {
                 var priority = env.LoadOrder.PriorityOrder;
-                var items = InvokeAndGetWinningOverrides(method, priority);
+                var items = InvokeAndGetWinningOverrides(method, priority, logger);
                 if (items == null) return results;
 
                 // If this is the Weapon collection, ensure we have it in our weapons list
                 if (string.Equals(method.Name, WeaponTypeName, StringComparison.OrdinalIgnoreCase))
                 {
                     var materialized = new List<object>();
-                    foreach (var it in items) 
+                    foreach (var it in items)
                     {
                         materialized.Add(it);
                         weapons.Add(it);
@@ -348,16 +350,16 @@ namespace MunitionAutoPatcher.Services.Helpers
                 foreach (var rec in items)
                 {
                     if (rec == null) continue;
-                    
-                    var recCandidates = ProcessRecord(method, rec, weapons, weaponKeys, excluded);
+
+                    var recCandidates = ProcessRecord(method, rec, weapons, weaponKeys, excluded, logger);
                     results.AddRange(recCandidates);
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"CandidateEnumerator: failed processing collection method {method.Name}", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed processing collection method {Method}", method.Name);
             }
-            
+
             return results;
         }
 
@@ -369,10 +371,11 @@ namespace MunitionAutoPatcher.Services.Helpers
             dynamic rec,
             List<dynamic> weapons,
             HashSet<(string Plugin, uint Id)> weaponKeys,
-            HashSet<string>? excluded)
+            HashSet<string>? excluded,
+            ILogger? logger = null)
         {
             var results = new List<OmodCandidate>();
-            
+
             try
             {
                 // Check if record itself is excluded
@@ -382,19 +385,20 @@ namespace MunitionAutoPatcher.Services.Helpers
                 }
 
                 var props = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                
+
                 foreach (var prop in props)
                 {
                     try
                     {
                         var candidate = TryExtractCandidateFromProperty(
-                            collectionMethod, 
-                            rec, 
-                            prop, 
-                            weapons, 
-                            weaponKeys, 
-                            excluded);
-                        
+                            collectionMethod,
+                            rec,
+                            prop,
+                            weapons,
+                            weaponKeys,
+                            excluded,
+                            logger);
+
                         if (candidate != null)
                         {
                             results.Add(candidate);
@@ -402,15 +406,15 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log("CandidateEnumerator: failed processing property on record", ex);
+                        logger?.LogError(ex, "CandidateEnumerator: failed processing property on record");
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed processing record in method scan", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed processing record in method scan");
             }
-            
+
             return results;
         }
 
@@ -423,7 +427,8 @@ namespace MunitionAutoPatcher.Services.Helpers
             PropertyInfo prop,
             List<dynamic> weapons,
             HashSet<(string Plugin, uint Id)> weaponKeys,
-            HashSet<string>? excluded)
+            HashSet<string>? excluded,
+            ILogger? logger = null)
         {
             var val = prop.GetValue(rec);
             if (val == null) return null;
@@ -441,18 +446,19 @@ namespace MunitionAutoPatcher.Services.Helpers
 
             if (string.IsNullOrEmpty(plugin) || id == 0) return null;
             if (IsExcluded(plugin, excluded)) return null;
-            
+
             var pluginSafe = plugin ?? string.Empty;
             if (!weaponKeys.Contains((pluginSafe, id))) return null;
 
             // We found a weapon reference - build the candidate
             return BuildCandidateFromWeaponReference(
-                collectionMethod, 
-                rec, 
-                prop, 
-                pluginSafe, 
-                id, 
-                weapons);
+                collectionMethod,
+                rec,
+                prop,
+                pluginSafe,
+                id,
+                weapons,
+                logger);
         }
 
         /// <summary>
@@ -464,19 +470,20 @@ namespace MunitionAutoPatcher.Services.Helpers
             PropertyInfo prop,
             string weaponPlugin,
             uint weaponId,
-            List<dynamic> weapons)
+            List<dynamic> weapons,
+            ILogger? logger = null)
         {
             var recEditorId = string.Empty;
             MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPropertyValue<string>(rec, "EditorID", out recEditorId);
 
             // Detect ammo references in other properties
-            var detectedAmmoKey = DetectAmmoKeyInRecord(rec, prop, weaponPlugin, weaponId);
-            var detectedAmmoNotes = detectedAmmoKey != null 
-                ? $";DetectedAmmo={(detectedAmmoKey.PluginName ?? string.Empty)}:{detectedAmmoKey.FormId:X8}" 
+            var detectedAmmoKey = DetectAmmoKeyInRecord(rec, prop, weaponPlugin, weaponId, logger);
+            var detectedAmmoNotes = detectedAmmoKey != null
+                ? $";DetectedAmmo={(detectedAmmoKey.PluginName ?? string.Empty)}:{detectedAmmoKey.FormId:X8}"
                 : string.Empty;
 
             // Find base weapon editor ID
-            var baseWeaponEditorId = FindWeaponEditorId(weapons, weaponPlugin, weaponId);
+            var baseWeaponEditorId = FindWeaponEditorId(weapons, weaponPlugin, weaponId, logger);
 
             // Extract record source FormKey
             MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(rec, out string? recSourcePlugin, out uint recSourceId);
@@ -486,17 +493,17 @@ namespace MunitionAutoPatcher.Services.Helpers
             Models.FormKey? candidateAmmoLocal = null;
             if (detectedAmmoKey != null)
             {
-                candidateAmmoLocal = new Models.FormKey 
-                { 
-                    PluginName = detectedAmmoKey.PluginName ?? string.Empty, 
-                    FormId = detectedAmmoKey.FormId 
+                candidateAmmoLocal = new Models.FormKey
+                {
+                    PluginName = detectedAmmoKey.PluginName ?? string.Empty,
+                    FormId = detectedAmmoKey.FormId
                 };
             }
 
             var pluginForCandidate = weaponPlugin;
 
 #pragma warning disable CS8601 // pluginForCandidate is guaranteed non-null by prior checks
-            if (string.Equals(collectionMethod.Name, CobjTypeName, StringComparison.OrdinalIgnoreCase) && 
+            if (string.Equals(collectionMethod.Name, CobjTypeName, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(prop.Name, CreatedObjectPropertyName, StringComparison.OrdinalIgnoreCase))
             {
                 // This is a COBJ -> CreatedObject reference
@@ -537,12 +544,12 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <summary>
         /// Detects ammo-like references in a record's properties (excluding the weapon property itself).
         /// </summary>
-        private static Models.FormKey? DetectAmmoKeyInRecord(dynamic rec, PropertyInfo excludeProperty, string weaponPlugin, uint weaponId)
+        private static Models.FormKey? DetectAmmoKeyInRecord(dynamic rec, PropertyInfo excludeProperty, string weaponPlugin, uint weaponId, ILogger? logger = null)
         {
             try
             {
                 var allProps = rec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                
+
                 foreach (var q in allProps)
                 {
                     if (q.Name == excludeProperty.Name) continue;
@@ -569,22 +576,22 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log("CandidateEnumerator: error iterating record properties for ammo detection", ex);
+                        logger?.LogError(ex, "CandidateEnumerator: error iterating record properties for ammo detection");
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed during nested property scan", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed during nested property scan");
             }
-            
+
             return null;
         }
 
         /// <summary>
         /// Finds the EditorID of a weapon from the weapons collection.
         /// </summary>
-        private static string FindWeaponEditorId(List<dynamic> weapons, string plugin, uint id)
+        private static string FindWeaponEditorId(List<dynamic> weapons, string plugin, uint id, ILogger? logger = null)
         {
             try
             {
@@ -599,22 +606,22 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Log("CandidateEnumerator: error scanning weapons for EditorId", ex);
+                        logger?.LogError(ex, "CandidateEnumerator: error scanning weapons for EditorId");
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed while searching for weapon editor id", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed while searching for weapon editor id");
             }
-            
+
             return string.Empty;
         }
 
         /// <summary>
         /// Helper: invokes a method on an object and attempts to get WinningOverrides.
         /// </summary>
-        private static System.Collections.IEnumerable? InvokeAndGetWinningOverrides(MethodInfo method, object target)
+        private static System.Collections.IEnumerable? InvokeAndGetWinningOverrides(MethodInfo method, object target, ILogger? logger = null)
         {
             try
             {
@@ -633,9 +640,9 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: failed to invoke method and get WinningOverrides", ex);
+                logger?.LogError(ex, "CandidateEnumerator: failed to invoke method and get WinningOverrides");
             }
-            
+
             return null;
         }
 
@@ -646,7 +653,7 @@ namespace MunitionAutoPatcher.Services.Helpers
         {
             if (string.IsNullOrEmpty(plugin) || excluded == null || excluded.Count == 0)
                 return false;
-            
+
             try
             {
                 return excluded.Contains(plugin);
@@ -660,7 +667,7 @@ namespace MunitionAutoPatcher.Services.Helpers
         /// <summary>
         /// Helper: extract Ammo FormKey from a weapon-like object safely via reflection helpers.
         /// </summary>
-        private static bool TryExtractAmmoKeyFromWeaponObject(object possibleWeapon, out Models.FormKey? ammoKey)
+        private static bool TryExtractAmmoKeyFromWeaponObject(object possibleWeapon, out Models.FormKey? ammoKey, ILogger? logger = null)
         {
             ammoKey = null;
             try
@@ -679,7 +686,7 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
             catch (Exception ex)
             {
-                AppLogger.Log("CandidateEnumerator: TryExtractAmmoKeyFromWeaponObject failed", ex);
+                logger?.LogError(ex, "CandidateEnumerator: TryExtractAmmoKeyFromWeaponObject failed");
             }
             return false;
         }

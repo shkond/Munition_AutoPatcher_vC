@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MunitionAutoPatcher.Services.Implementations;
+using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Services.Interfaces;
 using Xunit;
 
@@ -55,7 +56,7 @@ namespace WeaponDataExtractorTestsProject
             var cobj = new FakeConstructibleObject { CreatedObject = weaponFormKey, EditorID = "COBJ_Editor", FormKey = cobjFormKey };
 
             using var env = new NoOpResourcedMutagenEnvironment(new object[] { weapon }, new object[] { cobj });
-            var extractor = new WeaponDataExtractor();
+            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var results = await extractor.ExtractAsync(env, new HashSet<string>());

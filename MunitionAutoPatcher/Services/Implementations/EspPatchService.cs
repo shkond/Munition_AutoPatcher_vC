@@ -47,6 +47,7 @@ public class EspPatchService : IEspPatchService
     {
         if (extraction == null) throw new ArgumentNullException(nameof(extraction));
 
+        _logger.LogDebug("ESP generation: start");
         _logger.LogInformation("ESP generation: start");
 
         var baseCache = extraction.FormLinkCache;
@@ -68,6 +69,8 @@ public class EspPatchService : IEspPatchService
             patchMod.IsSmallMaster = true;
 
             int success = 0, skipped = 0;
+            var totalCandidates = candidates?.Count ?? 0;
+            _logger.LogDebug("ESP generation: candidates={Total}", totalCandidates);
             foreach (var c in (candidates ?? Enumerable.Empty<OmodCandidate>()))
             {
                 if (c == null || !c.ConfirmedAmmoChange) continue;
@@ -93,6 +96,7 @@ public class EspPatchService : IEspPatchService
                 success++;
             }
 
+            _logger.LogDebug("ESP generation: success={Success}, skipped={Skipped}", success, skipped);
             _logger.LogInformation("ESP generation: success={Success}, skipped={Skipped}", success, skipped);
 
             var repoRoot = _pathService.GetRepoRoot();
@@ -101,11 +105,17 @@ public class EspPatchService : IEspPatchService
             if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
             var outputPath = Path.Combine(outputDir, "MunitionAutoPatcher_Patch.esp");
             patchMod.WriteToBinary(outputPath);
+            _logger.LogDebug("ESP written: {Path}", outputPath);
             _logger.LogInformation("ESP written: {Path}", outputPath);
         }
         catch (OperationCanceledException)
         {
             _logger.LogInformation("ESP generation cancelled");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ESP generation failed: {Message}", ex.Message);
             throw;
         }
 

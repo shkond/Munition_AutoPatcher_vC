@@ -6,6 +6,7 @@ using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Environments;
 using Noggog;
+using Microsoft.Extensions.Logging;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -17,11 +18,13 @@ public class LoadOrderService : ILoadOrderService
     private readonly IConfigService _configService;
     private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
     private ILoadOrder<IModListing<IFallout4ModGetter>>? _loadOrder;
+    private readonly ILogger<LoadOrderService> _logger;
 
-    public LoadOrderService(IConfigService configService, IMutagenEnvironmentFactory mutagenEnvironmentFactory)
+    public LoadOrderService(IConfigService configService, IMutagenEnvironmentFactory mutagenEnvironmentFactory, ILogger<LoadOrderService> logger)
     {
         _configService = configService;
         _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<ILoadOrder<IModListing<IFallout4ModGetter>>?> GetLoadOrderAsync()
@@ -56,7 +59,7 @@ public class LoadOrderService : ILoadOrderService
             }
             catch (Exception ex)
             {
-                AppLogger.Log("LoadOrderService: GameEnvironment detection failed, falling back to data-folder import", ex);
+                _logger.LogWarning(ex, "LoadOrderService: GameEnvironment detection failed, falling back to data-folder import");
                 // If GameEnvironment is not available (not running under MO2 or detection failed),
                 // fall back to the explicit data-folder based approach below.
             }
@@ -89,7 +92,7 @@ public class LoadOrderService : ILoadOrderService
             );
 
             // Import the load order with Fallout4 mod getters
-            _loadOrder = await Task.Run(() => 
+            _loadOrder = await Task.Run(() =>
                 LoadOrder.Import<IFallout4ModGetter>(
                     dataFolderPath,
                     listings,
@@ -102,7 +105,11 @@ public class LoadOrderService : ILoadOrderService
         catch (Exception ex)
         {
             // Record the full exception into the centralized logger so troubleshooting data is persisted.
-            try { AppLogger.Log($"LoadOrderService: failed to load plugin load order", ex); } catch { }
+            try
+            {
+                _logger.LogError(ex, "LoadOrderService: failed to load plugin load order");
+            }
+            catch { }
             return null;
         }
     }
@@ -114,18 +121,18 @@ public class LoadOrderService : ILoadOrderService
             var loadOrder = await GetLoadOrderAsync();
             return loadOrder != null && loadOrder.Count > 0;
         }
-        	catch (Exception ex)
+        catch (Exception ex)
+        {
+            try
             {
-                try
-                {
-                    AppLogger.Log($"LoadOrderService.ValidateLoadOrderAsync error: {ex.Message}", ex);
-                }
-                catch (Exception ex2)
-                {
-                    AppLogger.Log("LoadOrderService: failed to log ValidateLoadOrderAsync error", ex2);
-                }
-                return false;
+                _logger.LogError(ex, "LoadOrderService.ValidateLoadOrderAsync error: {Message}", ex.Message);
             }
+            catch (Exception ex2)
+            {
+                _logger.LogError(ex2, "LoadOrderService: failed to log ValidateLoadOrderAsync error");
+            }
+            return false;
+        }
     }
 
     public string GetGameDataPath()

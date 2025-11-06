@@ -1,0 +1,30 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "files": [ "MunitionAutoPatcher/**/*.csproj" ],
+          "cwd": "."
+        }
+      ],
+      "dest": "api",
+      "properties": {
+        "TargetFramework": "net8.0"
+      }
+    }
+  ],
+  "build": {
+    "content": [
+      { "files": [ "docs/**.md" ] },
+      { "files": [ "api/**.yml", "api/**.md" ] }
+    ],
+    "resource": [
+      { "files": [ "images/**" ] }
+    ],
+    "dest": "_site",
+    "globalMetadata": {
+      "_appTitle": "Munition AutoPatcher vC Docs"
+    },
+    "template": [ "default" ]
+  }
+}

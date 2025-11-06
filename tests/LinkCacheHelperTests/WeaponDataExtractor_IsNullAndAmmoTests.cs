@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Implementations;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace LinkCacheHelperTests
@@ -46,7 +47,7 @@ namespace LinkCacheHelperTests
             };
 
             var env = new NoOpResourcedMutagenEnvironment(Enumerable.Empty<object>(), new[] { cobj });
-            var extractor = new WeaponDataExtractor();
+            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             var result = await extractor.ExtractAsync(env, new HashSet<string>());
 
@@ -73,7 +74,7 @@ namespace LinkCacheHelperTests
             };
 
             var env = new NoOpResourcedMutagenEnvironment(new object[] { weapon }, new object[] { cobj });
-            var extractor = new WeaponDataExtractor();
+            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var result = await extractor.ExtractAsync(env, new HashSet<string>());
