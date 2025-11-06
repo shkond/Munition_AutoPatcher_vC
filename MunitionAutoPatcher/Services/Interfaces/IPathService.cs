@@ -14,4 +14,10 @@ public interface IPathService
     /// Gets the artifacts output directory path.
     /// </summary>
     string GetArtifactsDirectory();
+
+    /// <summary>
+    /// Gets the configured output directory for patches and INI files.
+    /// Creates the directory if it doesn't exist.
+    /// </summary>
+    string GetOutputDirectory();
 }

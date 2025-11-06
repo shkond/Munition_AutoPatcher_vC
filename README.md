@@ -19,7 +19,64 @@ Fallout 4武器自動パッチツール - WPF MVVM実装
   - タイムスタンプ付きINIファイル生成
   - 手動マッピングフラグのサポート
   - ディレクトリの自動作成
+- **ESP パッチ生成**: ESL フラグ付き ESP パッチの生成（実装済み）
+  - 確認済みの武器-弾薬マッピングを WEAP レコードオーバーライドとして適用
+  - ESPFE（ESL フラグ付き ESP）形式で出力
+  - 参照されているすべてのマスターを自動検出して含める
+  - 出力モードの設定により INI または ESP を選択可能
 - **ログ/ステータス**: リアルタイムログ表示とステータス表示
+
+## 出力モード
+
+Munition AutoPatcher は 2 つの出力モードをサポートしています：
+
+### ESP モード（デフォルト）
+
+ESP モードでは、確認済みの武器-弾薬マッピングを直接 Fallout 4 プラグインファイル（ESL フラグ付き ESP）として出力します。この方法では RobCo Patcher を使用せず、パッチが直接ゲームに適用されます。
+
+**メリット**:
+- RobCo Patcher への依存がない
+- ゲーム起動時に自動適用される（ロードオーダーに追加するだけ）
+- ESL フラグにより MOD スロットを消費しない
+
+**設定方法**:
+
+設定ファイル（`config/config.json`）に以下を追加：
+```json
+{
+  "output": {
+    "mode": "esp",
+    "directory": "artifacts"
+  }
+}
+```
+
+- `mode`: 出力モードを指定します。`"esp"` (デフォルト) または `"ini"` を設定できます
+- `directory`: 出力先ディレクトリを指定します。相対パスの場合はリポジトリルートからの相対パスになります
+
+出力ファイル: `<output.directory>/MunitionAutoPatcher_Patch.esp`
+
+### INI モード（レガシー）
+
+INI モードでは、RobCo Patcher 用の設定ファイル（INI）を生成します。RobCo Patcher を使用してゲームにパッチを適用する従来の方法です。
+
+**設定方法**:
+
+設定ファイル（`config/config.json`）で `output.mode` を `"ini"` に変更：
+```json
+{
+  "output": {
+    "mode": "ini",
+    "directory": "artifacts"
+  }
+}
+```
+
+**注意**: この設定を変更すると、ESP パッチの代わりに INI ファイルが生成されるようになります。RobCo Patcher を別途インストールして使用する必要があります。
+
+### 設定ファイルのサンプル
+
+`config/config.sample.json` に完全な設定例があります。初回起動時は `config/config.json` を作成し、必要に応じて設定をカスタマイズしてください。
 
 ## 技術スタック
 

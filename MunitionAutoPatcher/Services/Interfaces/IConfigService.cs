@@ -25,4 +25,9 @@ public interface IConfigService
     // Excluded plugins list (configurable blacklist)
     System.Collections.Generic.IEnumerable<string> GetExcludedPlugins();
     void SetExcludedPlugins(System.Collections.Generic.IEnumerable<string> plugins);
+    // Output configuration
+    string GetOutputMode();
+    void SetOutputMode(string mode);
+    string GetOutputDirectory();
+    void SetOutputDirectory(string directory);
 }

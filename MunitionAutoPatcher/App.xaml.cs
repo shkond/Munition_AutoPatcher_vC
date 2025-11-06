@@ -39,7 +39,8 @@ public partial class App : Application
                 services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
 
                 // Register extraction infrastructure
-                services.AddSingleton<IPathService, PathService>();
+                services.AddSingleton<IPathService>(provider => 
+                    new PathService(provider.GetRequiredService<IConfigService>()));
                 services.AddSingleton<IMutagenAccessor, MutagenAccessor>();
                 services.AddSingleton<IDiagnosticWriter, DiagnosticWriter>();
                 
@@ -54,6 +55,7 @@ public partial class App : Application
                 // Register weapon data extractor (transient: new instance per operation)
                 services.AddTransient<IWeaponDataExtractor, WeaponDataExtractor>();
                 services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
+                services.AddSingleton<IEspPatchService, EspPatchService>();
                 services.AddSingleton<IOrchestrator, OrchestratorService>();
 
                 // Register ViewModels
