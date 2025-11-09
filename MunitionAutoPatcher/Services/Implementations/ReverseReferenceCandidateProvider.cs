@@ -78,11 +78,11 @@ public class ReverseReferenceCandidateProvider : ICandidateProvider
                                 var propValue = prop.GetValue(rec);
                                 if (propValue == null) continue;
 
-                                // Case 1: Direct FormLink-like property (has FormKey on the type)
-                                var formKeyPropOnType = propType.GetProperty("FormKey");
-                                if (formKeyPropOnType != null)
+                                // Case 1: Direct FormLink-like property (inspect runtime value for FormKey)
+                                var formKeyPropOnValue = propValue.GetType().GetProperty("FormKey");
+                                if (formKeyPropOnValue != null)
                                 {
-                                    var formKey = formKeyPropOnType.GetValue(propValue);
+                                    var formKey = formKeyPropOnValue.GetValue(propValue);
                                     if (formKey != null && TryExtractFormKeyInfo(formKey, out var plugin, out var id))
                                     {
                                         var pluginKey = plugin.ToLowerInvariant();

@@ -5,6 +5,7 @@ using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Environments;
 // WinningOverrides<T>() extension methods are in Mutagen.Bethesda.Plugins.Records / Mutagen.Bethesda.Plugins order; no Core.Extensions in this version.
 using MunitionAutoPatcher.Services.Interfaces;
@@ -221,28 +222,7 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
     {
         try
         {
-            var priority = _env.LoadOrder.PriorityOrder;
-            // Attempt known accessor names via reflection (ObjectModification/ObjectMod)
-            var pType = priority.GetType();
-            foreach (var name in new[] { "ObjectModification", "ObjectMod" })
-            {
-                var m = pType.GetMethod(name, BindingFlags.Public | BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
-                if (m != null)
-                {
-                    try
-                    {
-                        var coll = m.Invoke(priority, null);
-                        if (coll != null)
-                        {
-                            var win = coll.GetType().GetMethod("WinningOverrides", BindingFlags.Public | BindingFlags.Instance);
-                            if (win != null && win.Invoke(coll, null) is IEnumerable<IObjectModificationGetter> typed)
-                                return typed;
-                        }
-                    }
-                    catch { /* ignore and fallback */ }
-                }
-            }
-            // Fallback: reuse untyped OMOD winners and cast
+            // Generic WinningOverrides<T>() not available on this runtime; use robust per-mod winners and cast
             return GetObjectModificationWinningOverrides().OfType<IObjectModificationGetter>();
         }
         catch (Exception ex)
