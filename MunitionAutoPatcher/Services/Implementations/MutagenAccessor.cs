@@ -34,6 +34,18 @@ public class MutagenAccessor : IMutagenAccessor
     {
         try
         {
+            // Prefer typed collections first
+            try
+            {
+                var typed = env.EnumerateRecordCollectionsTyped();
+                var targetTyped = typed.FirstOrDefault(t => string.Equals(t.Name, collectionName, StringComparison.OrdinalIgnoreCase));
+                if (!targetTyped.Equals(default((string, IEnumerable<Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter>))) && targetTyped.Items != null)
+                {
+                    return targetTyped.Items.Cast<object>();
+                }
+            }
+            catch { /* fall back to untyped */ }
+
             var collections = env.EnumerateRecordCollections();
             var targetCollection = collections.FirstOrDefault(t =>
                 string.Equals(t.Name, collectionName, StringComparison.OrdinalIgnoreCase));
@@ -56,11 +68,16 @@ public class MutagenAccessor : IMutagenAccessor
     {
         try
         {
-            var wins = env.GetWinningWeaponOverrides();
-            if (wins != null)
+            // Prefer typed
+            try
             {
-                return wins.Cast<object>();
+                var typed = env.GetWinningWeaponOverridesTyped();
+                if (typed != null) return typed.Cast<object>();
             }
+            catch { /* fallback below */ }
+
+            var wins = env.GetWinningWeaponOverrides();
+            if (wins != null) return wins.Cast<object>();
         }
         catch (Exception ex)
         {

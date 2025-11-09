@@ -407,7 +407,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             {
                 if (_mutagenAccessor.TryGetPluginAndIdFromRecord(weapon, out var plugin, out var id))
                 {
-                    set.Add((plugin, id));
+                    set.Add((plugin.ToLowerInvariant(), id));
                 }
             }
             catch (Exception ex)

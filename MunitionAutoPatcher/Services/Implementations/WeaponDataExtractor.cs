@@ -26,7 +26,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             try
             {
                 var cobjs = env.GetWinningConstructibleObjectOverrides();
-                var allWeapons = env.GetWinningWeaponOverrides().Cast<object>().ToList();
+                var allWeapons = env.GetWinningWeaponOverridesTyped().Cast<object>().ToList();
 
                 resultsLocal.AddRange(
                     cobjs.Select(cobj =>

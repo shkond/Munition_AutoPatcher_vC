@@ -26,7 +26,7 @@ public class ReverseMapBuilder
     {
         var reverseMap = new Dictionary<string, List<(object, string, object)>>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var col in _env.EnumerateRecordCollections())
+        foreach (var col in _env.EnumerateRecordCollectionsTyped())
         {
             try
             {

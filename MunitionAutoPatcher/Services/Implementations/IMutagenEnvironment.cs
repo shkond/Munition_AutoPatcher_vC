@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using Mutagen.Bethesda.Installs;
 using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins.Records;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -31,4 +33,10 @@ public interface IMutagenEnvironment
     /// Returns null when not available.
     /// </summary>
     Noggog.DirectoryPath? GetDataFolderPath();
+
+    // Typed accessors (additive, non-breaking)
+    IEnumerable<IWeaponGetter> GetWinningWeaponOverridesTyped();
+    IEnumerable<IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped();
+    IEnumerable<IObjectModificationGetter> GetWinningObjectModificationsTyped();
+    IEnumerable<(string Name, IEnumerable<IMajorRecordGetter> Items)> EnumerateRecordCollectionsTyped();
 }

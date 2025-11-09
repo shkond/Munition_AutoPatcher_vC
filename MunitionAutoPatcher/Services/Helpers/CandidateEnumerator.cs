@@ -267,7 +267,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                     var fid = (uint)(w.FormKey?.ID ?? 0u);
                     if (!string.IsNullOrEmpty(pName) && fid != 0)
                     {
-                        weaponKeys.Add((pName, fid));
+                        weaponKeys.Add((pName.ToLowerInvariant(), fid));
                     }
                 }
                 catch (Exception ex)

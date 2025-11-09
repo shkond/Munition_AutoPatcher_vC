@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Noggog;
 using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins.Records;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -32,6 +34,12 @@ public sealed class ResourcedMutagenEnvironment : IResourcedMutagenEnvironment
 
     public IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections()
         => _env.EnumerateRecordCollections();
+
+    // Typed pass-throughs
+    public IEnumerable<IWeaponGetter> GetWinningWeaponOverridesTyped() => _env.GetWinningWeaponOverridesTyped();
+    public IEnumerable<IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped() => _env.GetWinningConstructibleObjectOverridesTyped();
+    public IEnumerable<IObjectModificationGetter> GetWinningObjectModificationsTyped() => _env.GetWinningObjectModificationsTyped();
+    public IEnumerable<(string Name, IEnumerable<IMajorRecordGetter> Items)> EnumerateRecordCollectionsTyped() => _env.EnumerateRecordCollectionsTyped();
 
     public ILinkResolver? GetLinkCache() => _env.GetLinkCache();
 

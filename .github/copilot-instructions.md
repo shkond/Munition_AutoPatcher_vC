@@ -220,6 +220,8 @@ Notes:
 - DocFX may emit warnings about unresolved external references; supplying referenced dependency assemblies to the metadata step reduces those warnings.
 - If you want CI to publish the API site automatically (e.g., to `gh-pages`), add a GitHub Actions workflow that performs the build and DocFX steps on the runner and publishes the `docs/api_site` output.
 
+Note: This project uses the Mutagen API (for example `Mutagen.Bethesda.Fallout4`). A local copy of the Mutagen source and generated API documentation is kept under `mutagen-tmp/` for offline reference (see `mutagen-tmp/docs/api_site/` and `mutagen-tmp/docs/api_xml/` when generated). The `mutagen-tmp/` directory is intended as a temporary local clone and may be ignored by `.gitignore`; generated docs are not tracked in the remote repository unless explicitly committed.
+
 ## Serena MCP Server
 
 This repository is used with a Serena MCP Server integration to provide IDE-assist tools (onboarding, project memories, and symbolic editing helpers). The following notes explain how to activate the project and use the MCP tools for onboarding and memory management.

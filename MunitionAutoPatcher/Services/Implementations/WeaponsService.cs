@@ -179,7 +179,7 @@ public class WeaponsService : IWeaponsService
                 }
                 catch { /* diagnostics only */ }
 
-                var weaponGetters = envRes.GetWinningWeaponOverrides();
+                var weaponGetters = envRes.GetWinningWeaponOverridesTyped().Cast<object>();
 
                 foreach (var weaponGetter in weaponGetters)
                 {
