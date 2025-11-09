@@ -234,19 +234,44 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
 
     public IEnumerable<(string Name, IEnumerable<IMajorRecordGetter> Items)> EnumerateRecordCollectionsTyped()
     {
-        // Curated typed collections
-        var curated = new List<(string Name, IEnumerable<IMajorRecordGetter> Items)>();
-        try { curated.Add(("Weapon", GetWinningWeaponOverridesTyped().Cast<IMajorRecordGetter>())); } catch { }
-        try { curated.Add(("ObjectModification", GetWinningObjectModificationsTyped().Cast<IMajorRecordGetter>())); } catch { }
-        try { curated.Add(("ConstructibleObject", GetWinningConstructibleObjectOverridesTyped().Cast<IMajorRecordGetter>())); } catch { }
-        try { curated.Add(("Armor", _env.LoadOrder.PriorityOrder.Armor().WinningOverrides().Cast<IMajorRecordGetter>())); } catch { }
-        try { curated.Add(("Ammo", _env.LoadOrder.PriorityOrder.Ammunition().WinningOverrides().Cast<IMajorRecordGetter>())); } catch { }
+        // Curated typed collections (materialize lists for logging counts)
+        var curated = new List<(string Name, List<IMajorRecordGetter> Items)>();
+        void AddSafe(string name, Func<IEnumerable<IMajorRecordGetter>> getter)
+        {
+            try
+            {
+                var data = getter()?.ToList() ?? new List<IMajorRecordGetter>();
+                curated.Add((name, data));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "EnumerateRecordCollectionsTyped: failed to populate {Name}", name);
+                curated.Add((name, new List<IMajorRecordGetter>()));
+            }
+        }
+
+        AddSafe("Weapon", () => GetWinningWeaponOverridesTyped().Cast<IMajorRecordGetter>());
+        AddSafe("ObjectModification", () => GetWinningObjectModificationsTyped().Cast<IMajorRecordGetter>());
+        AddSafe("ConstructibleObject", () => GetWinningConstructibleObjectOverridesTyped().Cast<IMajorRecordGetter>());
+        AddSafe("Armor", () => _env.LoadOrder.PriorityOrder.Armor().WinningOverrides().Cast<IMajorRecordGetter>());
+        AddSafe("Ammo", () => _env.LoadOrder.PriorityOrder.Ammunition().WinningOverrides().Cast<IMajorRecordGetter>());
 
         foreach (var (name, items) in curated)
         {
-            IEnumerable<IMajorRecordGetter> preview = Enumerable.Empty<IMajorRecordGetter>();
-            try { preview = items.Take(1); } catch { }
-            if (preview.Any()) yield return (name, items);
+            var count = items.Count;
+            if (name == "ObjectModification" && count == 0)
+            {
+                _logger.LogWarning("EnumerateRecordCollectionsTyped: ObjectModification count=0 (OMOD winners missing or unsupported in this version)");
+            }
+            else
+            {
+                _logger.LogInformation("EnumerateRecordCollectionsTyped: {Name} count={Count}", name, count);
+            }
+
+            if (count > 0)
+            {
+                yield return (name, (IEnumerable<IMajorRecordGetter>)items);
+            }
         }
     }
 

@@ -14,7 +14,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
     private readonly IDiagnosticWriter _diagnosticWriter;
     private readonly IEnumerable<ICandidateProvider> _providers;
-    private readonly ICandidateConfirmer _confirmer;
+    private readonly IEnumerable<ICandidateConfirmer> _confirmers;
     private readonly IMutagenAccessor _mutagenAccessor;
     private readonly IPathService _pathService;
     private readonly ILogger<WeaponOmodExtractor> _logger;
@@ -27,7 +27,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         IMutagenEnvironmentFactory mutagenEnvironmentFactory,
         IDiagnosticWriter diagnosticWriter,
         IEnumerable<ICandidateProvider> providers,
-        ICandidateConfirmer confirmer,
+        IEnumerable<ICandidateConfirmer> confirmers,
         IMutagenAccessor mutagenAccessor,
         IPathService pathService,
         ILogger<WeaponOmodExtractor> logger,
@@ -39,7 +39,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
         _diagnosticWriter = diagnosticWriter ?? throw new ArgumentNullException(nameof(diagnosticWriter));
         _providers = providers ?? throw new ArgumentNullException(nameof(providers));
-        _confirmer = confirmer ?? throw new ArgumentNullException(nameof(confirmer));
+        _confirmers = confirmers ?? throw new ArgumentNullException(nameof(confirmers));
         _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -130,6 +130,16 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 progress?.Report($"エラー: 候補の集約中に例外が発生しました: {ex.Message}");
             }
 
+            // Diagnostic: sample 5 OMODs and log attach-point EDID + matched weapon counts
+            try
+            {
+                RunOmodAttachPointDiagnostics(context);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "OMOD attach-point diagnostics failed (non-fatal)");
+            }
+
             // Build reverse-reference map for confirmation
             Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap;
             try
@@ -193,8 +203,19 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                     context.LinkCache,
                     cancellationToken);
 
-                _confirmer.Confirm(candidates, confirmationContext);
-                _logger.LogInformation("Candidate confirmation complete");
+                foreach (var confirmer in _confirmers)
+                {
+                    try
+                    {
+                        confirmer.Confirm(candidates, confirmationContext);
+                        _logger.LogInformation("Confirmer {Confirmer} complete", confirmer.GetType().Name);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Confirmer {Confirmer} failed (continuing)", confirmer.GetType().Name);
+                    }
+                }
+                _logger.LogInformation("All confirmation passes complete");
 
                 try
                 {
@@ -321,6 +342,134 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     }
 
     #region Helper Methods
+
+    private void RunOmodAttachPointDiagnostics(ExtractionContext context)
+    {
+        if (context.Environment == null)
+        {
+            _logger.LogInformation("OMOD diag: Environment unavailable");
+            return;
+        }
+
+        var resolver = context.LinkCache;
+        if (resolver == null)
+        {
+            _logger.LogInformation("OMOD diag: LinkCache/Resolver unavailable");
+            return;
+        }
+
+        // Gather weapons and their attach parent slot keyword FormKeys
+        var weaponSlotKeys = new List<HashSet<(string Plugin, uint Id)>>();
+        foreach (var weapon in context.AllWeapons)
+        {
+            try
+            {
+                var set = new HashSet<(string Plugin, uint Id)>();
+                var apsProp = weapon.GetType().GetProperty("AttachParentSlots");
+                var apsVal = apsProp?.GetValue(weapon) as System.Collections.IEnumerable;
+                if (apsVal != null)
+                {
+                    foreach (var link in apsVal)
+                    {
+                        if (link == null) continue;
+                        var fkProp = link.GetType().GetProperty("FormKey");
+                        var fk = fkProp?.GetValue(link);
+                        if (fk != null && TryExtractFormKeyInfo(fk, out var p, out var id))
+                        {
+                            set.Add((p.ToLowerInvariant(), id));
+                        }
+                    }
+                }
+                weaponSlotKeys.Add(set);
+            }
+            catch { weaponSlotKeys.Add(new HashSet<(string, uint)>()); }
+        }
+
+        // Take first 5 OMODs and log their attach point and match counts
+        var omods = context.Environment.GetWinningObjectModificationsTyped().Take(5).ToList();
+        int idx = 0;
+        foreach (var omod in omods)
+        {
+            idx++;
+            try
+            {
+                // Find an attach point-like property on the OMOD
+                object? apLink = null;
+                var props = omod.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                foreach (var prop in props)
+                {
+                    if (prop.GetIndexParameters().Length > 0) continue;
+                    if (prop.Name.Equals("AttachPoint", StringComparison.OrdinalIgnoreCase) ||
+                        prop.Name.Equals("AttachParentSlot", StringComparison.OrdinalIgnoreCase) ||
+                        prop.Name.Contains("AttachPoint", StringComparison.OrdinalIgnoreCase))
+                    {
+                        apLink = prop.GetValue(omod);
+                        if (apLink != null) break;
+                    }
+                }
+
+                string apEdid = string.Empty;
+                (string Plugin, uint Id) apKey = (string.Empty, 0);
+                if (apLink != null)
+                {
+                    var fkProp = apLink.GetType().GetProperty("FormKey");
+                    var fk = fkProp?.GetValue(apLink);
+                    if (fk != null && TryExtractFormKeyInfo(fk, out var p, out var id))
+                    {
+                        apKey = (p.ToLowerInvariant(), id);
+                        // Try resolve to keyword (prefer FormKey; fall back to link)
+                        object? kw = null;
+                        try
+                        {
+                            if (!(resolver.TryResolve(fk, out kw) && kw != null))
+                            {
+                                resolver.TryResolve(apLink, out kw);
+                            }
+                        }
+                        catch { /* ignore resolution errors in diagnostics */ }
+                        if (kw != null)
+                        {
+                            apEdid = _mutagenAccessor.GetEditorId(kw);
+                        }
+                    }
+                }
+
+                int matched = 0;
+                if (!string.IsNullOrEmpty(apKey.Plugin) && apKey.Id != 0)
+                {
+                    foreach (var set in weaponSlotKeys)
+                    {
+                        if (set.Contains(apKey)) matched++;
+                    }
+                }
+
+                var omodEdid = _mutagenAccessor.GetEditorId(omod);
+                _logger.LogInformation("OMOD diag [{Idx}]: OMOD={OmodEdid}, AttachPointEDID={ApEdid}, MatchedWeapons={Matched}", idx, omodEdid, apEdid, matched);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "OMOD diag failed for sample {Idx}", idx);
+            }
+        }
+    }
+
+    private static bool TryExtractFormKeyInfo(object formKey, out string plugin, out uint id)
+    {
+        plugin = string.Empty;
+        id = 0;
+        try
+        {
+            var modKey = formKey.GetType().GetProperty("ModKey")?.GetValue(formKey);
+            if (modKey == null) return false;
+            var idObj = formKey.GetType().GetProperty("ID")?.GetValue(formKey);
+            if (idObj == null) return false;
+            var fileNameObj = modKey.GetType().GetProperty("FileName")?.GetValue(modKey);
+            plugin = (fileNameObj?.ToString() ?? modKey.ToString()) ?? string.Empty;
+            id = idObj is uint ui ? ui : Convert.ToUInt32(idObj);
+            return !string.IsNullOrEmpty(plugin) && !plugin.Equals("Null", StringComparison.OrdinalIgnoreCase) && id != 0;
+        }
+        catch { return false; }
+    }
 
     private Task<ExtractionContext> BuildExtractionContextAsync(
         IResourcedMutagenEnvironment environment,

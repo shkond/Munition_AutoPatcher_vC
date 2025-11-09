@@ -59,8 +59,9 @@ public partial class App : Application
             services.AddSingleton<ICandidateProvider, CobjCandidateProvider>();
             services.AddSingleton<ICandidateProvider, ReverseReferenceCandidateProvider>();
 
-            // Register candidate confirmer
+            // Register candidate confirmers (order: reverse-map then attach-point)
             services.AddSingleton<ICandidateConfirmer, ReverseMapConfirmer>();
+            services.AddSingleton<ICandidateConfirmer, AttachPointConfirmer>();
 
             services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
             // Register weapon data extractor (transient: new instance per operation)
