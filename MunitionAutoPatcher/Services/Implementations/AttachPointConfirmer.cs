@@ -58,33 +58,33 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
             }
         }
 
-        int processed = 0;
+        int inspected = 0;
+        int resolvedToOmod = 0;
+        int hadAttachPoint = 0;
+        int matchedWeapons = 0;
+        int foundAmmo = 0;
+        int confirmed = 0;
         foreach (var candidate in candidates)
         {
             try
             {
+                inspected++;
                 // Skip already confirmed
                 if (candidate.ConfirmedAmmoChange) continue;
 
                 // We only handle candidates that represent potential OMOD or created weapon modifications
                 if (!IsOmodLike(candidate)) continue;
 
-                // Resolve OMOD getter from CandidateFormKey
-                object? omodGetter = null;
-                try
-                {
-                    omodGetter = context.Resolver?.ResolveByKey(candidate.CandidateFormKey);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "AttachPointConfirmer: failed to resolve candidate form key");
-                }
+                // Resolve OMOD getter from CandidateFormKey (follow through COBJ.CreatedObject when needed)
+                object? omodGetter = ResolveOmodForCandidate(candidate, context);
                 if (omodGetter == null) continue;
+                resolvedToOmod++;
 
                 // Extract attach point keyword link
                 object? apLink = TryFindAttachPointLink(omodGetter);
                 if (apLink == null)
                     continue; // cannot map weapon applicability
+                hadAttachPoint++;
 
                 var fkProp = apLink.GetType().GetProperty("FormKey");
                 var fk = fkProp?.GetValue(apLink);
@@ -94,11 +94,13 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
 
                 if (!attachSlotToWeapon.TryGetValue(apKey, out var affectedWeapons) || affectedWeapons.Count == 0)
                     continue; // attach point not used by any loaded weapon
+                matchedWeapons += affectedWeapons.Count;
 
                 // Attempt to locate ammo/proj reference inside the OMOD
                 var ammoFormKey = TryFindAmmoReference(omodGetter, context);
                 if (ammoFormKey == null)
                     continue; // We only confirm when ammo evidence is found
+                foundAmmo++;
 
                 // Confirm for each weapon affected; if candidate already tied to BaseWeapon keep it, else assign first
                 if (candidate.BaseWeapon == null)
@@ -111,15 +113,17 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                 candidate.CandidateAmmoName = context.Resolver != null ? _mutagenAccessor.GetEditorId(context.Resolver.ResolveByKey(ammoFormKey) ?? new object()) : string.Empty;
                 candidate.ConfirmedAmmoChange = true;
                 candidate.ConfirmReason = $"AttachPointMatch+Ammo ({apPlugin}:{apId:X8})";
+                confirmed++;
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "AttachPointConfirmer: error confirming candidate");
             }
-            processed++;
         }
 
-        _logger.LogInformation("AttachPointConfirmer processed {Count} candidates", processed);
+        _logger.LogInformation(
+            "AttachPointConfirmer: inspected={Inspected}, resolvedToOmod={Resolved}, hadAttachPoint={AttachPts}, matchedWeapons={Matched}, foundAmmo={Ammo}, confirmed={Confirmed}",
+            inspected, resolvedToOmod, hadAttachPoint, matchedWeapons, foundAmmo, confirmed);
     }
 
     private static bool IsOmodLike(OmodCandidate c)
@@ -209,6 +213,68 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "AttachPointConfirmer: failed scanning OMOD for ammo reference");
+        }
+        return null;
+    }
+
+    private object? ResolveOmodForCandidate(OmodCandidate candidate, ConfirmationContext context)
+    {
+        object? root = null;
+        try
+        {
+            root = context.Resolver?.ResolveByKey(candidate.CandidateFormKey);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "AttachPointConfirmer: failed to resolve candidate form key");
+            return null;
+        }
+        if (root == null) return null;
+
+        // If already looks like an OMOD (has AttachPoint), return it
+        if (TryFindAttachPointLink(root) != null)
+            return root;
+
+        // If it's a COBJ, try to resolve CreatedObject -> OMOD
+        try
+        {
+            var created = TryGetFormLinkValue(root, "CreatedObject", "CreatedObjectForm", "CreatedObjectReference");
+            if (created != null)
+            {
+                var fkProp = created.GetType().GetProperty("FormKey");
+                var fkVal = fkProp?.GetValue(created);
+                if (fkVal != null && TryExtractFormKeyInfo(fkVal, out var p, out var id))
+                {
+                    var omod = context.Resolver?.ResolveByKey(new FormKey { PluginName = p, FormId = id });
+                    if (omod != null && TryFindAttachPointLink(omod) != null)
+                        return omod;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "AttachPointConfirmer: failed to resolve CreatedObject from COBJ");
+        }
+
+        return null;
+    }
+
+    private static object? TryGetFormLinkValue(object obj, params string[] propertyNames)
+    {
+        var type = obj.GetType();
+        foreach (var name in propertyNames)
+        {
+            try
+            {
+                var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                if (prop == null || prop.GetIndexParameters().Length > 0) continue;
+                var val = prop.GetValue(obj);
+                if (val == null) continue;
+                // Heuristically accept if it exposes FormKey
+                if (val.GetType().GetProperty("FormKey") != null)
+                    return val;
+            }
+            catch { /* ignore and continue */ }
         }
         return null;
     }
