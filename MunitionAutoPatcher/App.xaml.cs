@@ -34,11 +34,12 @@ public partial class App : Application
         {
             try
             {
-                logging.SetMinimumLevel(LogLevel.Debug); // Set global minimum log level to Debug
+                // logging.SetMinimumLevel(LogLevel.Debug); // Set global minimum log level to Debug
                 logging.AddProvider(new MunitionAutoPatcher.Logging.AppLoggerProvider());
                 // Increase verbosity for targeted categories to surface debugging information during ESP generation
                 logging.AddFilter("MunitionAutoPatcher.Services.Implementations.MutagenV51EnvironmentAdapter", LogLevel.Debug);
                 logging.AddFilter("MunitionAutoPatcher.Services.Implementations.ReverseReferenceCandidateProvider", LogLevel.Debug);
+                logging.AddFilter("MunitionAutoPatcher.Services.Implementations.LinkResolver", LogLevel.Debug);
             }
             catch { }
         })

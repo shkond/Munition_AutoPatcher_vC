@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
 using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Fallout4; // For concrete getter interfaces like IObjectModificationGetter, IConstructibleObjectGetter
 
 namespace MunitionAutoPatcher.Services.Implementations
 {
@@ -55,6 +57,29 @@ namespace MunitionAutoPatcher.Services.Implementations
             }
             catch { }
 
+            // Typed fast-paths when we have a concrete ILinkCache
+            try
+            {
+                if (_typedLinkCache != null)
+                {
+                    if (linkLike is Mutagen.Bethesda.Plugins.FormKey mfk)
+                    {
+                        if (TryTypedResolve(mfk, out var major) && major != null)
+                        { _cache[key] = major; result = major; return true; }
+                    }
+                    else if (linkLike is FormKey ourFk)
+                    {
+                        var mfk2 = TryToMutagenFormKey(ourFk);
+                        if (mfk2 != null && TryTypedResolve(mfk2.Value, out var major2) && major2 != null)
+                        { _cache[key] = major2; result = major2; return true; }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "LinkResolver.TryResolve: typed fast-path failed");
+            }
+
             var r = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(linkLike, _linkCache);
             _cache[key] = r; // cache nulls too to avoid repeated attempts
             result = r;
@@ -82,8 +107,15 @@ namespace MunitionAutoPatcher.Services.Implementations
                 if (mfk != null)
                 {
                     _logger?.LogDebug("ResolveByKey: attempting Mutagen FormKey resolution {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
-                    result = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(mfk.Value, _linkCache);
-                    _logger?.LogDebug("ResolveByKey: result was {Result}", result != null ? "FOUND" : "MISS");
+
+                    // Typed fast-path
+                    if (_typedLinkCache != null && TryTypedResolve(mfk.Value, out var major) && major != null)
+                    { result = major; _logger?.LogDebug("ResolveByKey: typed path FOUND"); }
+                    else
+                    {
+                        result = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(mfk.Value, _linkCache);
+                        _logger?.LogDebug("ResolveByKey: reflection path result was {Result}", result != null ? "FOUND" : "MISS");
+                    }
                 }
                 else
                 {
@@ -173,7 +205,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             }
             catch (Exception ex)
             {
-                // Do not throw; resolution will fallback
+                _logger?.LogWarning(ex, "TryToMutagenFormKey failed for {PluginName}:{FormId:X8}", fk.PluginName, fk.FormId);
                 return null;
             }
         }
@@ -182,6 +214,39 @@ namespace MunitionAutoPatcher.Services.Implementations
         {
             // Use object identity + type name to avoid collisions; stable enough within a single extraction pass
             return $"OBJ:{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(linkLike)}:{linkLike.GetType().FullName}";
+        }
+
+        // Try common FO4 record getter types to accommodate caches requiring concrete types
+        private bool TryTypedResolve(Mutagen.Bethesda.Plugins.FormKey key, out object? result)
+        {
+            result = null;
+            var cache = _typedLinkCache;
+            if (cache == null) return false;
+
+            // Priority order: OMOD, COBJ, WEAP, AMMO, ARMO (expandable)
+            Type[] types = new Type[]
+            {
+                typeof(IObjectModificationGetter),
+                typeof(IConstructibleObjectGetter),
+                typeof(IWeaponGetter),
+                typeof(IAmmunitionGetter),
+                typeof(IArmorGetter),
+                typeof(IMajorRecordGetter)
+            };
+
+            foreach (var t in types)
+            {
+                try
+                {
+                    if (cache.TryResolve(key, t, out var major) && major != null)
+                    { result = major; return true; }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "TryTypedResolve: cache.TryResolve failed for type {Type}", t.FullName);
+                }
+            }
+            return false;
         }
     }
 }
