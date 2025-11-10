@@ -23,6 +23,22 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
 
     public void Confirm(IEnumerable<OmodCandidate> candidates, ConfirmationContext context)
     {
+        // Dump first few candidate form keys for debugging
+        try
+        {
+            int dumpCount = 0;
+            foreach (var c in candidates.Take(20))
+            {
+                try
+                {
+                    var fk = c.CandidateFormKey;
+                    _logger.LogInformation("CandidateDump[{Index}]: Type={Type} FK={Plugin}:{Id:X8}", dumpCount++, c.CandidateType, fk?.PluginName ?? "NULL", fk?.FormId ?? 0);
+                }
+                catch { /* best-effort debug only */ }
+            }
+        }
+        catch { /* ignore debug failures */ }
+
         // Build quick lookup: weapon attach slot keyword keys -> weapon FormKey
         var attachSlotToWeapon = new Dictionary<(string Plugin, uint Id), List<FormKey>>();
         foreach (var weapon in context.AllWeapons)
@@ -126,6 +142,14 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         _logger.LogInformation(
             "AttachPointConfirmer: inspected={Inspected}, resolvedToOmod={Resolved}, hadAttachPoint={AttachPts}, matchedWeapons={Matched}, foundAmmo={Ammo}, confirmed={Confirmed}",
             inspected, resolvedToOmod, hadAttachPoint, matchedWeapons, foundAmmo, confirmed);
+        // Detailed debug counters to help diagnose why resolution may be failing
+        try
+        {
+            _logger.LogInformation(
+                "AttachPointConfirmer: debug rootNull={RootNull}, createdObjMissing={CreatedMissing}, createdObjResolveFail={ResolveFail}, createdObjNotOmod={NotOmod}",
+                rootNull, createdObjMissing, createdObjResolveFail, createdObjNotOmod);
+        }
+        catch { /* best-effort logging */ }
     }
 
     private static bool IsOmodLike(OmodCandidate c)
