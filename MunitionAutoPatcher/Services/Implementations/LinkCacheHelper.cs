@@ -67,6 +67,13 @@ namespace MunitionAutoPatcher.Services.Implementations
                     if (typed != null) return typed;
                 }
 
+                // 4b) Try generic TryResolve<T>(FormKey, out T) variants
+                if (formKeyObj != null)
+                {
+                    var genResolved = TryGenericTryResolve(formKeyObj, linkCache);
+                    if (genResolved != null) return genResolved;
+                }
+
                 // 5) 最終フォールバック: 単一引数の公開メソッド
                 var last = TrySingleArgFallback(linkLike, formKeyObj, linkCache);
                 if (last != null) return last;
@@ -317,6 +324,106 @@ namespace MunitionAutoPatcher.Services.Implementations
             catch (Exception ex)
             {
                 LogErrorOnce("tryresolve_3param_scan_failed", $"LinkCacheHelper: 3-param TryResolve scan error: {ex.Message}", ex);
+            }
+            return null;
+        }
+
+        // Attempt to invoke generic TryResolve<T>(FormKey, out T) methods via reflection.
+        // This scans loaded assemblies for candidate getter types and tries to close
+        // generic TryResolve definitions against them, returning the resolved object
+        // when successful.
+        private static object? TryGenericTryResolve(object formKeyObj, object linkCache)
+        {
+            try
+            {
+                // Ensure we have a Mutagen FormKey
+                object? mfkObj = formKeyObj;
+                if (mfkObj is not FormKey)
+                {
+                    try
+                    {
+                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetFormKey(formKeyObj, out var extracted) && extracted is FormKey fkStruct)
+                            mfkObj = fkStruct;
+                    }
+                    catch { mfkObj = null; }
+                }
+                if (mfkObj is not FormKey) return null;
+                var mfk = (FormKey)mfkObj;
+
+                var lcType = linkCache.GetType();
+                var genericDefs = lcType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(m => m.IsGenericMethodDefinition && string.Equals(m.Name, "TryResolve", StringComparison.Ordinal) && m.GetParameters().Length == 2)
+                    .ToArray();
+                if (genericDefs.Length == 0) return null;
+
+                // Collect candidate getter/interface types from loaded assemblies.
+                var candidateTypes = new List<Type>();
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    Type[] types;
+                    try { types = asm.GetTypes(); } catch { continue; }
+                    foreach (var t in types)
+                    {
+                        try
+                        {
+                            if (!t.IsInterface) continue;
+                            var n = t.Name ?? string.Empty;
+                            if (n.EndsWith("Getter") || n.EndsWith("Getter`1") || n.EndsWith("RecordGetter"))
+                            {
+                                candidateTypes.Add(t);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                // Add a small set of well-known type names as a fallback if CandidateTypes is empty
+                if (candidateTypes.Count == 0)
+                {
+                    string[] known = new[] {
+                        "Mutagen.Bethesda.Fallout4.IObjectModificationGetter",
+                        "Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter",
+                        "Mutagen.Bethesda.Fallout4.IWeaponGetter",
+                        "Mutagen.Bethesda.Fallout4.IAmmunitionGetter",
+                        "Mutagen.Bethesda.Fallout4.IProjectileGetter",
+                        "Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter"
+                    };
+                    foreach (var q in known)
+                    {
+                        try { var ty = Type.GetType(q, false); if (ty != null) candidateTypes.Add(ty); } catch { }
+                    }
+                }
+
+                var unique = candidateTypes.Distinct().ToArray();
+                if (unique.Length == 0) return null;
+
+                foreach (var genDef in genericDefs)
+                {
+                    foreach (var candidate in unique)
+                    {
+                        try
+                        {
+                            var constructed = genDef.MakeGenericMethod(candidate);
+                            var args = new object?[] { mfk, null };
+                            var okObj = constructed.Invoke(linkCache, args);
+                            if (okObj is bool ok && ok && args[1] != null)
+                                return args[1];
+                        }
+                        catch (TargetInvocationException tex)
+                        {
+                            var inner = tex.InnerException?.Message ?? tex.Message;
+                            LogErrorOnce("generic_tryresolve_targetinv", $"LinkCacheHelper: generic TryResolve<{candidate?.FullName}> invocation failed: {inner}", tex);
+                        }
+                        catch (Exception ex)
+                        {
+                            LogErrorOnce("generic_tryresolve_invoke_failed", $"LinkCacheHelper: generic TryResolve<{candidate?.FullName}> invocation error: {ex.Message}", ex);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogErrorOnce("generic_tryresolve_scan_failed", $"LinkCacheHelper: generic TryResolve scan error: {ex.Message}", ex);
             }
             return null;
         }

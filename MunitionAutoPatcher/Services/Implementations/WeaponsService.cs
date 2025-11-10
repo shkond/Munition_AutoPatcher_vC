@@ -179,8 +179,12 @@ public class WeaponsService : IWeaponsService
                 }
                 catch { /* diagnostics only */ }
 
-                var weaponGetters = envRes.GetWinningWeaponOverridesTyped().Cast<object>();
+                // Force enumeration of the weapon getters early so we can log the count
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var weaponGetters = envRes.GetWinningWeaponOverridesTyped().Cast<object>().ToList();
+                LogInfo($"WeaponsService: enumerated weapon getters count={weaponGetters.Count}");
 
+                int loopIndex = 0;
                 foreach (var weaponGetter in weaponGetters)
                 {
                     try
@@ -343,7 +347,16 @@ public class WeaponsService : IWeaponsService
                             {
                                 try
                                 {
-                                    if (ammoObj != null) resolver.TryResolve(ammoObj, out ammoResolved);
+                                    if (ammoObj != null)
+                                    {
+                                        var swResolve = System.Diagnostics.Stopwatch.StartNew();
+                                        resolver.TryResolve(ammoObj, out ammoResolved);
+                                        swResolve.Stop();
+                                        if (swResolve.ElapsedMilliseconds > 500)
+                                        {
+                                            LogInfo($"WeaponsService: slow resolver.TryResolve detected for weapon {pluginName}:{formId:X8} - elapsedMs={swResolve.ElapsedMilliseconds}");
+                                        }
+                                    }
                                 }
                                 catch (Exception ex)
                                 {
@@ -438,6 +451,11 @@ public class WeaponsService : IWeaponsService
 
                         _weapons.Add(weaponData);
                         weaponCount++;
+                        loopIndex++;
+                        if (loopIndex % 100 == 0)
+                        {
+                            LogInfo($"WeaponsService: processing progress - processed={loopIndex}, elapsedMs={sw.ElapsedMilliseconds}");
+                        }
 
                         // Periodically write a snapshot to avoid losing diagnostics on unexpected exit
                         if (weaponCount % 200 == 0)
@@ -458,6 +476,8 @@ public class WeaponsService : IWeaponsService
                     }
                 }
 
+                sw.Stop();
+                LogInfo($"WeaponsService: finished processing weapons loop; processed={weaponCount}, iterations={loopIndex}, elapsedMs={sw.ElapsedMilliseconds}");
                 progress?.Report($"抽出完了: {_weapons.Count}個の武器データを抽出しました");
                 progress?.Report($"弾薬抽出(MO2 LinkCache 経由)完了: {_ammo.Count}個の弾薬を収集しました");
                 try { WriteRecordsLog(); } catch (Exception ex) { LogError("WeaponsService: WriteRecordsLog failed", ex); /* non-fatal for extraction */ }
