@@ -195,6 +195,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             try
             {
                 confirmationContext = await BuildConfirmationContextAsync(
+                    environment,
                     reverseMap,
                     context.ExcludedPlugins,
                     context.AllWeapons,
@@ -666,6 +667,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     }
 
     private async Task<ConfirmationContext> BuildConfirmationContextAsync(
+    IResourcedMutagenEnvironment? environment,
     Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap,
     HashSet<string> excludedPlugins,
     List<object> allWeapons,
@@ -681,54 +683,83 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             // If we already have a concrete Mutagen ILinkCache, prefer a LinkResolver backed by it
             if (formLinkCache != null)
             {
-                resolver = new Services.Implementations.LinkResolver(formLinkCache);
+                resolver = new Services.Implementations.LinkResolver(formLinkCache, _loggerFactory.CreateLogger<Services.Implementations.LinkResolver>());
                 _logger.LogInformation("BuildConfirmationContext: using concrete FormLinkCache-backed resolver (type={Type})", formLinkCache.GetType().FullName);
             }
             else
             {
-                // Try to build a concrete ILinkCache from the current load order if available
+                // Try to build a concrete ILinkCache from the provided environment if available
                 try
                 {
-                    var loadOrder = await _loadOrderService.GetLoadOrderAsync();
-                    if (loadOrder != null)
+                    if (environment != null)
                     {
+                        // Mirror the extraction-time attempt: try to obtain underlying adapter and LoadOrder
+                        var rawEnv = environment as ResourcedMutagenEnvironment;
                         object? built = null;
-                        try
+                        if (rawEnv != null)
                         {
-                            var toImmutable = loadOrder.GetType().GetMethod("ToImmutableLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
-                            var toLinkCache = loadOrder.GetType().GetMethod("ToLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
-                            if (toImmutable != null)
+                            var innerField = rawEnv.GetType().GetField("_env", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            var innerAdapter = innerField?.GetValue(rawEnv);
+                            var linkCacheProp = innerAdapter?.GetType().GetProperty("LinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                            var formLinkCacheObj = linkCacheProp?.GetValue(innerAdapter) as Mutagen.Bethesda.Plugins.Cache.ILinkCache;
+                            if (formLinkCacheObj != null)
                             {
-                                built = toImmutable.Invoke(loadOrder, null);
+                                built = formLinkCacheObj;
+                                _logger.LogDebug("BuildConfirmationContextAsync: captured FormLinkCache from environment adapter (type={Type})", formLinkCacheObj.GetType().FullName);
                             }
-                            else if (toLinkCache != null)
+                            else
                             {
-                                built = toLinkCache.Invoke(loadOrder, null);
+                                // Try to get the GameEnvironment.LoadOrder and call ToImmutableLinkCache/ToLinkCache
+                                try
+                                {
+                                    var innerEnvField = innerAdapter?.GetType().GetField("_env", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                                    var gameEnv = innerEnvField?.GetValue(innerAdapter);
+                                    if (gameEnv != null)
+                                    {
+                                        var loadOrderProp = gameEnv.GetType().GetProperty("LoadOrder", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                                        var loadOrder = loadOrderProp?.GetValue(gameEnv);
+                                        if (loadOrder != null)
+                                        {
+                                            var toImmutable = loadOrder.GetType().GetMethod("ToImmutableLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
+                                            var toLinkCache = loadOrder.GetType().GetMethod("ToLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
+                                            if (toImmutable != null)
+                                                built = toImmutable.Invoke(loadOrder, null);
+                                            else if (toLinkCache != null)
+                                                built = toLinkCache.Invoke(loadOrder, null);
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogDebug(ex, "BuildConfirmationContextAsync: failed to build FormLinkCache via gameEnv.LoadOrder");
+                                }
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogDebug(ex, "BuildConfirmationContextAsync: failed to invoke ToImmutableLinkCache/ToLinkCache");
                         }
 
                         if (built is Mutagen.Bethesda.Plugins.Cache.ILinkCache builtCache)
                         {
-                            resolver = new Services.Implementations.LinkResolver(builtCache);
-                            _logger.LogInformation("BuildConfirmationContext: built LinkCache for confirmation (mods={Count})", (loadOrder as System.Collections.ICollection)?.Count ?? 0);
+                            resolver = new Services.Implementations.LinkResolver(builtCache, _loggerFactory.CreateLogger<Services.Implementations.LinkResolver>());
+                            // Try to report approximate mod count if available
+                            try
+                            {
+                                var loadOrderCollection = builtCache.GetType().GetProperty("LoadedMods")?.GetValue(builtCache) as System.Collections.ICollection;
+                                _logger.LogInformation("BuildConfirmationContext: built LinkCache for confirmation (mods={Count})", loadOrderCollection?.Count ?? -1);
+                            }
+                            catch { _logger.LogInformation("BuildConfirmationContext: built LinkCache for confirmation (type={Type})", builtCache.GetType().FullName); }
                         }
                         else
                         {
-                            _logger.LogDebug("BuildConfirmationContext: unable to build concrete LinkCache from LoadOrder");
+                            _logger.LogDebug("BuildConfirmationContext: unable to build concrete LinkCache from environment");
                         }
                     }
                     else
                     {
-                        _logger.LogDebug("BuildConfirmationContext: loadOrder service returned null");
+                        _logger.LogDebug("BuildConfirmationContext: environment was null, skipping concrete cache build");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "BuildConfirmationContext: failed to build LinkCache");
+                    _logger.LogWarning(ex, "BuildConfirmationContext: failed to build LinkCache from environment");
                 }
                 // If still null, fall back to provided resolver wrapper
                 if (resolver == null)

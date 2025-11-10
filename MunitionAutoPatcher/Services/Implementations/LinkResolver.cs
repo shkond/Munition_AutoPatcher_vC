@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
 
@@ -14,9 +15,12 @@ namespace MunitionAutoPatcher.Services.Implementations
         private readonly object _linkCache;
         private readonly ConcurrentDictionary<string, object?> _cache = new(StringComparer.Ordinal);
 
-        public LinkResolver(object linkCache)
+        private readonly ILogger<LinkResolver>? _logger;
+
+        public LinkResolver(object linkCache, ILogger<LinkResolver>? logger = null)
         {
             _linkCache = linkCache ?? throw new ArgumentNullException(nameof(linkCache));
+            _logger = logger;
         }
 
         public bool TryResolve(object linkLike, out object? result)
@@ -75,6 +79,58 @@ namespace MunitionAutoPatcher.Services.Implementations
 
             _cache[cacheKey] = result;
             return result;
+        }
+
+        public object? ResolveByKey(object key)
+        {
+            try
+            {
+                if (key == null) return null;
+
+                // If it's our internal FormKey type, delegate to the existing method
+                if (key is FormKey fk)
+                {
+                    return ResolveByKey(fk);
+                }
+
+                // If it's a Mutagen FormKey, try resolving directly
+                if (key is Mutagen.Bethesda.Plugins.FormKey mfk)
+                {
+                    try
+                    {
+                        var r = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(mfk, _linkCache);
+                        return r;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "ResolveByKey: failed resolving Mutagen FormKey");
+                        return null;
+                    }
+                }
+
+                // If the object exposes a FormKey property, try to extract and resolve it
+                var fkProp = key.GetType().GetProperty("FormKey");
+                if (fkProp != null)
+                {
+                    var rawFk = fkProp.GetValue(key);
+                    if (rawFk is Mutagen.Bethesda.Plugins.FormKey mfk2)
+                    {
+                        try { return Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(mfk2, _linkCache); }
+                        catch (Exception ex) { _logger?.LogDebug(ex, "ResolveByKey: failed resolving FormKey property (Mutagen)"); return null; }
+                    }
+                    if (rawFk is FormKey customFk)
+                    {
+                        return ResolveByKey(customFk);
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "LinkResolver.ResolveByKey failed for key type: {Type}", key?.GetType().FullName);
+                return null;
+            }
         }
 
         private Mutagen.Bethesda.Plugins.FormKey? TryToMutagenFormKey(FormKey fk)
