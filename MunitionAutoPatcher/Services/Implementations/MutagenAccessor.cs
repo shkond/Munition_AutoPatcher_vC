@@ -1,6 +1,9 @@
+using System.Reflection;
+using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Utilities;
-using Microsoft.Extensions.Logging;
+using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Order;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -25,6 +28,98 @@ public class MutagenAccessor : IMutagenAccessor
         catch (Exception ex)
         {
             _logger.LogError(ex, "MutagenAccessor: failed to obtain LinkCache");
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public ILinkCache? BuildConcreteLinkCache(IResourcedMutagenEnvironment env)
+    {
+        if (env == null) return null;
+
+        try
+        {
+            var resolver = env.GetLinkCache();
+            if (resolver is LinkResolver typedResolver && typedResolver.TypedLinkCache != null)
+            {
+                return typedResolver.TypedLinkCache;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "MutagenAccessor: resolver-backed LinkCache capture failed");
+        }
+
+        try
+        {
+            if (env is ResourcedMutagenEnvironment resourced)
+            {
+                var inner = resourced.InnerEnvironment;
+                if (inner is MutagenV51EnvironmentAdapter adapter)
+                {
+                    var gameEnv = adapter.InnerGameEnvironment;
+                    if (gameEnv?.LinkCache != null)
+                    {
+                        _logger.LogInformation("MutagenAccessor: reusing GameEnvironment LinkCache (type={Type})", gameEnv.LinkCache.GetType().FullName);
+                        return gameEnv.LinkCache;
+                    }
+
+                    var loadOrder = gameEnv?.LoadOrder;
+                    if (loadOrder != null)
+                    {
+                        try
+                        {
+                            var cache = TryInvokeLinkCacheBuilder(loadOrder, "ToImmutableLinkCache");
+                            if (cache != null)
+                            {
+                                _logger.LogInformation("MutagenAccessor: built LinkCache via GameEnvironment load order (type={Type})", cache.GetType().FullName);
+                                return cache;
+                            }
+                        }
+                        catch (MissingMethodException)
+                        {
+                            try
+                            {
+                                var cache = TryInvokeLinkCacheBuilder(loadOrder, "ToLinkCache");
+                                if (cache != null)
+                                {
+                                    _logger.LogInformation("MutagenAccessor: built LinkCache via GameEnvironment ToLinkCache (type={Type})", cache.GetType().FullName);
+                                    return cache;
+                                }
+                            }
+                            catch (Exception secondary)
+                            {
+                                _logger.LogDebug(secondary, "MutagenAccessor: LoadOrder.ToLinkCache fallback failed");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex, "MutagenAccessor: LoadOrder.ToImmutableLinkCache failed");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MutagenAccessor: failed to materialize concrete LinkCache from environment");
+        }
+
+        return null;
+    }
+
+    private static ILinkCache? TryInvokeLinkCacheBuilder(object loadOrder, string methodName)
+    {
+        if (loadOrder == null) return null;
+
+        try
+        {
+            var method = loadOrder.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
+            if (method == null) return null;
+            return method.Invoke(loadOrder, null) as ILinkCache;
+        }
+        catch
+        {
             return null;
         }
     }

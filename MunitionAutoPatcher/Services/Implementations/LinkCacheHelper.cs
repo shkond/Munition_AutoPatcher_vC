@@ -6,6 +6,8 @@ using System.Windows;
 using System.IO;
 using System.Text.Json;
 using System.Collections.Generic;
+using Mutagen.Bethesda.Plugins; // For FormKey
+using Mutagen.Bethesda.Plugins.Records; // For IMajorRecordGetter
 
 // Combined resolver: tries instance TryResolve on the link-like object, then FormKey->Resolve/TryResolve,
 // then falls back to LinkCache.TryResolve variants (including generic TryResolve<T>) with caching.
@@ -58,7 +60,14 @@ namespace MunitionAutoPatcher.Services.Implementations
                 var byLink = TryLinkLikeResolve(linkLike, linkCache);
                 if (byLink != null) return byLink;
 
-                // 4) 最終フォールバック: 単一引数の公開メソッド
+                // 4) 3-parameter typed TryResolve(FormKey, Type, out IMajorRecordGetter)
+                if (formKeyObj != null)
+                {
+                    var typed = TryThreeParamFormKeyResolve(formKeyObj, linkCache);
+                    if (typed != null) return typed;
+                }
+
+                // 5) 最終フォールバック: 単一引数の公開メソッド
                 var last = TrySingleArgFallback(linkLike, formKeyObj, linkCache);
                 if (last != null) return last;
 
@@ -249,6 +258,65 @@ namespace MunitionAutoPatcher.Services.Implementations
             catch (Exception ex)
             {
                 LogErrorOnce("formkey_based_resolution_failed", $"LinkCacheHelper: FormKey-based resolution failed: {ex.Message}", ex);
+            }
+            return null;
+        }
+
+        // New typed path: scan for bool TryResolve(FormKey key, Type recordType, out IMajorRecordGetter result)
+        private static object? TryThreeParamFormKeyResolve(object formKeyObj, object linkCache)
+        {
+            try
+            {
+                var lcType = linkCache.GetType();
+                var methods = lcType.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(m => string.Equals(m.Name, "TryResolve", StringComparison.Ordinal) && m.GetParameters().Length == 3)
+                    .ToArray();
+                if (methods.Length == 0) return null;
+
+                // Ensure we have a Mutagen FormKey; attempt conversion if needed
+                object? mfkObj = formKeyObj;
+                if (mfkObj is not FormKey)
+                {
+                    // Try extracting a FormKey via reflection helper
+                    try
+                    {
+                        if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetFormKey(formKeyObj, out var extracted) && extracted is FormKey fkStruct)
+                            mfkObj = fkStruct;
+                    }
+                    catch { mfkObj = null; }
+                }
+                if (mfkObj is not FormKey) return null;
+                var mfk = (FormKey)mfkObj;
+
+                foreach (var m in methods)
+                {
+                    try
+                    {
+                        var ps = m.GetParameters();
+                        // Validate parameter types
+                        if (ps[0].ParameterType != typeof(FormKey)) continue;
+                        if (ps[1].ParameterType != typeof(Type)) continue;
+                        if (!ps[2].IsOut) continue;
+
+                        var args = new object?[] { mfk, typeof(IMajorRecordGetter), null };
+                        var okObj = m.Invoke(linkCache, args);
+                        if (okObj is bool ok && ok && args[2] != null)
+                            return args[2];
+                    }
+                    catch (TargetInvocationException tex)
+                    {
+                        var innerMsg = tex.InnerException?.Message ?? tex.Message;
+                        LogErrorOnce("tryresolve_3param_targetinv", $"LinkCacheHelper: 3-param TryResolve invocation failed: {innerMsg}", tex);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogErrorOnce("tryresolve_3param_failed", $"LinkCacheHelper: 3-param TryResolve failed: {ex.Message}", ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogErrorOnce("tryresolve_3param_scan_failed", $"LinkCacheHelper: 3-param TryResolve scan error: {ex.Message}", ex);
             }
             return null;
         }

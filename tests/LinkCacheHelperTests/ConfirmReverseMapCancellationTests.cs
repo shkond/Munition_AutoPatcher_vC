@@ -6,6 +6,7 @@ using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Services.Implementations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using Mutagen.Bethesda.Plugins.Cache;
 
 namespace LinkCacheHelperTests
 {
@@ -31,6 +32,7 @@ namespace LinkCacheHelperTests
         private class MockMutagenAccessor : IMutagenAccessor
         {
             public ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env) => null;
+            public ILinkCache? BuildConcreteLinkCache(IResourcedMutagenEnvironment env) => null;
             public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Array.Empty<object>();
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();

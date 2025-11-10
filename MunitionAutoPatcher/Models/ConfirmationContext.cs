@@ -1,5 +1,5 @@
-using MunitionAutoPatcher.Services.Implementations;
 using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Plugins.Cache;
 
 namespace MunitionAutoPatcher.Models;
 
@@ -40,9 +40,9 @@ public sealed class ConfirmationContext
     public ILinkResolver? Resolver { get; set; }
 
     /// <summary>
-    /// LinkResolver for fallback resolution (same as Resolver - kept for compatibility).
+    /// The LinkCache for the confirmation phase.
     /// </summary>
-    public ILinkResolver? LinkCache { get; set; }
+    public ILinkCache? LinkCache { get; set; }
 
     /// <summary>
     /// Cancellation token for the confirmation operation.

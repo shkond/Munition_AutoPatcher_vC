@@ -8,6 +8,7 @@ using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Implementations;
 using MunitionAutoPatcher.Services.Interfaces;
 using Microsoft.Extensions.Logging;
+using Mutagen.Bethesda.Plugins.Cache;
 using Xunit;
 
 namespace WeaponDataExtractorTestsProject
@@ -63,6 +64,7 @@ namespace WeaponDataExtractorTestsProject
         private class FakeMutagenAccessor : IMutagenAccessor
         {
             public ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env) => null;
+            public ILinkCache? BuildConcreteLinkCache(IResourcedMutagenEnvironment env) => null;
             public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Enumerable.Empty<object>();
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Enumerable.Empty<object>();
             public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Enumerable.Empty<object>();

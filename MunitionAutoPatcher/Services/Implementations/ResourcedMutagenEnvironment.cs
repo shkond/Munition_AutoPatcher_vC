@@ -28,6 +28,8 @@ public sealed class ResourcedMutagenEnvironment : IResourcedMutagenEnvironment
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    internal IMutagenEnvironment InnerEnvironment => _env;
+
     public IEnumerable<object> GetWinningWeaponOverrides() => _env.GetWinningWeaponOverrides();
 
     public IEnumerable<object> GetWinningConstructibleObjectOverrides() => _env.GetWinningConstructibleObjectOverrides();
