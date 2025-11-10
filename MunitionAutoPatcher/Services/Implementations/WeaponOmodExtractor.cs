@@ -194,7 +194,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             ConfirmationContext confirmationContext;
             try
             {
-                confirmationContext = BuildConfirmationContext(
+                confirmationContext = await BuildConfirmationContextAsync(
                     reverseMap,
                     context.ExcludedPlugins,
                     context.AllWeapons,
@@ -665,7 +665,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         return ammoMap;
     }
 
-    private ConfirmationContext BuildConfirmationContext(
+    private async Task<ConfirmationContext> BuildConfirmationContextAsync(
     Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap,
     HashSet<string> excludedPlugins,
     List<object> allWeapons,
@@ -678,16 +678,64 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         ILinkResolver? resolver = null;
         try
         {
+            // If we already have a concrete Mutagen ILinkCache, prefer a LinkResolver backed by it
             if (formLinkCache != null)
             {
-                // Prefer a resolver backed by the concrete Mutagen ILinkCache
                 resolver = new Services.Implementations.LinkResolver(formLinkCache);
                 _logger.LogInformation("BuildConfirmationContext: using concrete FormLinkCache-backed resolver (type={Type})", formLinkCache.GetType().FullName);
             }
             else
             {
-                resolver = (ILinkResolver?)linkCache;
-                _logger.LogInformation("BuildConfirmationContext: using provided resolver (type={Type})", linkCache?.GetType().FullName ?? "<null>");
+                // Try to build a concrete ILinkCache from the current load order if available
+                try
+                {
+                    var loadOrder = await _loadOrderService.GetLoadOrderAsync();
+                    if (loadOrder != null)
+                    {
+                        object? built = null;
+                        try
+                        {
+                            var toImmutable = loadOrder.GetType().GetMethod("ToImmutableLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
+                            var toLinkCache = loadOrder.GetType().GetMethod("ToLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
+                            if (toImmutable != null)
+                            {
+                                built = toImmutable.Invoke(loadOrder, null);
+                            }
+                            else if (toLinkCache != null)
+                            {
+                                built = toLinkCache.Invoke(loadOrder, null);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex, "BuildConfirmationContextAsync: failed to invoke ToImmutableLinkCache/ToLinkCache");
+                        }
+
+                        if (built is Mutagen.Bethesda.Plugins.Cache.ILinkCache builtCache)
+                        {
+                            resolver = new Services.Implementations.LinkResolver(builtCache);
+                            _logger.LogInformation("BuildConfirmationContext: built LinkCache for confirmation (mods={Count})", (loadOrder as System.Collections.ICollection)?.Count ?? 0);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("BuildConfirmationContext: unable to build concrete LinkCache from LoadOrder");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogDebug("BuildConfirmationContext: loadOrder service returned null");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "BuildConfirmationContext: failed to build LinkCache");
+                }
+                // If still null, fall back to provided resolver wrapper
+                if (resolver == null)
+                {
+                    resolver = (ILinkResolver?)linkCache;
+                    _logger.LogInformation("BuildConfirmationContext: using provided resolver (type={Type})", linkCache?.GetType().FullName ?? "<null>");
+                }
             }
         }
         catch (Exception ex)
