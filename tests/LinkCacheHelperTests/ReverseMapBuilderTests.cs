@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MunitionAutoPatcher.Services.Helpers;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace LinkCacheHelperTests
@@ -36,7 +37,7 @@ namespace LinkCacheHelperTests
             var root = new FakePriorityRoot(new[] { rec });
             var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var map = ReverseMapBuilder.Build(root, excluded);
+            var map = ReverseMapBuilder.Build(root, excluded, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             var key = $"TestPlugin:{rec.SomeProp.FormKey.ID:X8}";
             Assert.True(map.ContainsKey(key));
@@ -54,7 +55,7 @@ namespace LinkCacheHelperTests
             var root = new FakePriorityRoot(new[] { rec });
             var excluded = new HashSet<string>(new[] { "ExcludedPlugin" }, StringComparer.OrdinalIgnoreCase);
 
-            var map = ReverseMapBuilder.Build(root, excluded);
+            var map = ReverseMapBuilder.Build(root, excluded, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             var key = $"ExcludedPlugin:{rec.SomeProp.FormKey.ID:X8}";
             Assert.False(map.ContainsKey(key));

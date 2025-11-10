@@ -4,12 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using MunitionAutoPatcher.Models;
+using Microsoft.Extensions.Logging;
 
 namespace MunitionAutoPatcher.Services.Helpers
 {
     internal static class DiagnosticWriter
     {
-        public static string WriteReverseMapMarker(Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap, string repoRoot)
+        public static string WriteReverseMapMarker(Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap, string repoRoot, ILogger logger)
         {
             var artifactsDirRm = Path.Combine(repoRoot ?? AppContext.BaseDirectory, "artifacts", "RobCo_Patcher");
             if (!Directory.Exists(artifactsDirRm)) Directory.CreateDirectory(artifactsDirRm);
@@ -22,7 +23,7 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
             catch (Exception ex)
             {
-                AppLogger.Log("DiagnosticWriter: WriteReverseMapMarker failed", ex);
+                logger.LogError(ex, "DiagnosticWriter: WriteReverseMapMarker failed");
             }
             return rmMarker;
         }
@@ -38,7 +39,8 @@ namespace MunitionAutoPatcher.Services.Helpers
             IEnumerable<object> weaponsList,
             IEnumerable<OmodCandidate> results,
             string[] diagPlugins,
-            string repoRoot)
+            string repoRoot,
+            ILogger logger)
         {
             var artifactsDirDiag = Path.Combine(repoRoot ?? AppContext.BaseDirectory, "artifacts", "RobCo_Patcher");
             if (!Directory.Exists(artifactsDirDiag)) Directory.CreateDirectory(artifactsDirDiag);
@@ -92,7 +94,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                                 }
                                 catch (Exception innerEx)
                                 {
-                                    AppLogger.Log("DiagnosticWriter: failed to inspect reverseMap source record", innerEx);
+                                    logger.LogError(innerEx, "DiagnosticWriter: failed to inspect reverseMap source record");
                                 }
                             }
                         }
@@ -103,7 +105,7 @@ namespace MunitionAutoPatcher.Services.Helpers
                     }
                     catch (Exception innerEx)
                     {
-                        AppLogger.Log("DiagnosticWriter: failed to process weapon object for diagnostic", innerEx);
+                        logger.LogError(innerEx, "DiagnosticWriter: failed to process weapon object for diagnostic");
                     }
                 }
 
@@ -111,7 +113,7 @@ namespace MunitionAutoPatcher.Services.Helpers
             }
             catch (Exception ex)
             {
-                AppLogger.Log("DiagnosticWriter: WriteNoveskeDiagnostic failed", ex);
+                logger.LogError(ex, "DiagnosticWriter: WriteNoveskeDiagnostic failed");
             }
 
             return diagFile;

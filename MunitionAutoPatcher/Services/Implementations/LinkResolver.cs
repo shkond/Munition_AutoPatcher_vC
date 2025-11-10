@@ -46,15 +46,55 @@ namespace MunitionAutoPatcher.Services.Implementations
 
         public object? ResolveByKey(FormKey key)
         {
-            var k = $"KEY:{key.PluginName}:{key.FormId:X8}";
-            if (_cache.TryGetValue(k, out var cached))
+            var cacheKey = $"KEY:{key.PluginName}:{key.FormId:X8}";
+            if (_cache.TryGetValue(cacheKey, out var cached))
                 return cached;
 
-            // Attempt Resolve(formKey) via helper by building a value-like formKey object if available
-            // In many Mutagen setups, TryResolveViaLinkCache can accept formKey-like objects directly
-            var r = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(key, _linkCache);
-            _cache[k] = r;
-            return r;
+            object? result = null;
+            try
+            {
+                var mfk = TryToMutagenFormKey(key);
+                if (mfk != null)
+                {
+                    result = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(mfk.Value, _linkCache);
+                }
+                else
+                {
+                    // Last resort: try resolving the original internal form key via helper (some adapters accept it)
+                    result = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(key, _linkCache);
+                }
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    result = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(key, _linkCache);
+                }
+                catch { _ = ex; result = null; }
+            }
+
+            _cache[cacheKey] = result;
+            return result;
+        }
+
+        private Mutagen.Bethesda.Plugins.FormKey? TryToMutagenFormKey(FormKey fk)
+        {
+            try
+            {
+                if (fk == null || string.IsNullOrWhiteSpace(fk.PluginName) || fk.FormId == 0) return null;
+                var fileName = System.IO.Path.GetFileName(fk.PluginName) ?? fk.PluginName;
+                var modType = Mutagen.Bethesda.Plugins.ModType.Plugin;
+                if (fileName.EndsWith(".esm", StringComparison.OrdinalIgnoreCase)) modType = Mutagen.Bethesda.Plugins.ModType.Master;
+                else if (fileName.EndsWith(".esl", StringComparison.OrdinalIgnoreCase)) modType = Mutagen.Bethesda.Plugins.ModType.Light;
+
+                var modKey = new Mutagen.Bethesda.Plugins.ModKey(fileName, modType);
+                return new Mutagen.Bethesda.Plugins.FormKey(modKey, fk.FormId);
+            }
+            catch (Exception ex)
+            {
+                // Do not throw; resolution will fallback
+                return null;
+            }
         }
 
         private static string BuildKey(object linkLike)

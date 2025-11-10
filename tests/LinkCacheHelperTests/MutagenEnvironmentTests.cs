@@ -32,7 +32,14 @@ namespace LinkCacheHelperTests
             {
                 yield return ("PriorityWeapons", new object[] { "W" });
             }
-            public object? GetLinkCache() => "LinkCacheObject";
+            private sealed class FakeResolver : MunitionAutoPatcher.Services.Interfaces.ILinkResolver
+            {
+                public bool TryResolve(object linkLike, out object? result) { result = null; return false; }
+                public bool TryResolve<TGetter>(object linkLike, out TGetter? result) where TGetter : class? { result = null; return false; }
+                public object? ResolveByKey(MunitionAutoPatcher.Models.FormKey key) => null;
+            }
+            private readonly FakeResolver _resolver = new FakeResolver();
+            public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => _resolver;
             public DirectoryPath? GetDataFolderPath() => null;
         }
 
@@ -48,7 +55,7 @@ namespace LinkCacheHelperTests
             var fakeEnv = new FakeEnv();
             var resource = new FakeResource();
 
-            var r = new ResourcedMutagenEnvironment(fakeEnv, resource);
+            var r = new ResourcedMutagenEnvironment(fakeEnv, resource, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             var weapons = r.GetWinningWeaponOverrides().ToList();
             Assert.Single(weapons);
@@ -62,7 +69,9 @@ namespace LinkCacheHelperTests
             Assert.Single(collections);
             Assert.Equal("PriorityWeapons", collections[0].Name);
 
-            Assert.Equal("LinkCacheObject", r.GetLinkCache());
+            var lc = r.GetLinkCache();
+            Assert.NotNull(lc);
+            Assert.Same(((FakeEnv)fakeEnv).GetLinkCache(), lc);
             Assert.Null(r.GetDataFolderPath());
 
             // Dispose explicitly and assert resource disposed
@@ -75,7 +84,7 @@ namespace LinkCacheHelperTests
         {
             var fakeEnv = new FakeEnv();
             var resource = new FakeResource();
-            var r = new ResourcedMutagenEnvironment(fakeEnv, resource);
+            var r = new ResourcedMutagenEnvironment(fakeEnv, resource, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
             r.Dispose();
             Assert.True(resource.Disposed);

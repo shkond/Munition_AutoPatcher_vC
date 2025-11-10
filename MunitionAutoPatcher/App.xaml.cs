@@ -5,6 +5,7 @@ using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using MunitionAutoPatcher.Services.Implementations;
 using MunitionAutoPatcher.Services.Interfaces;
@@ -29,49 +30,62 @@ public partial class App : Application
     public App()
     {
         _host = Host.CreateDefaultBuilder()
-            .ConfigureServices((context, services) =>
+        .ConfigureLogging(logging =>
+        {
+            try
             {
-                // Register services
-                services.AddSingleton<IConfigService, ConfigService>();
-                services.AddSingleton<ILoadOrderService, LoadOrderService>();
-                services.AddSingleton<IWeaponsService, WeaponsService>();
-                // Register a factory that will create IMutagenEnvironment instances on demand.
-                services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
+                logging.AddProvider(new MunitionAutoPatcher.Logging.AppLoggerProvider());
+                // Increase verbosity for targeted categories to surface debugging information during ESP generation
+                logging.AddFilter("MunitionAutoPatcher.Services.Implementations.MutagenV51EnvironmentAdapter", LogLevel.Debug);
+                logging.AddFilter("MunitionAutoPatcher.Services.Implementations.ReverseReferenceCandidateProvider", LogLevel.Debug);
+            }
+            catch { }
+        })
+        .ConfigureServices((context, services) =>
+        {
+            // Register services
+            services.AddSingleton<IConfigService, ConfigService>();
+            services.AddSingleton<ILoadOrderService, LoadOrderService>();
+            services.AddSingleton<IWeaponsService, WeaponsService>();
+            // Register a factory that will create IMutagenEnvironment instances on demand.
+            services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
 
-                // Register extraction infrastructure
-                services.AddSingleton<IPathService, PathService>();
-                services.AddSingleton<IMutagenAccessor, MutagenAccessor>();
-                services.AddSingleton<IDiagnosticWriter, DiagnosticWriter>();
-                
-                // Register candidate providers
-                services.AddSingleton<ICandidateProvider, CobjCandidateProvider>();
-                services.AddSingleton<ICandidateProvider, ReverseReferenceCandidateProvider>();
-                
-                // Register candidate confirmer
-                services.AddSingleton<ICandidateConfirmer, ReverseMapConfirmer>();
+            // Register extraction infrastructure
+            services.AddSingleton<IPathService, PathService>();
+            services.AddSingleton<IMutagenAccessor, MutagenAccessor>();
+            services.AddSingleton<IDiagnosticWriter, DiagnosticWriter>();
 
-                services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
-                // Register weapon data extractor (transient: new instance per operation)
-                services.AddTransient<IWeaponDataExtractor, WeaponDataExtractor>();
-                services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
-                services.AddSingleton<IOrchestrator, OrchestratorService>();
+            // Register candidate providers
+            services.AddSingleton<ICandidateProvider, CobjCandidateProvider>();
+            services.AddSingleton<ICandidateProvider, ReverseReferenceCandidateProvider>();
 
-                // Register ViewModels
-                services.AddSingleton<MainViewModel>();
-                services.AddSingleton<SettingsViewModel>();
-                services.AddSingleton<MapperViewModel>();
+            // Register candidate confirmers (order: reverse-map then attach-point)
+            services.AddSingleton<ICandidateConfirmer, ReverseMapConfirmer>();
+            services.AddSingleton<ICandidateConfirmer, AttachPointConfirmer>();
 
-                // Register Views
-                services.AddSingleton<MainWindow>();
-            })
-            .Build();
+            services.AddSingleton<IWeaponOmodExtractor, WeaponOmodExtractor>();
+            // Register weapon data extractor (transient: new instance per operation)
+            services.AddTransient<IWeaponDataExtractor, WeaponDataExtractor>();
+            services.AddSingleton<IRobCoIniGenerator, RobCoIniGenerator>();
+            services.AddSingleton<IEspPatchService, EspPatchService>();
+            services.AddSingleton<IOrchestrator, OrchestratorService>();
 
-                // Global exception handlers to capture unexpected crashes and persist diagnostics
-                this.DispatcherUnhandledException += OnDispatcherUnhandledException;
-                AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-                TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
-                AppDomain.CurrentDomain.FirstChanceException += OnFirstChanceException;
-                AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+            // Register ViewModels
+            services.AddSingleton<MainViewModel>();
+            services.AddSingleton<SettingsViewModel>();
+            services.AddSingleton<MapperViewModel>();
+
+            // Register Views
+            services.AddSingleton<MainWindow>();
+        })
+        .Build();
+
+        // Global exception handlers to capture unexpected crashes and persist diagnostics
+        this.DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+        AppDomain.CurrentDomain.FirstChanceException += OnFirstChanceException;
+        AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
     }
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -141,17 +155,17 @@ public partial class App : Application
         }
         catch { }
         // Log the Mutagen assembly information for diagnostics (useful when running under MO2)
-            try
-            {
-                var geType = typeof(Mutagen.Bethesda.Environments.GameEnvironment);
-                var asm = geType.Assembly.GetName();
-                var msg = $"Mutagen assembly loaded: {asm.Name} v{asm.Version}";
-                AppLogger.Log(msg);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Log("Failed to detect Mutagen assembly at startup", ex);
-            }
+        try
+        {
+            var geType = typeof(Mutagen.Bethesda.Environments.GameEnvironment);
+            var asm = geType.Assembly.GetName();
+            var msg = $"Mutagen assembly loaded: {asm.Name} v{asm.Version}";
+            AppLogger.Log(msg);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log("Failed to detect Mutagen assembly at startup", ex);
+        }
 
         mainWindow.DataContext = mainViewModel;
         mainWindow.Show();
@@ -162,7 +176,7 @@ public partial class App : Application
     protected override async void OnExit(ExitEventArgs e)
     {
 #if DEBUG
-    try { DebugConsole.Hide(); } catch (Exception ex) { try { AppLogger.Log($"App exit debug console hide failed: {ex.Message}", ex); } catch (Exception inner) { AppLogger.Log("App.xaml.OnExit: failed to add log to UI on debug console hide", inner); } }
+        try { DebugConsole.Hide(); } catch (Exception ex) { try { AppLogger.Log($"App exit debug console hide failed: {ex.Message}", ex); } catch (Exception inner) { AppLogger.Log("App.xaml.OnExit: failed to add log to UI on debug console hide", inner); } }
 #endif
         _cleanExit = true;
         // Remove session marker on clean exit

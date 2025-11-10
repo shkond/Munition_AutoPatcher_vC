@@ -4,8 +4,11 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\MunitionAutoPatcher.xml</DocumentationFile>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 

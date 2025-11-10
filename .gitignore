@@ -1,54 +1,69 @@
-// ...existing code...
-{
-# Build outputs
-**/bin/
-**/obj/
+## .gitignore for Munition_AutoPatcher_vC
+## Generated/assembled to cover Visual Studio, .NET, build outputs, IDE files, and repo-specific generated artifacts
 
-# Visual Studio
+## Build / output
+**/[Bb]in/
+**/[Oo]bj/
+/bin/
+/obj/
+
+## Visual Studio
 .vs/
 *.suo
 *.user
 *.userosscache
+*.sln.docstates
 
-#serena
-.serena/
-.serena/*
+## Visual Studio Code
+.vscode/
 
-#document
-RobcoPatcher_document.txt
+## JetBrains Rider / IntelliJ
+.idea/
+*.sln.iml
 
-# Generated artifacts / test outputs
-artifacts/
-artifacts/*.ini
-TestResults/
-coverage/
-config/config.json
-
-# NuGet / packages
+## NuGet
 *.nupkg
 packages/
+project.lock.json
+*.nuget.props
 
-# OS files
+## Dotnet publish
+/publish/
+
+## Test and coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+## Generated artifacts (project-specific)
+/artifacts/
+/artifacts/**/*.ini
+
+## Mutagen local clone / generated docs
+/mutagen-tmp/
+/mutagen-tmp/**
+
+# Local vendor folder (third-party sources / generated docs)
+/vendor/
+/vendor/**
+
+## Local config / secrets
+/config/config.json
+config/*.local.json
+
+## Temporary, logs, misc
+*.log
+*.tmp
 .DS_Store
 Thumbs.db
 
-# Logs / temp
-*.log
-*.tmp
+## Temp folders used in repo
+/t/
 
-# Misc / Temp
-t
-}
+## Other
+*.user
+*.rsuser
+*.dotCover
 
- Munition_AutoPatcher_vC.code-workspace
-# Ignore temporary local mutagen clone and generated docs/tools
-/mutagen-tmp/
-
-# If DocFX or other tools are extracted under the temp clone, ignore them too
-/mutagen-tmp/tools/
-/mutagen-tmp/docs/api_site/
-/mutagen-tmp/docs/api_xml/
-
-# IDE/workspace
-.vscode/
-.idea/
+# End of .gitignore

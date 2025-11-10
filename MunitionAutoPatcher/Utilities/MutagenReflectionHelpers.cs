@@ -217,6 +217,19 @@ namespace MunitionAutoPatcher.Utilities
                     return false;
                 }
 
+                // Fast path for typed records
+                try
+                {
+                    if (record is Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter mrFast)
+                    {
+                        var fkFast = mrFast.FormKey;
+                        plugin = fkFast.ModKey.FileName.ToString();
+                        id = (uint)fkFast.ID;
+                        return !string.IsNullOrEmpty(plugin) && id != 0u;
+                    }
+                }
+                catch { /* fall back to reflection-based path */ }
+
                 if (!TryGetFormKey(record, out var fk))
                 {
                     LogOnce($"mrh_no_formkey_{record.GetType().Name}", $"MutagenReflectionHelpers.TryGetPluginAndIdFromRecord: failed to get FormKey from record type {record.GetType().Name}");
@@ -238,6 +251,30 @@ namespace MunitionAutoPatcher.Utilities
                         return true;
                     }
                     return false;
+                }
+
+                if (mk == null)
+                {
+                    // ModKey itself is null, can't proceed.
+                    return false;
+                }
+
+                // Check if the ModKey is logically null using the IsNull property
+                try
+                {
+                    var isNullProp = mk.GetType().GetProperty("IsNull");
+                    if (isNullProp != null && isNullProp.PropertyType == typeof(bool))
+                    {
+                        if ((bool)isNullProp.GetValue(mk))
+                        {
+                            // ModKey is logically null, so we can't get a plugin name. This is an expected case for null FormKeys.
+                            return false;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogOnce("mrh_isnull_check_exception", "Exception during ModKey.IsNull check", ex);
                 }
 
                 if (!TryGetFileNameFromModKey(mk, out plugin))

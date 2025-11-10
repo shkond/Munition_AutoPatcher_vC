@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MunitionAutoPatcher.Services.Implementations;
+using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Models;
 using Xunit;
@@ -35,7 +36,7 @@ namespace LinkCacheHelperTests
                 yield break;
             }
 
-            public object? GetLinkCache() => null;
+            public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
 
             public Noggog.DirectoryPath? GetDataFolderPath() => null;
 
@@ -56,7 +57,7 @@ namespace LinkCacheHelperTests
             var cobj = new FakeConstructibleObject { CreatedObject = createdFormKey, EditorID = "COBJ_Editor" };
 
             using var env = new NoOpResourcedMutagenEnvironment(new object[] { weapon }, new object[] { cobj });
-            var extractor = new WeaponDataExtractor();
+            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var results = await extractor.ExtractAsync(env, new HashSet<string>());
@@ -81,7 +82,7 @@ namespace LinkCacheHelperTests
             var cobj = new FakeConstructibleObject { CreatedObject = weaponForm, EditorID = "COBJ_Editor" };
 
             using var env = new NoOpResourcedMutagenEnvironment(new object[] { weapon }, new object[] { cobj });
-            var extractor = new WeaponDataExtractor();
+            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var results = await extractor.ExtractAsync(env, new HashSet<string> { "Excluded.esp" });

@@ -154,6 +154,10 @@ MunitionAutoPatcher/
 - Add inline comments only when code intent isn't clear
 - Keep comments up-to-date with code changes
 
+### Logging
+
+When adding or modifying logging, please adhere to the logging strategy defined in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
 ## Testing Guidelines
 
 ### Test Structure

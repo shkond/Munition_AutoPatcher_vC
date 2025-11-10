@@ -82,6 +82,16 @@
                         IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
                         Padding="10,5" 
                         Margin="0,5"/>
+                <Button Content="ESP パッチ生成" 
+                        Command="{Binding GenerateEspPatchCommand}"
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"
+                        Padding="10,5"
+                        Margin="0,5"/>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,6" VerticalAlignment="Center">
+                    <TextBlock Text="出力モード:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <RadioButton Content="ESP" IsChecked="{Binding IsOutputEsp}" GroupName="OutputMode" Margin="0,0,8,0"/>
+                    <RadioButton Content="INI" IsChecked="{Binding IsOutputIni}" GroupName="OutputMode"/>
+                </StackPanel>
                     <Button Content="OMOD 抽出" 
                             Command="{Binding ExtractOmodsCommand}"
                             IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBoolConverter}}"

@@ -15,7 +15,7 @@ namespace LinkCacheHelperTests
         [Fact]
         public void ConfigService_ExcludedPlugins_PersistAndRestore()
         {
-            var cfg = new ConfigService();
+            var cfg = new MunitionAutoPatcher.Services.Implementations.ConfigService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MunitionAutoPatcher.Services.Implementations.ConfigService>.Instance);
             var orig = cfg.GetExcludedPlugins().ToList();
             var testList = new List<string> { "UT_Test_Plugin.esp" };
             try
@@ -34,10 +34,11 @@ namespace LinkCacheHelperTests
         private class DummyOrchestrator : IOrchestrator
         {
             public bool IsInitialized => true;
-            public Task<bool> ExtractWeaponsAsync(IProgress<string>? progress = null) => Task.FromResult(true);
-            public Task<bool> GenerateIniAsync(string outputPath, List<WeaponMapping> mappings, IProgress<string>? progress = null) => Task.FromResult(true);
-            public Task<bool> GenerateMappingsAsync(IProgress<string>? progress = null) => Task.FromResult(true);
             public Task<bool> InitializeAsync() => Task.FromResult(true);
+            public Task<List<WeaponData>> ExtractWeaponsAsync(IProgress<string>? progress = null) => Task.FromResult(new List<WeaponData>());
+            public Task<bool> GenerateMappingsAsync(List<WeaponData> weapons, IProgress<string>? progress = null) => Task.FromResult(true);
+            public Task<bool> GenerateIniAsync(string outputPath, List<WeaponMapping> mappings, IProgress<string>? progress = null) => Task.FromResult(true);
+            public Task<bool> GeneratePatchAsync(string outputPath, List<WeaponData> weapons, IProgress<string>? progress = null) => Task.FromResult(true);
         }
 
         private class DummyWeaponsService : IWeaponsService
@@ -59,7 +60,7 @@ namespace LinkCacheHelperTests
         {
             var orchestrator = new DummyOrchestrator();
             var weapons = new DummyWeaponsService();
-            var config = new ConfigService();
+            var config = new MunitionAutoPatcher.Services.Implementations.ConfigService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MunitionAutoPatcher.Services.Implementations.ConfigService>.Instance);
             var omodExtractor = new DummyOmodExtractor();
 
             var vm = new MapperViewModel(orchestrator, weapons, config, omodExtractor);

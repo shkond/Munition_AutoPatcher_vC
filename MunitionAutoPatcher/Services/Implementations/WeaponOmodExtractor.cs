@@ -14,10 +14,12 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
     private readonly IDiagnosticWriter _diagnosticWriter;
     private readonly IEnumerable<ICandidateProvider> _providers;
-    private readonly ICandidateConfirmer _confirmer;
+    private readonly IEnumerable<ICandidateConfirmer> _confirmers;
     private readonly IMutagenAccessor _mutagenAccessor;
     private readonly IPathService _pathService;
     private readonly ILogger<WeaponOmodExtractor> _logger;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly IEspPatchService? _espPatchService;
 
     public WeaponOmodExtractor(
         ILoadOrderService loadOrderService,
@@ -25,20 +27,24 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         IMutagenEnvironmentFactory mutagenEnvironmentFactory,
         IDiagnosticWriter diagnosticWriter,
         IEnumerable<ICandidateProvider> providers,
-        ICandidateConfirmer confirmer,
+        IEnumerable<ICandidateConfirmer> confirmers,
         IMutagenAccessor mutagenAccessor,
         IPathService pathService,
-        ILogger<WeaponOmodExtractor> logger)
+        ILogger<WeaponOmodExtractor> logger,
+        ILoggerFactory loggerFactory,
+        IEspPatchService? espPatchService = null)
     {
         _loadOrderService = loadOrderService ?? throw new ArgumentNullException(nameof(loadOrderService));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
         _diagnosticWriter = diagnosticWriter ?? throw new ArgumentNullException(nameof(diagnosticWriter));
         _providers = providers ?? throw new ArgumentNullException(nameof(providers));
-        _confirmer = confirmer ?? throw new ArgumentNullException(nameof(confirmer));
+        _confirmers = confirmers ?? throw new ArgumentNullException(nameof(confirmers));
         _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _espPatchService = espPatchService; // optional for backward compatibility
     }
 
     /// <summary>
@@ -124,12 +130,22 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 progress?.Report($"エラー: 候補の集約中に例外が発生しました: {ex.Message}");
             }
 
+            // Diagnostic: sample 5 OMODs and log attach-point EDID + matched weapon counts
+            try
+            {
+                RunOmodAttachPointDiagnostics(context);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "OMOD attach-point diagnostics failed (non-fatal)");
+            }
+
             // Build reverse-reference map for confirmation
             Dictionary<string, List<(object Record, string PropName, object PropValue)>> reverseMap;
             try
             {
                 using var mapEnv = _mutagenEnvironmentFactory.Create();
-                var builder = new ReverseMapBuilder(mapEnv);
+                var builder = new ReverseMapBuilder(mapEnv, _loggerFactory.CreateLogger<ReverseMapBuilder>());
                 reverseMap = builder.Build(context.ExcludedPlugins);
                 _logger.LogInformation("Built reverse-reference map with {Count} keys", reverseMap.Count);
 
@@ -153,7 +169,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             try
             {
                 var mutAsm = typeof(Mutagen.Bethesda.Environments.GameEnvironment).Assembly.GetName();
-                detector = DetectorFactory.GetDetector(mutAsm);
+                detector = DetectorFactory.GetDetector(mutAsm, _loggerFactory);
                 _logger.LogInformation("Selected detector: {DetectorName}", detector?.Name ?? "None");
 
                 if (detector != null)
@@ -171,23 +187,36 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to select detector, using fallback");
-                detector = new ReflectionFallbackDetector();
+                detector = new ReflectionFallbackDetector(_loggerFactory.CreateLogger<ReflectionFallbackDetector>());
             }
 
             // Confirm candidates via reverse-reference analysis
+            ConfirmationContext confirmationContext;
             try
             {
-                var confirmationContext = BuildConfirmationContext(
+                confirmationContext = BuildConfirmationContext(
                     reverseMap,
                     context.ExcludedPlugins,
                     context.AllWeapons,
                     context.AmmoMap,
                     detector,
                     context.LinkCache,
+                    context.FormLinkCache,
                     cancellationToken);
 
-                _confirmer.Confirm(candidates, confirmationContext);
-                _logger.LogInformation("Candidate confirmation complete");
+                foreach (var confirmer in _confirmers)
+                {
+                    try
+                    {
+                        confirmer.Confirm(candidates, confirmationContext);
+                        _logger.LogInformation("Confirmer {Confirmer} complete", confirmer.GetType().Name);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Confirmer {Confirmer} failed (continuing)", confirmer.GetType().Name);
+                    }
+                }
+                _logger.LogInformation("All confirmation passes complete");
 
                 try
                 {
@@ -207,6 +236,17 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             {
                 _logger.LogError(ex, "Error during candidate confirmation");
                 progress?.Report($"警告: 候補の確認中にエラーが発生しました: {ex.Message}");
+                // Create empty confirmation context for fallback
+                confirmationContext = new ConfirmationContext
+                {
+                    ReverseMap = reverseMap,
+                    ExcludedPlugins = context.ExcludedPlugins,
+                    AllWeapons = context.AllWeapons,
+                    AmmoMap = context.AmmoMap,
+                    Detector = detector,
+                    LinkCache = context.LinkCache,
+                    CancellationToken = cancellationToken
+                };
             }
 
             // Post-process: fill ConfirmReason for unconfirmed candidates
@@ -217,6 +257,47 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Error during post-processing (non-fatal)");
+            }
+
+            // Generate output based on config.output.mode
+            try
+            {
+                var outputMode = _configService.GetOutputMode();
+                _logger.LogInformation("Output mode: {OutputMode}", outputMode);
+
+                if (string.Equals(outputMode, "esp", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Generate ESP patch
+                    if (_espPatchService != null)
+                    {
+                        _logger.LogInformation("Generating ESP patch from confirmed candidates");
+                        progress?.Report("ESP パッチを生成しています...");
+                        try
+                        {
+                            var hasFormLinkCache = context.FormLinkCache != null;
+                            var hasResolver = context.LinkCache != null;
+                            _logger.LogInformation("ESP debug: FormLinkCachePresent={HasFormLinkCache}, ResolverPresent={HasResolver}, ResolverType={ResolverType}",
+                                hasFormLinkCache,
+                                hasResolver,
+                                context.LinkCache?.GetType().FullName ?? "<null>");
+                        }
+                        catch { /* best effort */ }
+
+                        await _espPatchService.BuildAsync(context, confirmationContext, candidates, cancellationToken);
+
+                        progress?.Report("ESP パッチの生成が完了しました");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("ESP patch service not available, skipping ESP generation");
+                    }
+                }
+                // else: ini mode - no action here, INI generation handled separately
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate output patch");
+                progress?.Report($"エラー: 出力の生成に失敗しました: {ex.Message}");
             }
 
             // Write diagnostic reports
@@ -263,6 +344,134 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
     #region Helper Methods
 
+    private void RunOmodAttachPointDiagnostics(ExtractionContext context)
+    {
+        if (context.Environment == null)
+        {
+            _logger.LogInformation("OMOD diag: Environment unavailable");
+            return;
+        }
+
+        var resolver = context.LinkCache;
+        if (resolver == null)
+        {
+            _logger.LogInformation("OMOD diag: LinkCache/Resolver unavailable");
+            return;
+        }
+
+        // Gather weapons and their attach parent slot keyword FormKeys
+        var weaponSlotKeys = new List<HashSet<(string Plugin, uint Id)>>();
+        foreach (var weapon in context.AllWeapons)
+        {
+            try
+            {
+                var set = new HashSet<(string Plugin, uint Id)>();
+                var apsProp = weapon.GetType().GetProperty("AttachParentSlots");
+                var apsVal = apsProp?.GetValue(weapon) as System.Collections.IEnumerable;
+                if (apsVal != null)
+                {
+                    foreach (var link in apsVal)
+                    {
+                        if (link == null) continue;
+                        var fkProp = link.GetType().GetProperty("FormKey");
+                        var fk = fkProp?.GetValue(link);
+                        if (fk != null && TryExtractFormKeyInfo(fk, out var p, out var id))
+                        {
+                            set.Add((p.ToLowerInvariant(), id));
+                        }
+                    }
+                }
+                weaponSlotKeys.Add(set);
+            }
+            catch { weaponSlotKeys.Add(new HashSet<(string, uint)>()); }
+        }
+
+        // Take first 5 OMODs and log their attach point and match counts
+        var omods = context.Environment.GetWinningObjectModificationsTyped().Take(5).ToList();
+        int idx = 0;
+        foreach (var omod in omods)
+        {
+            idx++;
+            try
+            {
+                // Find an attach point-like property on the OMOD
+                object? apLink = null;
+                var props = omod.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                foreach (var prop in props)
+                {
+                    if (prop.GetIndexParameters().Length > 0) continue;
+                    if (prop.Name.Equals("AttachPoint", StringComparison.OrdinalIgnoreCase) ||
+                        prop.Name.Equals("AttachParentSlot", StringComparison.OrdinalIgnoreCase) ||
+                        prop.Name.Contains("AttachPoint", StringComparison.OrdinalIgnoreCase))
+                    {
+                        apLink = prop.GetValue(omod);
+                        if (apLink != null) break;
+                    }
+                }
+
+                string apEdid = string.Empty;
+                (string Plugin, uint Id) apKey = (string.Empty, 0);
+                if (apLink != null)
+                {
+                    var fkProp = apLink.GetType().GetProperty("FormKey");
+                    var fk = fkProp?.GetValue(apLink);
+                    if (fk != null && TryExtractFormKeyInfo(fk, out var p, out var id))
+                    {
+                        apKey = (p.ToLowerInvariant(), id);
+                        // Try resolve to keyword (prefer FormKey; fall back to link)
+                        object? kw = null;
+                        try
+                        {
+                            if (!(resolver.TryResolve(fk, out kw) && kw != null))
+                            {
+                                resolver.TryResolve(apLink, out kw);
+                            }
+                        }
+                        catch { /* ignore resolution errors in diagnostics */ }
+                        if (kw != null)
+                        {
+                            apEdid = _mutagenAccessor.GetEditorId(kw);
+                        }
+                    }
+                }
+
+                int matched = 0;
+                if (!string.IsNullOrEmpty(apKey.Plugin) && apKey.Id != 0)
+                {
+                    foreach (var set in weaponSlotKeys)
+                    {
+                        if (set.Contains(apKey)) matched++;
+                    }
+                }
+
+                var omodEdid = _mutagenAccessor.GetEditorId(omod);
+                _logger.LogInformation("OMOD diag [{Idx}]: OMOD={OmodEdid}, AttachPointEDID={ApEdid}, MatchedWeapons={Matched}", idx, omodEdid, apEdid, matched);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "OMOD diag failed for sample {Idx}", idx);
+            }
+        }
+    }
+
+    private static bool TryExtractFormKeyInfo(object formKey, out string plugin, out uint id)
+    {
+        plugin = string.Empty;
+        id = 0;
+        try
+        {
+            var modKey = formKey.GetType().GetProperty("ModKey")?.GetValue(formKey);
+            if (modKey == null) return false;
+            var idObj = formKey.GetType().GetProperty("ID")?.GetValue(formKey);
+            if (idObj == null) return false;
+            var fileNameObj = modKey.GetType().GetProperty("FileName")?.GetValue(modKey);
+            plugin = (fileNameObj?.ToString() ?? modKey.ToString()) ?? string.Empty;
+            id = idObj is uint ui ? ui : Convert.ToUInt32(idObj);
+            return !string.IsNullOrEmpty(plugin) && !plugin.Equals("Null", StringComparison.OrdinalIgnoreCase) && id != 0;
+        }
+        catch { return false; }
+    }
+
     private Task<ExtractionContext> BuildExtractionContextAsync(
         IResourcedMutagenEnvironment environment,
         IProgress<string>? progress,
@@ -277,8 +486,76 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             RepoRoot = _pathService.GetRepoRoot()
         };
 
-        // Get LinkCache
+        // Get LinkCache (resolver wrapper) and underlying FormLinkCache if exposed
         context.LinkCache = _mutagenAccessor.GetLinkCache(environment);
+        try
+        {
+            // Attempt to retrieve underlying Mutagen ILinkCache if present for stronger generic resolution
+            var rawEnv = environment as ResourcedMutagenEnvironment;
+            if (rawEnv != null)
+            {
+                var innerField = rawEnv.GetType().GetField("_env", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var innerAdapter = innerField?.GetValue(rawEnv);
+                var linkCacheProp = innerAdapter?.GetType().GetProperty("LinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                var formLinkCacheObj = linkCacheProp?.GetValue(innerAdapter) as Mutagen.Bethesda.Plugins.Cache.ILinkCache;
+                if (formLinkCacheObj != null)
+                {
+                    context.FormLinkCache = formLinkCacheObj;
+                    _logger.LogDebug("BuildExtractionContext: FormLinkCache captured (type={Type})", formLinkCacheObj.GetType().FullName);
+                }
+                else
+                {
+                    _logger.LogDebug("BuildExtractionContext: FormLinkCache property absent or null");
+                }
+                // If FormLinkCache wasn't found via direct property, try building one from the underlying GameEnvironment.LoadOrder
+                if (context.FormLinkCache == null)
+                {
+                    try
+                    {
+                        var innerEnvField = innerAdapter?.GetType().GetField("_env", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        var gameEnv = innerEnvField?.GetValue(innerAdapter);
+                        if (gameEnv != null)
+                        {
+                            var loadOrderProp = gameEnv.GetType().GetProperty("LoadOrder", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                            var loadOrder = loadOrderProp?.GetValue(gameEnv);
+                            if (loadOrder != null)
+                            {
+                                // Try ToImmutableLinkCache or ToLinkCache via reflection
+                                var toImmutable = loadOrder.GetType().GetMethod("ToImmutableLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
+                                var toLinkCache = loadOrder.GetType().GetMethod("ToLinkCache", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance, Type.DefaultBinder, Type.EmptyTypes, null);
+                                object? lc = null;
+                                if (toImmutable != null)
+                                {
+                                    lc = toImmutable.Invoke(loadOrder, null);
+                                }
+                                else if (toLinkCache != null)
+                                {
+                                    lc = toLinkCache.Invoke(loadOrder, null);
+                                }
+
+                                if (lc is Mutagen.Bethesda.Plugins.Cache.ILinkCache builtCache)
+                                {
+                                    context.FormLinkCache = builtCache;
+                                    _logger.LogInformation("BuildExtractionContext: built FormLinkCache from LoadOrder (type={Type})", builtCache.GetType().FullName);
+                                }
+                                else
+                                {
+                                    _logger.LogDebug("BuildExtractionContext: LoadOrder did not expose ToImmutableLinkCache/ToLinkCache or result was null");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "BuildExtractionContext: failed fallback attempt to build FormLinkCache from LoadOrder");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "BuildExtractionContext: failed to capture FormLinkCache");
+        }
 
         // Build excluded plugins set
         try
@@ -348,7 +625,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
             {
                 if (_mutagenAccessor.TryGetPluginAndIdFromRecord(weapon, out var plugin, out var id))
                 {
-                    set.Add((plugin, id));
+                    set.Add((plugin.ToLowerInvariant(), id));
                 }
             }
             catch (Exception ex)
@@ -395,9 +672,29 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     Dictionary<string, object> ammoMap,
     IAmmunitionChangeDetector? detector,
     MunitionAutoPatcher.Services.Interfaces.ILinkResolver? linkCache,
+    Mutagen.Bethesda.Plugins.Cache.ILinkCache? formLinkCache,
     CancellationToken cancellationToken)
     {
-        var resolver = (ILinkResolver?)linkCache;
+        ILinkResolver? resolver = null;
+        try
+        {
+            if (formLinkCache != null)
+            {
+                // Prefer a resolver backed by the concrete Mutagen ILinkCache
+                resolver = new Services.Implementations.LinkResolver(formLinkCache);
+                _logger.LogInformation("BuildConfirmationContext: using concrete FormLinkCache-backed resolver (type={Type})", formLinkCache.GetType().FullName);
+            }
+            else
+            {
+                resolver = (ILinkResolver?)linkCache;
+                _logger.LogInformation("BuildConfirmationContext: using provided resolver (type={Type})", linkCache?.GetType().FullName ?? "<null>");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BuildConfirmationContext: failed to create concrete resolver, falling back to provided resolver");
+            resolver = (ILinkResolver?)linkCache;
+        }
 
         return new ConfirmationContext
         {

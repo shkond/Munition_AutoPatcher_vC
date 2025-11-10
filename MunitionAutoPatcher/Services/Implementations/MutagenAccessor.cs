@@ -1,5 +1,6 @@
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Utilities;
+using Microsoft.Extensions.Logging;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -8,6 +9,12 @@ namespace MunitionAutoPatcher.Services.Implementations;
 /// </summary>
 public class MutagenAccessor : IMutagenAccessor
 {
+    private readonly ILogger<MutagenAccessor> _logger;
+
+    public MutagenAccessor(ILogger<MutagenAccessor> logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
     /// <inheritdoc/>
     public ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env)
     {
@@ -17,7 +24,7 @@ public class MutagenAccessor : IMutagenAccessor
         }
         catch (Exception ex)
         {
-            AppLogger.Log("MutagenAccessor: failed to obtain LinkCache", ex);
+            _logger.LogError(ex, "MutagenAccessor: failed to obtain LinkCache");
             return null;
         }
     }
@@ -27,6 +34,18 @@ public class MutagenAccessor : IMutagenAccessor
     {
         try
         {
+            // Prefer typed collections first
+            try
+            {
+                var typed = env.EnumerateRecordCollectionsTyped();
+                var targetTyped = typed.FirstOrDefault(t => string.Equals(t.Name, collectionName, StringComparison.OrdinalIgnoreCase));
+                if (!targetTyped.Equals(default((string, IEnumerable<Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter>))) && targetTyped.Items != null)
+                {
+                    return targetTyped.Items.Cast<object>();
+                }
+            }
+            catch { /* fall back to untyped */ }
+
             var collections = env.EnumerateRecordCollections();
             var targetCollection = collections.FirstOrDefault(t =>
                 string.Equals(t.Name, collectionName, StringComparison.OrdinalIgnoreCase));
@@ -38,7 +57,7 @@ public class MutagenAccessor : IMutagenAccessor
         }
         catch (Exception ex)
         {
-            AppLogger.Log($"MutagenAccessor: failed to enumerate {collectionName} collection", ex);
+            _logger.LogError(ex, "MutagenAccessor: failed to enumerate {CollectionName} collection", collectionName);
         }
 
         return Enumerable.Empty<object>();
@@ -49,15 +68,20 @@ public class MutagenAccessor : IMutagenAccessor
     {
         try
         {
-            var wins = env.GetWinningWeaponOverrides();
-            if (wins != null)
+            // Prefer typed
+            try
             {
-                return wins.Cast<object>();
+                var typed = env.GetWinningWeaponOverridesTyped();
+                if (typed != null) return typed.Cast<object>();
             }
+            catch { /* fallback below */ }
+
+            var wins = env.GetWinningWeaponOverrides();
+            if (wins != null) return wins.Cast<object>();
         }
         catch (Exception ex)
         {
-            AppLogger.Log("MutagenAccessor: GetWinningWeaponOverrides failed, trying EnumerateRecordCollections fallback", ex);
+            _logger.LogWarning(ex, "MutagenAccessor: GetWinningWeaponOverrides failed, trying EnumerateRecordCollections fallback");
         }
 
         // Fallback to enumerating Weapon collection
@@ -73,7 +97,7 @@ public class MutagenAccessor : IMutagenAccessor
         }
         catch (Exception ex)
         {
-            AppLogger.Log("MutagenAccessor: GetWinningConstructibleObjectOverrides failed", ex);
+            _logger.LogError(ex, "MutagenAccessor: GetWinningConstructibleObjectOverrides failed");
             return Enumerable.Empty<object>();
         }
     }
@@ -95,7 +119,7 @@ public class MutagenAccessor : IMutagenAccessor
         }
         catch (Exception ex)
         {
-            AppLogger.Log("MutagenAccessor: failed to read EditorID", ex);
+            _logger.LogError(ex, "MutagenAccessor: failed to read EditorID");
             return string.Empty;
         }
     }

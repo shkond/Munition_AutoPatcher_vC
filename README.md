@@ -4,7 +4,9 @@ Fallout 4武器自動パッチツール - WPF MVVM実装
 
 ## 概要
 
-このツールは、Fallout 4の武器MODに対して、RobCo Patcherの設定ファイル（INI）を自動生成するためのWPFアプリケーションです。Mutagenを使用してプラグインから武器データを抽出し、弾薬とのマッピングを行い、パッチ設定を生成します。
+このツールは、Fallout 4の武器MODに対して、弾薬マッピングの設定を自動生成するためのWPFアプリケーションです。Mutagenを使用してプラグインから武器データを抽出し、弾薬とのマッピングを行い、2つの出力形式をサポートします：
+- **ESPパッチモード（デフォルト）**: ESL-flagged ESPパッチを生成し、武器レコード（WEAP）に直接弾薬マッピングを適用
+- **INIモード**: RobCo Patcherの設定ファイル（INI）を生成
 
 ## 機能
 
@@ -15,10 +17,15 @@ Fallout 4武器自動パッチツール - WPF MVVM実装
   - WinningOverridesを使用した競合解決
   - 武器の名前、ダメージ、発射速度、デフォルト弾薬などを抽出
 - **マッピング画面**: 武器と弾薬のマッピング管理、マッピング生成
-- **INI生成**: RobCo Patcher用の設定ファイル生成（実装済み）
-  - タイムスタンプ付きINIファイル生成
-  - 手動マッピングフラグのサポート
-  - ディレクトリの自動作成
+- **出力生成**: 2つの出力モードをサポート（実装済み）
+  - **ESPパッチモード（デフォルト）**: ESL-flagged ESPパッチファイル生成
+    - MunitionAutoPatcher_Patch.esp として出力
+    - 確認済みの武器→弾薬マッピングを直接WEAPレコードに適用
+    - 必要なマスター参照を自動的に含める
+  - **INIモード**: RobCo Patcher用の設定ファイル生成
+    - タイムスタンプ付きINIファイル生成
+    - 手動マッピングフラグのサポート
+    - ディレクトリの自動作成
 - **ログ/ステータス**: リアルタイムログ表示とステータス表示
 
 ## 技術スタック
@@ -179,7 +186,7 @@ jobs:
 
 1. **設定画面**:
    - ゲームデータパス（Fallout4の Data フォルダ）を設定
-   - 出力INIファイルのパスを設定
+   - 出力パスを設定（オプション）
    - マッピング戦略を選択
    - 「武器データ抽出を開始」ボタンをクリック
 
@@ -187,10 +194,49 @@ jobs:
    - メニューから「マッピング」を選択
    - 「マッピング生成」ボタンをクリックして武器と弾薬のマッピングを生成
    - マッピングテーブルで確認・編集
-   - 「INI生成」ボタンをクリックしてRobCo Patcher用の設定ファイルを生成
+   - 「INI生成」ボタンをクリックして設定ファイルを生成（INIモードの場合）
 
-3. **ログ確認**:
-   - 画面下部のログパネルで処理状況を確認
+3. **出力モードの設定**:
+   
+   出力モードは設定ファイル `config/config.json` で制御されます：
+
+   ```json
+   {
+     "output": {
+       "mode": "esp",
+       "directory": "artifacts"
+     }
+   }
+   ```
+
+   - **`output.mode`**: 出力形式を指定
+     - `"esp"` (デフォルト): ESL-flagged ESPパッチを生成
+     - `"ini"`: RobCo Patcher INIファイルを生成
+   
+   - **`output.directory`**: 出力先ディレクトリ
+     - デフォルト: `"artifacts"` (リポジトリルート相対)
+     - 絶対パスまたは相対パスを指定可能
+
+    確認: `output.mode` が `"esp"` に設定されていること、`output.directory` が実行ユーザーから書き込み可能なディレクトリ（絶対パスまたはリポジトリルート相対）に設定されていることを確認してください。例: `"output": { "mode": "esp", "directory": "artifacts" }`。
+
+   **ESPモード（デフォルト）の動作**:
+   - 確認済みの武器→弾薬マッピングから `MunitionAutoPatcher_Patch.esp` を生成
+   - パッチは ESL-flagged（ESPFE）として出力され、ロードオーダーの負荷を最小化
+   - 参照される全てのFormKey（武器と弾薬）のマスター参照を自動的に含める
+   - デフォルト出力先: `artifacts/MunitionAutoPatcher_Patch.esp`
+
+   **INIモードへの切り替え**:
+   - `config/config.json` で `"mode": "ini"` に設定
+   - 従来のRobCo Patcher INI出力を使用する場合に選択
+
+4. **ログ確認 / 統合ログ出力**:
+   - **UIログ**: 画面下部のログパネルで処理状況を確認できます（`AppLogger` のイベント購読により表示）。
+   - **ファイル出力**: すべての UI ログは非同期で `artifacts/munition_autopatcher_ui.log` に追記されます（起動時に新規ヘッダで上書きして開始します）。
+   - **ILogger → AppLogger の転送**: アプリは `ILogger` 出力を `AppLogger` に転送する `AppLoggerProvider` をホストに登録しています。これにより、`ILogger<T>` を使って出力された `Debug`/`Information`/`Error` 等のメッセージは UI パネルと `artifacts/munition_autopatcher_ui.log` に統合されます。
+   - **デバッグ/コンソール**: Debug ビルド時は `DebugConsole` によりコンソールが割り当てられ、コンソールにもログが表示されます。`LogDebug` レベルのメッセージを常に確認したい場合はホストのロギング設定で最小ログレベルを `Debug` にしてください。
+   - **ログの確認 (PowerShell)**:
+     - リアルタイム追跡: `Get-Content -Path .\artifacts\munition_autopatcher_ui.log -Wait -Tail 200`
+     - TEMP の per-run ログを探す: `Get-ChildItem $env:TEMP -Filter "munition_autopatcher_ui_*.log" | Select-Object -Last 5`
 
 ## 今後の実装予定 (TODOs)
 

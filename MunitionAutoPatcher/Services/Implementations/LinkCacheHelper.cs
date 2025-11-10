@@ -36,7 +36,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             var set = s_currentResolutionKeys.Value ??= new HashSet<string>();
             if (!set.Add(key))
             {
-                AppLogger.Log($"LinkCacheHelper: re-entrant resolution detected for key {key}; aborting to avoid cycle.");
+                System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: re-entrant resolution detected for key {key}; aborting to avoid cycle.");
                 return null;
             }
 
@@ -87,7 +87,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                     {
                         if (inst.ContainsGenericParameters) // avoid invoking open generic instance methods
                         {
-                            AppLogger.Log("LinkCacheHelper: skipping instance TryResolve - method contains generic parameters");
+                            System.Diagnostics.Debug.WriteLine("LinkCacheHelper: skipping instance TryResolve - method contains generic parameters");
                         }
                         else
                         {
@@ -110,7 +110,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"LinkCacheHelper: instance TryResolve discovery failed: {ex.Message}", ex);
+                System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: instance TryResolve discovery failed: {ex}");
             }
             return null;
         }
@@ -131,7 +131,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"LinkCacheHelper: FormKey extraction failed: {ex.Message}", ex);
+                System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: FormKey extraction failed: {ex}");
                 return null;
             }
         }
@@ -199,7 +199,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                                     continue;
                                 var genArg = fkType.GetGenericArguments().FirstOrDefault();
                                 if (genArg == null) continue;
-                                try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { AppLogger.Log($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex.Message}", ex); continue; }
+                                try { invoke = m.MakeGenericMethod(genArg); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: MakeGenericMethod failed for TryResolve(formKey): {ex}"); continue; }
                             }
 
                             var paramInfos = invoke.GetParameters();
@@ -345,7 +345,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                                 {
                                     if (System.Threading.Interlocked.Exchange(ref s_singleArgIncompatLogged, 1) == 0)
                                     {
-                                        AppLogger.Log($"LinkCacheHelper: single-arg fallback incompatible - LinkCacheMethod={m.Name}, ParamType={pType.FullName}, ArgType={arg.GetType().FullName} (further identical messages will be suppressed)");
+                                        LogErrorOnce("singlearg_incompat", $"LinkCacheHelper: single-arg fallback incompatible - LinkCacheMethod={m.Name}, ParamType={pType.FullName}, ArgType={arg.GetType().FullName} (further identical messages will be suppressed)");
                                     }
                                 }
                                 catch { }
@@ -382,7 +382,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Log($"LinkCacheHelper: fallback single-arg method invocation failed: {ex.Message}", ex);
+                            System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: fallback single-arg method invocation failed: {ex}");
                         }
                     }
                     catch (Exception ex)
@@ -454,7 +454,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"LinkCacheHelper: TryConvertFormKeyToIdentifier failed: {ex.Message}", ex);
+                System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: TryConvertFormKeyToIdentifier failed: {ex}");
             }
 
             // If we reach here, create a diagnostic dump to help debugging
@@ -512,11 +512,11 @@ namespace MunitionAutoPatcher.Services.Implementations
 
                 var json = JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(fname, json);
-                AppLogger.Log($"LinkCacheHelper: wrote conversion diagnostic dump: {fname}");
+                System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: wrote conversion diagnostic dump: {fname}");
             }
             catch (Exception ex)
             {
-                AppLogger.Log($"LinkCacheHelper: failed to write conversion diagnostic dump: {ex.Message}", ex);
+                System.Diagnostics.Debug.WriteLine($"LinkCacheHelper: failed to write conversion diagnostic dump: {ex}");
             }
         }
 
@@ -538,16 +538,17 @@ namespace MunitionAutoPatcher.Services.Implementations
                 var newCount = s_errorCounts.AddOrUpdate(key, 1, (_, old) => old + 1);
                 if (newCount <= s_errorSuppressThreshold)
                 {
-                    AppLogger.Log(message, ex);
+                    System.Diagnostics.Debug.WriteLine($"{message}: {ex}");
                 }
                 else if (newCount == s_errorSuppressThreshold + 1)
                 {
-                    AppLogger.Log($"{message} (further identical errors will be suppressed)");
+                    System.Diagnostics.Debug.WriteLine($"{message} (further identical errors will be suppressed)");
                 }
             }
             catch { }
         }
 
-        // LinkCacheHelper previously had an internal Log helper; use shared AppLogger instead.
+        // LinkCacheHelper previously had an internal Log helper; it now uses internal diagnostic helpers
+        // (e.g. LogErrorOnce / Debug.WriteLine) and callers are expected to use `ILogger` when available.
     }
 }

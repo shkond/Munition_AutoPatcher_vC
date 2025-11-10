@@ -376,6 +376,36 @@ LinkCache 解決の再入ガードを `LinkCacheHelper.TryResolveViaLinkCache` �
 
 </details>
 
+<details>
+<summary>2025-11-10 セッション 4 - ESPパッチ生成 `success=0` 問題の解決</summary>
+
+### 問題
+ESPパッチを生成しても、有効な変更が1件もない `success=0` の状態となり、実質的に空のパッチしか生成されない問題が確認された。
+
+### 原因分析
+- **根本原因**: 従来の候補検出ロジック (`ReverseMapConfirmer`) は、OMOD/COBJレコードから武器レコードへの直接的な`FormLink`（逆参照）に依存していた。
+- **Fallout 4の仕様**: 多くの武器MODでは、OMOD（武器改造パーツ）とWEAP（武器）の関連付けは、直接リンクではなく、`ap_` プレフィックスを持つキーワード（`Attach Point`）を介して行われる。武器側は `Attach Parent Slots` に対応するキーワードを持つことで、その改造パーツが装着可能であることを示す。
+- **結果**: 直接リンクが存在しないため、逆参照スキャンではこれらの関連性を見つけ出すことができず、パッチ適用候補が0件となっていた。
+
+### 決定事項
+- 従来の逆参照ベースのロジックに加え、**アタッチポイントベースの新しい候補確認ロジック**を導入する。
+- `ICandidateConfirmer` インターフェースを実装する `AttachPointConfirmer` を新規に作成する。
+- この `confirmer` は以下の責務を持つ:
+    1. OMODから `AttachPoint` キーワードを取得する。
+    2. 全ての武器の `AttachParentSlots` をスキャンし、OMODの `AttachPoint` と一致する武器を特定する。
+    3. 一致した場合、その(武器, OMOD)ペアを有効な候補としてマーク (`ConfirmedAmmoChange = true`) し、パッチ生成対象とする。
+- `WeaponOmodExtractor` を改修し、複数の `ICandidateConfirmer`（`ReverseMapConfirmer` と `AttachPointConfirmer`）を連鎖的に実行できるようにする。
+
+### 実装内容
+- **`AttachPointConfirmer.cs`**: 新規追加。上記ロジックを実装。
+- **`WeaponOmodExtractor.cs`**: `IEnumerable<ICandidateConfirmer>` をコンストラクタで受け取り、各 `confirmer` を順次実行するよう修正。
+- **`App.xaml.cs`**: 新しい `AttachPointConfirmer` をDIコンテナに `Singleton` として登録。
+
+### 期待される効果
+この変更により、これまで検出できなかったアタッチポイント経由でのOMODと武器の関連性を正しく検出し、ESPパッチ生成時に `success > 0` となることが期待される。
+
+</details>
+
 ---
 
 ## 備考

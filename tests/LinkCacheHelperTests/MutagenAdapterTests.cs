@@ -2,6 +2,7 @@
 using System;
 using Moq;
 using MunitionAutoPatcher.Services.Implementations;
+using Microsoft.Extensions.Logging.Abstractions;
 using Mutagen.Bethesda.Environments;
 using Mutagen.Bethesda.Fallout4;
 using Xunit;
@@ -17,7 +18,7 @@ namespace LinkCacheHelperTests
             var disposed = false;
             var mockEnv = new Mock<IGameEnvironment<IFallout4Mod, IFallout4ModGetter>>();
             mockEnv.As<IDisposable>().Setup(d => d.Dispose()).Callback(() => disposed = true);
-            var adapter = new MutagenV51EnvironmentAdapter(mockEnv.Object);
+            var adapter = new MutagenV51EnvironmentAdapter(mockEnv.Object, NullLogger<MutagenV51EnvironmentAdapter>.Instance);
 
             // Act
             adapter.Dispose();
@@ -31,7 +32,7 @@ namespace LinkCacheHelperTests
         {
             // Arrange
             var nonDisposableEnv = new Mock<IGameEnvironment<IFallout4Mod, IFallout4ModGetter>>().Object;
-            var adapter = new MutagenV51EnvironmentAdapter(nonDisposableEnv);
+            var adapter = new MutagenV51EnvironmentAdapter(nonDisposableEnv, NullLogger<MutagenV51EnvironmentAdapter>.Instance);
 
             // Act
             var ex = Record.Exception(() => adapter.Dispose());
