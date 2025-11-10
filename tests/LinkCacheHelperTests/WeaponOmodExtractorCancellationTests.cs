@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Models;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins.Order;
+using Mutagen.Bethesda.Plugins.Cache;
 
 namespace LinkCacheHelperTests
 {
@@ -111,6 +112,7 @@ namespace LinkCacheHelperTests
         private sealed class DummyMutagenAccessor : IMutagenAccessor
         {
             public ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env) => null;
+            public ILinkCache? BuildConcreteLinkCache(IResourcedMutagenEnvironment env) => null;
             public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Array.Empty<object>();
             public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();

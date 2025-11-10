@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Plugins.Cache;
 
 namespace MunitionAutoPatcher.Services.Implementations
 {
@@ -13,6 +14,7 @@ namespace MunitionAutoPatcher.Services.Implementations
     public sealed class LinkResolver : ILinkResolver
     {
         private readonly object _linkCache;
+        private readonly ILinkCache? _typedLinkCache;
         private readonly ConcurrentDictionary<string, object?> _cache = new(StringComparer.Ordinal);
 
         private readonly ILogger<LinkResolver>? _logger;
@@ -20,8 +22,20 @@ namespace MunitionAutoPatcher.Services.Implementations
         public LinkResolver(object linkCache, ILogger<LinkResolver>? logger = null)
         {
             _linkCache = linkCache ?? throw new ArgumentNullException(nameof(linkCache));
+            _typedLinkCache = linkCache as ILinkCache;
             _logger = logger;
         }
+
+        public LinkResolver(ILinkCache linkCache, ILogger<LinkResolver>? logger = null)
+            : this((object)linkCache, logger)
+        {
+        }
+
+        public ILinkCache? LinkCache => _typedLinkCache;
+
+        public ILinkCache? TypedLinkCache => _typedLinkCache;
+
+        public object RawLinkCache => _linkCache;
 
         public bool TryResolve(object linkLike, out object? result)
         {
@@ -33,6 +47,13 @@ namespace MunitionAutoPatcher.Services.Implementations
                 result = cached;
                 return result != null;
             }
+
+            try
+            {
+                // Log attempt for diagnostics
+                _logger?.LogDebug("LinkResolver.TryResolve: attempting resolve for type={Type}", linkLike.GetType().FullName);
+            }
+            catch { }
 
             var r = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(linkLike, _linkCache);
             _cache[key] = r; // cache nulls too to avoid repeated attempts
@@ -60,12 +81,16 @@ namespace MunitionAutoPatcher.Services.Implementations
                 var mfk = TryToMutagenFormKey(key);
                 if (mfk != null)
                 {
+                    _logger?.LogDebug("ResolveByKey: attempting Mutagen FormKey resolution {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
                     result = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(mfk.Value, _linkCache);
+                    _logger?.LogDebug("ResolveByKey: result was {Result}", result != null ? "FOUND" : "MISS");
                 }
                 else
                 {
                     // Last resort: try resolving the original internal form key via helper (some adapters accept it)
+                    _logger?.LogDebug("ResolveByKey: falling back to resolving custom FormKey {Plugin}:{Id:X8}", key.PluginName, key.FormId);
                     result = Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(key, _linkCache);
+                    _logger?.LogDebug("ResolveByKey: fallback result was {Result}", result != null ? "FOUND" : "MISS");
                 }
             }
             catch (Exception ex)

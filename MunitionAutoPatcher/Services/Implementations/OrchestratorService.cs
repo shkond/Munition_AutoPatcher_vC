@@ -194,7 +194,7 @@ public class OrchestratorService : IOrchestrator
                 ExcludedPlugins = new HashSet<string>(extraction.ExcludedPlugins, StringComparer.OrdinalIgnoreCase),
                 AllWeapons = new List<object>(),
                 Resolver = resolver,
-                LinkCache = resolver,
+                LinkCache = nativeCache,
                 CancellationToken = cancellationToken
             };
 
@@ -235,21 +235,20 @@ public class OrchestratorService : IOrchestrator
         try
         {
             _logger.LogDebug("TryGetNativeLinkCache: resolverType={ResolverType}", resolver.GetType().FullName);
-            var field = resolver.GetType().GetField("_linkCache", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (field == null)
+
+            if (resolver is LinkResolver typed && typed.TypedLinkCache != null)
             {
-                _logger.LogWarning("TryGetNativeLinkCache: _linkCache field not found on resolver");
+                _logger.LogInformation("TryGetNativeLinkCache: resolver exposes typed cache (type={Type})", typed.TypedLinkCache.GetType().FullName);
+                return typed.TypedLinkCache;
             }
-            var value = field?.GetValue(resolver);
-            _logger.LogDebug("TryGetNativeLinkCache: fieldType={FieldType}, valueType={ValueType}", field?.FieldType.FullName, value?.GetType().FullName);
-            if (value is ILinkCache cache)
+
+            var cache = resolver.LinkCache;
+            if (cache != null)
             {
+                _logger.LogInformation("TryGetNativeLinkCache: resolver provided LinkCache (type={Type})", cache.GetType().FullName);
                 return cache;
             }
-            else
-            {
-                _logger.LogWarning("TryGetNativeLinkCache: underlying value is not Mutagen ILinkCache");
-            }
+            _logger.LogWarning("TryGetNativeLinkCache: resolver.LinkCache returned null");
         }
         catch (Exception ex)
         {

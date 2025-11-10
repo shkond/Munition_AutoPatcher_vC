@@ -1,5 +1,5 @@
 using MunitionAutoPatcher.Services.Implementations;
-using MunitionAutoPatcher.Services.Interfaces;
+using Mutagen.Bethesda.Plugins.Cache;
 
 namespace MunitionAutoPatcher.Services.Interfaces;
 
@@ -12,6 +12,12 @@ public interface IMutagenAccessor
     /// Gets an `ILinkResolver` (wrapper over LinkCache) from the environment if available.
     /// </summary>
     ILinkResolver? GetLinkCache(IResourcedMutagenEnvironment env);
+
+    /// <summary>
+    /// Builds a concrete Mutagen <see cref="ILinkCache"/> for the supplied environment when possible.
+    /// Returns <c>null</c> if the cache cannot be materialized.
+    /// </summary>
+    ILinkCache? BuildConcreteLinkCache(IResourcedMutagenEnvironment env);
 
     /// <summary>
     /// Enumerates record collections by name (e.g., "Weapon", "ObjectMod").

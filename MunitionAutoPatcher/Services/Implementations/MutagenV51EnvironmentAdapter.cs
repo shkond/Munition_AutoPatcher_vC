@@ -23,6 +23,8 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    internal IGameEnvironment<IFallout4Mod, IFallout4ModGetter> InnerGameEnvironment => _env;
+
     public void Dispose()
     {
         try
@@ -351,9 +353,9 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
     {
         try
         {
-            var real = _env.GetType().GetProperty("LinkCache")?.GetValue(_env);
-            if (real == null) return null;
-            return new LinkResolver(real);
+            var cache = _env.LinkCache;
+            if (cache == null) return null;
+            return new LinkResolver(cache);
         }
         catch (Exception ex)
         {
