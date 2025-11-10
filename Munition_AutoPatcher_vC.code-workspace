@@ -1,10 +1,19 @@
 {
-    "folders": [
+	"folders": [
 		{
 			"path": "."
 		}
 	],
 	"settings": {
-		"dotnet.defaultSolution": "MunitionAutoPatcher.sln"
+		"dotnet.defaultSolution": "MunitionAutoPatcher.sln",
+		"mcp": {
+			"servers": {
+				"deepwiki": {
+					"url": "https://mcp.deepwiki.com/sse",
+					"type": "http"
+				}
+			},
+			"inputs": []
+		}
 	}
 }

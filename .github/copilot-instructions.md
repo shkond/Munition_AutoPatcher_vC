@@ -7,242 +7,250 @@ This file provides instructions and context for GitHub Copilot Coding Agent when
 **Munition AutoPatcher vC** is a WPF desktop application for Fallout 4 modding. It automatically generates RobCo Patcher configuration files (INI) for weapon mods by extracting weapon data from plugins and mapping ammunition.
 
 ### Technology Stack
-- **.NET 8.0** (Windows-only, WPF)
-- **MVVM Pattern** with dependency injection (Microsoft.Extensions.DependencyInjection)
-- **Mutagen.Bethesda.Fallout4** (v0.51.5) for plugin parsing
-- **xUnit** for testing
+
+  - **.NET 8.0** (Windows-only, WPF)
+  - **MVVM Pattern** with dependency injection (Microsoft.Extensions.DependencyInjection)
+  - **Mutagen.Bethesda.Fallout4** (v0.51.5) for plugin parsing
+  - **xUnit** for testing
 
 ### Key Directories
-- `MunitionAutoPatcher/` - Main WPF application
-  - `Models/` - Data models (WeaponData, AmmoData, ExtractionContext, ConfirmationContext, etc.)
-  - `ViewModels/` - MVVM view models
-  - `Views/` - XAML views
-  - `Services/` - Business logic (orchestrator pattern with specialized services)
-    - `Interfaces/` - Service abstractions (ICandidateProvider, ICandidateConfirmer, IDiagnosticWriter, etc.)
-    - `Implementations/` - Service implementations (WeaponOmodExtractor orchestrator, providers, confirmers)
-    # Copilot Coding Agent Instructions
 
-    This file provides instructions and context for GitHub Copilot Coding Agent when working with this repository.
+  - `MunitionAutoPatcher/` - Main WPF application
+      - `Models/` - Data models (WeaponData, AmmoData, ExtractionContext, ConfirmationContext, etc.)
+      - `ViewModels/` - MVVM view models
+      - `Views/` - XAML views
+      - `Services/` - Business logic (orchestrator pattern with specialized services)
+        - `Interfaces/` - Service abstractions (ICandidateProvider, ICandidateConfirmer, IDiagnosticWriter, etc.)
+        - `Implementations/` - Service implementations (WeaponOmodExtractor orchestrator, providers, confirmers)
+        - `Helpers/` - Utility helpers
+  - `tests/` - Unit and integration tests
+      - `AutoTests/` - General tests
+      - `LinkCacheHelperTests/` - LinkCache-specific tests
+      - `WeaponDataExtractorTests/` - Weapon extractor tests
 
-    ## Project Overview
+### Architecture Pattern: Orchestrator with Strategy
 
-    **Munition AutoPatcher vC** is a WPF desktop application for Fallout 4 modding. It automatically generates RobCo Patcher configuration files (INI) for weapon mods by extracting weapon data from plugins and mapping ammunition.
+  - **WeaponOmodExtractor** - Thin orchestrator (520 lines) that delegates to specialized services
+  - **Candidate Providers** - Strategy pattern implementations (ICandidateProvider)
+      - `CobjCandidateProvider` - Extracts candidates from COBJ records
+      - `ReverseReferenceCandidateProvider` - Discovers candidates via reflection scanning
+  - **Candidate Confirmer** - Validates candidates (ICandidateConfirmer)
+      - `ReverseMapConfirmer` - Confirms via reverse-reference analysis
+  - **Supporting Services**
+      - `DiagnosticWriter` - All diagnostic file I/O (markers, CSVs, reports)
+      - `MutagenAccessor` - Abstraction for Mutagen API with error handling
+      - `PathService` - Repository and artifact path resolution
 
-    ### Technology Stack
+## Core Dependency Context: Mutagen API
 
-    - **.NET 8.0** (Windows-only, WPF)
-    - **MVVM Pattern** with dependency injection (Microsoft.Extensions.DependencyInjection)
-    - **Mutagen.Bethesda.Fallout4** (v0.51.5) for plugin parsing
-    - **xUnit** for testing
+This project's primary external dependency is the **Mutagen API (v0.51.5)**, referenced as a compiled **.dll (black box)**.
 
-    ### Key Directories
+Because you cannot read the source code from the local workspace, you **MUST** use the connected MCP servers (`@github` and `@deepwiki`) to acquire context before generating code related to plugin parsing.
 
-    - `MunitionAutoPatcher/` - Main WPF application
-      - `Models/` - Data models (WeaponData, AmmoData, ExtractionContext, ConfirmationContext, etc.)
-      - `ViewModels/` - MVVM view models
-      - `Views/` - XAML views
-      - `Services/` - Business logic (orchestrator pattern with specialized services)
-          - `Interfaces/` - Service abstractions (ICandidateProvider, ICandidateConfirmer, IDiagnosticWriter, etc.)
-          - `Implementations/` - Service implementations (WeaponOmodExtractor orchestrator, providers, confirmers)
-          - `Helpers/` - Utility helpers
-    - `tests/` - Unit and integration tests
-      - `AutoTests/` - General tests
-      - `LinkCacheHelperTests/` - LinkCache-specific tests
-      - `WeaponDataExtractorTests/` - Weapon extractor tests
+### AI Context Strategy for Mutagen (MCP Tools)
 
-    ### Architecture Pattern: Orchestrator with Strategy
+Use the following two tools strategically, depending on the information you need:
 
-    - **WeaponOmodExtractor** - Thin orchestrator (520 lines) that delegates to specialized services
-    - **Candidate Providers** - Strategy pattern implementations (ICandidateProvider)
-      - `CobjCandidateProvider` - Extracts candidates from COBJ records
-      - `ReverseReferenceCandidateProvider` - Discovers candidates via reflection scanning
-    - **Candidate Confirmer** - Validates candidates (ICandidateConfirmer)
-      - `ReverseMapConfirmer` - Confirms via reverse-reference analysis
-    - **Supporting Services**
-      - `DiagnosticWriter` - All diagnostic file I/O (markers, CSVs, reports)
-      - `MutagenAccessor` - Abstraction for Mutagen API with error handling
-      - `PathService` - Repository and artifact path resolution
+1.  **Use `@deepwiki` for Architectural Understanding (The "Why")**
 
-    ## Core Dependency Context: Mutagen API
+      * **Role:** Use this tool as the "Architect" or "Designer".
+      * **Purpose:** To understand the *design patterns, concepts, and relationships* within Mutagen.
+      * **Example Prompts:**
+          * `@deepwiki Explain the architecture of ObjectModification (OMOD) records in Mutagen.`
+          * `@deepwiki What is the correct pattern for FormLink remapping and resolution?`
+          * `@deepwiki How does Mutagen handle generated code from Loqui schemas?`
 
-    This project's primary external dependency is the **Mutagen API**. When providing code, analysis, or refactoring related to `.esl/.esm/.esp` plugin parsing, your context should be grounded in the official Mutagen API documentation and repository.
+2.  **Use `@github` for Implementation Details (The "What")**
 
-    - **Official Repository (Source of Truth):** https://github.com/Mutagen-Modding/Mutagen
-    - **Official Documentation:** https://mutagen-modding.github.io/Mutagen/
+      * **Role:** Use this tool as the "Implementer" or "File Retriever".
+      * **Purpose:** To fetch the **ground truth**—the exact C\# generated code (`.cs`) or XML schema (`.xml`) files—from the Mutagen repository. This is essential for getting precise class names, property names, and enum values.
+      * **Example Prompts:**
+          * `@github Fetch the file Mutagen.Bethesda.Fallout4/Records/Major Records/ObjectModification.xml`
+          * `@github Show me the C# implementation in AObjectModProperty_Generated.cs`
+          * `@github What fields are defined in the ObjectModItem subrecord XML?`
 
-    ### Working with Mutagen (Key Project Conventions)
+### Working with Mutagen (Key Project Conventions)
 
-    - Use `ILinkCache` for efficient record lookups.
-    - Handle `ModKey` and `FormKey` carefully.
-    - Check for null/missing records.
-    - Use `WinningOverrides` for conflict resolution.
-    - **Crucially:** Prefer the `IMutagenAccessor` abstraction for all Mutagen access, as this is how the project ensures testability and error handling. Do not call Mutagen APIs directly from orchestrators or view models.
+**After** gathering context using the MCP tools, apply that knowledge according to these **project-specific conventions**:
 
-    ## Build and Test Commands
+  - **Crucially:** Prefer the `IMutagenAccessor` abstraction for all Mutagen access, as this is how the project ensures testability and error handling. Do not call Mutagen APIs directly from orchestrators or view models.
+  - Use `ILinkCache` for efficient record lookups.
+  - Handle `ModKey` and `FormKey` carefully.
+  - Check for null/missing records.
+  - Use `WinningOverrides` for conflict resolution.
 
-    ### Build
+## Build and Test Commands
 
-    ```bash
-    # Restore dependencies
-    dotnet restore
+### Build
 
-    # Build solution
-    dotnet build MunitionAutoPatcher.sln -c Release
+```bash
+# Restore dependencies
+dotnet restore
 
-    # Run application
-    dotnet run --project MunitionAutoPatcher/MunitionAutoPatcher.csproj
-    ```
+# Build solution
+dotnet build MunitionAutoPatcher.sln -c Release
 
-    ### Test
+# Run application
+dotnet run --project MunitionAutoPatcher/MunitionAutoPatcher.csproj
+```
 
-    ```bash
-    # Run all tests
-    dotnet test tests/AutoTests/AutoTests.csproj -c Release --verbosity normal
+### Test
 
-    # Run specific test project
-    dotnet test tests/LinkCacheHelperTests/LinkCacheHelperTests.csproj
-    ```
+```bash
+# Run all tests
+dotnet test tests/AutoTests/AutoTests.csproj -c Release --verbosity normal
 
-    ### Format
+# Run specific test project
+dotnet test tests/LinkCacheHelperTests/LinkCacheHelperTests.csproj
+```
 
-    ```bash
-    # Format code (if needed)
-    dotnet format
-    ```
+### Format
 
-    ## Code Conventions
+```bash
+# Format code (if needed)
+dotnet format
+```
 
-    ### C# Style
+## Code Conventions
 
-    - Use C# 12 features with .NET 8.0
-    - Enable nullable reference types
-    - Follow Microsoft C# coding conventions
-    - Use `async`/`await` for I/O operations
+### C\# Style
 
-    ### MVVM Pattern
+  - Use C\# 12 features with.NET 8.0
+  - Enable nullable reference types
+  - Follow Microsoft C\# coding conventions
+  - Use `async`/`await` for I/O operations
 
-    - **Models**: Pure data classes in `Models/`
-    - **ViewModels**: Inherit from `ViewModelBase`, implement `INotifyPropertyChanged`
-    - **Views**: XAML files with minimal code-behind
-    - Use `RelayCommand` and `AsyncRelayCommand` for commands
+### MVVM Pattern
 
-    ### Dependency Injection
+  - **Models**: Pure data classes in `Models/`
+  - **ViewModels**: Inherit from `ViewModelBase`, implement `INotifyPropertyChanged`
+  - **Views**: XAML files with minimal code-behind
+  - Use `RelayCommand` and `AsyncRelayCommand` for commands
 
-    - Register services in `App.xaml.cs` using `ServiceCollection`
-    - Use constructor injection for dependencies
-    - Interface-based design (e.g., `IWeaponsService`, `IConfigService`)
+### Dependency Injection
 
-    ### Testing
+  - Register services in `App.xaml.cs` using `ServiceCollection`
+  - Use constructor injection for dependencies
+  - Interface-based design (e.g., `IWeaponsService`, `IConfigService`)
 
-    - Use xUnit for all tests
-    - Follow Arrange-Act-Assert pattern
-    - Mock external dependencies (file system, Mutagen APIs)
-    - Test names: `MethodName_Scenario_ExpectedBehavior`
+### Testing
 
-    ## CI/CD Guidance
+  - Use xUnit for all tests
+  - Follow Arrange-Act-Assert pattern
+  - Mock external dependencies (file system, Mutagen APIs)
+  - Test names: `MethodName_Scenario_ExpectedBehavior`
 
-    ⚠️ **Important**: This is a Windows-only WPF application.
+## CI/CD Guidance
 
-    ### GitHub Actions
+⚠️ **Important**: This is a Windows-only WPF application.
 
-    - Use `runs-on: windows-latest` for all jobs
-    - GUI-dependent tests may fail in headless environments
-    - Example workflow:
+### GitHub Actions
 
-    ```yaml
-    jobs:
-      build:
-        runs-on: windows-latest
-        steps:
-          - uses: actions/checkout@v4
-          - uses: actions/setup-dotnet@v3
-            with:
-              dotnet-version: '8.0.x'
-          - run: dotnet restore
-          - run: dotnet build -c Release --no-restore
-          - run: dotnet test -c Release --no-build
-    ```
+  - Use `runs-on: windows-latest` for all jobs
+  - GUI-dependent tests may fail in headless environments
+  - Example workflow:
 
-    ## File Structure Best Practices
+<!-- end list -->
 
-    ### Configuration Files
+```yaml
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore
+      - run: dotnet build -c Release --no-restore
+      - run: dotnet test -c Release --no-build
+```
 
-    - `config/config.json` - Runtime configuration (gitignored, environment-specific)
-    - Avoid committing absolute paths or credentials
+## File Structure Best Practices
 
-    ### Build Artifacts
+### Configuration Files
 
-    The following directories are gitignored:
+  - `config/config.json` - Runtime configuration (gitignored, environment-specific)
+  - Avoid committing absolute paths or credentials
 
-    - `bin/`, `obj/` - Build outputs
-    - `artifacts/` - Generated test files
-    - `.vs/`, `.serena/` - IDE/tool-specific
+### Build Artifacts
 
-    ### Documentation
+The following directories are gitignored:
 
-    - `README.md` - Main documentation
-    - `ARCHITECTURE.md` - Architecture details
-    - `DECISIONS.md` - Design decisions log
-    - `CONTRIBUTING.md` - Contribution guidelines
+  - `bin/`, `obj/` - Build outputs
+  - `artifacts/` - Generated test files
+  - `.vs/`, `.serena/` - IDE/tool-specific
 
-    ## Security Considerations
+### Documentation
 
-    - **Never commit** API keys, tokens, or credentials
-    - **Never commit** environment-specific paths (e.g., `E:\Munition_AutoPatcher_vC`)
-    - Validate user inputs in ViewModels before passing to Services
-    - Handle Mutagen exceptions gracefully (plugin parsing can fail)
+  - `README.md` - Main documentation
+  - `ARCHITECTURE.md` - Architecture details
+  - `DECISIONS.md` - Design decisions log
+  - `CONTRIBUTING.md` - Contribution guidelines
 
-    ## Common Tasks for Copilot
+## Security Considerations
 
-    ### Adding a New Service
+  - **Never commit** API keys, tokens, or credentials
+  - **Never commit** environment-specific paths (e.g., `E:\Munition_AutoPatcher_vC`)
+  - Validate user inputs in ViewModels before passing to Services
+  - Handle Mutagen exceptions gracefully (plugin parsing can fail)
 
-    1. Create interface in `Services/Interfaces/`
-    2. Implement in `Services/Implementations/`
-    3. Register in `App.xaml.cs` DI container
-    4. Inject into constructors via DI (use interfaces, not concrete types)
+## Common Tasks for Copilot
 
-    ### Adding a Strategy Provider (e.g., new ICandidateProvider)
+### Adding a New Service
 
-    1. Create implementation in `Services/Implementations/`
-    2. Implement `ICandidateProvider` interface with `ProvideCandidatesAsync()`
-    3. Register as `services.AddSingleton<ICandidateProvider, YourProvider>()` in `App.xaml.cs`
-    4. WeaponOmodExtractor automatically uses all registered providers via `IEnumerable<ICandidateProvider>`
+1.  Create interface in `Services/Interfaces/`
+2.  Implement in `Services/Implementations/`
+3.  Register in `App.xaml.cs` DI container
+4.  Inject into constructors via DI (use interfaces, not concrete types)
 
-    ### Adding a New View
+### Adding a Strategy Provider (e.g., new ICandidateProvider)
 
-    1. Create XAML in `Views/`
-    2. Create ViewModel in `ViewModels/` inheriting `ViewModelBase`
-    3. Register ViewModel in DI container
-    4. Set DataContext in XAML or code-behind
+1.  Create implementation in `Services/Implementations/`
+2.  Implement `ICandidateProvider` interface with `ProvideCandidatesAsync()`
+3.  Register as `services.AddSingleton<ICandidateProvider, YourProvider>()` in `App.xaml.cs`
+4.  WeaponOmodExtractor automatically uses all registered providers via `IEnumerable<ICandidateProvider>`
 
-    ### Adding Tests
+### Adding a New View
 
-    1. Create test class in appropriate test project
-    2. Use `[Fact]` or `[Theory]` attributes
-    3. Mock dependencies using interfaces
-    4. Follow existing test patterns in the project
+1.  Create XAML in `Views/`
+2.  Create ViewModel in `ViewModels/` inheriting `ViewModelBase`
+3.  Register ViewModel in DI container
+4.  Set DataContext in XAML or code-behind
 
-    ### Working with WeaponOmodExtractor Architecture
+### Adding Tests
 
-    - **Do NOT** add business logic to WeaponOmodExtractor - keep it as a thin orchestrator
-    - **Extract providers** - Create new ICandidateProvider implementations for extraction logic
-    - **Confirmation logic** - Implement ICandidateConfirmer for validation logic
-    - **Diagnostic output** - Use IDiagnosticWriter for all file I/O (CSVs, markers, reports)
-    - **Logging** - Use ILogger<T> injected via DI, not static AppLogger
+1.  Create test class in appropriate test project
+2.  Use `[Fact]` or \`\` attributes
+3.  Mock dependencies using interfaces
+4.  Follow existing test patterns in the project
 
-    ### Working with Mutagen
+### Working with WeaponOmodExtractor Architecture
 
-    - Use `ILinkCache` for efficient record lookups
-    - Handle `ModKey` and `FormKey` carefully
-    - Check for null/missing records
-    - Use `WinningOverrides` for conflict resolution
-    - Prefer IMutagenAccessor abstraction for testability
+  - **Do NOT** add business logic to WeaponOmodExtractor - keep it as a thin orchestrator
+  - **Extract providers** - Create new ICandidateProvider implementations for extraction logic
+  - **Confirmation logic** - Implement ICandidateConfirmer for validation logic
+  - **Diagnostic output** - Use IDiagnosticWriter for all file I/O (CSVs, markers, reports)
+  - **Logging** - Use ILogger\<T\> injected via DI, not static AppLogger
 
-    ## References
+### Working with Mutagen
 
-    - https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-8
-    - https://learn.microsoft.com/en-us/dotnet/desktop/wpf/
-    - https://github.com/Mutagen-Modding/Mutagen
+  - **First, get context:** Use `@deepwiki` for architecture and `@github` for implementation details (see "AI Context Strategy" section above).
+  - **Then, write code:**
+      - Prefer the `IMutagenAccessor` abstraction for testability.
+      - Use `ILinkCache` for efficient record lookups.
+      - Handle `ModKey` and `FormKey` carefully.
+      - Check for null/missing records.
+      - Use `WinningOverrides` for conflict resolution.
 
-    - See `README.md` for more details
-    - See `REFACTORING_SUMMARY.md` for WeaponOmodExtractor architecture details
+## References
+
+  - [https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-8](https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-8)
+
+  - [https://learn.microsoft.com/en-us/dotnet/desktop/wpf/](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/)
+
+  - [https://github.com/Mutagen-Modding/Mutagen](https://github.com/Mutagen-Modding/Mutagen)
+
+  - See `README.md` for more details
+
+  - See `REFACTORING_SUMMARY.md` for WeaponOmodExtractor architecture details

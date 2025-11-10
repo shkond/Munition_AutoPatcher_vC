@@ -275,6 +275,47 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                 root = context.Resolver?.ResolveByKey(candidate.CandidateFormKey);
             }
 
+            // If resolver didn't return anything, try direct typed resolution via concrete LinkCache
+            if (root == null && context.LinkCache != null)
+            {
+                try
+                {
+                    var mfk = ToMutagenFormKey(candidate.CandidateFormKey);
+                    if (mfk != null)
+                    {
+                        // Try common FO4 getter types in order
+                        if (context.LinkCache.TryResolve<Mutagen.Bethesda.Fallout4.IObjectModificationGetter>(mfk.Value, out var omod) && omod != null)
+                        {
+                            root = omod;
+                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IObjectModificationGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                        }
+                        else if (context.LinkCache.TryResolve<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter>(mfk.Value, out var cobj) && cobj != null)
+                        {
+                            root = cobj;
+                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IConstructibleObjectGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                        }
+                        else if (context.LinkCache.TryResolve<Mutagen.Bethesda.Fallout4.IWeaponGetter>(mfk.Value, out var weap) && weap != null)
+                        {
+                            root = weap;
+                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IWeaponGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                        }
+                        else if (context.LinkCache.TryResolve<Mutagen.Bethesda.Fallout4.IAmmunitionGetter>(mfk.Value, out var ammo) && ammo != null)
+                        {
+                            root = ammo;
+                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IAmmunitionGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("ResolveOmod: LinkCache typed resolve MISS {Plugin}:{Id:X8}", candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "ResolveOmod: direct LinkCache typed resolution failed for {Plugin}:{Id:X8}", candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
+                }
+            }
+
             if (root == null)
             {
                 _logger.LogDebug("ResolveOmod: Resolver returned null for {Plugin}:{Id:X8}",
