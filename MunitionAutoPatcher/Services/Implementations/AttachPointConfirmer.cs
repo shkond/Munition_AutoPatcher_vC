@@ -32,7 +32,7 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                 if (!_mutagenAccessor.TryGetPluginAndIdFromRecord(weapon, out var wPlugin, out var wId) || string.IsNullOrEmpty(wPlugin) || wId == 0)
                     continue;
                 var fkWeapon = new FormKey { PluginName = wPlugin, FormId = wId };
-                var apsProp = weapon.GetType().GetProperty("AttachParentSlots");
+                var apsProp = weapon.GetType().GetProperty("AttachParentSlots", BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
                 var apsVal = apsProp?.GetValue(weapon) as System.Collections.IEnumerable;
                 if (apsVal == null) continue;
                 foreach (var link in apsVal)
@@ -64,6 +64,8 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         int matchedWeapons = 0;
         int foundAmmo = 0;
         int confirmed = 0;
+        // debugging counters for resolution failures
+        int rootNull = 0, createdObjMissing = 0, createdObjResolveFail = 0, createdObjNotOmod = 0;
         foreach (var candidate in candidates)
         {
             try
@@ -76,7 +78,7 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                 if (!IsOmodLike(candidate)) continue;
 
                 // Resolve OMOD getter from CandidateFormKey (follow through COBJ.CreatedObject when needed)
-                object? omodGetter = ResolveOmodForCandidate(candidate, context);
+                object? omodGetter = ResolveOmodForCandidate(candidate, context, ref rootNull, ref createdObjMissing, ref createdObjResolveFail, ref createdObjNotOmod);
                 if (omodGetter == null) continue;
                 resolvedToOmod++;
 
@@ -130,7 +132,12 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
     {
         if (c == null) return false;
         var type = c.CandidateType.ToLowerInvariant();
-        return type.Contains("omod") || type.Contains("objectmodification") || type.Contains("objectmod") || type.Contains("cobj") || type.Contains("createdweapon");
+        return type.Contains("omod")
+            || type.Contains("objectmodification")
+            || type.Contains("objectmod")
+            || type.Contains("cobj")
+            || type.Contains("constructibleobject")
+            || type.Contains("createdweapon");
     }
 
     private object? TryFindAttachPointLink(object omodGetter)
@@ -217,19 +224,45 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         return null;
     }
 
-    private object? ResolveOmodForCandidate(OmodCandidate candidate, ConfirmationContext context)
+    private object? ResolveOmodForCandidate(OmodCandidate candidate, ConfirmationContext context,
+        ref int rootNull, ref int createdObjMissing, ref int createdObjResolveFail, ref int createdObjNotOmod)
     {
         object? root = null;
         try
         {
-            root = context.Resolver?.ResolveByKey(candidate.CandidateFormKey);
+            _logger.LogDebug("ResolveOmod: CandidateType={Type} CandidateFormKey={Plugin}:{Id:X8}",
+                candidate.CandidateType,
+                candidate.CandidateFormKey.PluginName,
+                candidate.CandidateFormKey.FormId);
+
+            // Prefer resolving via a concrete Mutagen FormKey when possible
+            try
+            {
+                var mfk = ToMutagenFormKey(candidate.CandidateFormKey);
+                if (mfk != null && context.Resolver != null && context.Resolver.TryResolve(mfk.Value, out var resolved) && resolved != null)
+                {
+                    root = resolved;
+                }
+            }
+            catch { /* ignore and fallback to generic */ }
+
+            if (root == null)
+            {
+                root = context.Resolver?.ResolveByKey(candidate.CandidateFormKey);
+            }
+
+            if (root == null)
+            {
+                _logger.LogDebug("ResolveOmod: Resolver returned null for {Plugin}:{Id:X8}",
+                    candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "AttachPointConfirmer: failed to resolve candidate form key");
             return null;
         }
-        if (root == null) return null;
+        if (root == null) { rootNull++; return null; }
 
         // If already looks like an OMOD (has AttachPoint), return it
         if (TryFindAttachPointLink(root) != null)
@@ -239,16 +272,39 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         try
         {
             var created = TryGetFormLinkValue(root, "CreatedObject", "CreatedObjectForm", "CreatedObjectReference");
-            if (created != null)
+            if (created == null) { createdObjMissing++; return null; }
+
+            var fkProp = created.GetType().GetProperty("FormKey");
+            var fkVal = fkProp?.GetValue(created);
+            if (fkVal != null && TryExtractFormKeyInfo(fkVal, out var p, out var id))
             {
-                var fkProp = created.GetType().GetProperty("FormKey");
-                var fkVal = fkProp?.GetValue(created);
-                if (fkVal != null && TryExtractFormKeyInfo(fkVal, out var p, out var id))
+                _logger.LogDebug("ResolveOmod: CreatedObject link {Plugin}:{Id:X8}", p, id);
+                var tempFk = new FormKey { PluginName = p, FormId = id };
+                try
                 {
-                    var omod = context.Resolver?.ResolveByKey(new FormKey { PluginName = p, FormId = id });
-                    if (omod != null && TryFindAttachPointLink(omod) != null)
-                        return omod;
+                    var mfk2 = ToMutagenFormKey(tempFk);
+                    object? omod = null;
+                    if (mfk2 != null && context.Resolver != null && context.Resolver.TryResolve(mfk2.Value, out var or) && or != null)
+                        omod = or;
+                    else
+                        omod = context.Resolver?.ResolveByKey(tempFk);
+
+                    if (omod == null) { createdObjResolveFail++; return null; }
+                    if (TryFindAttachPointLink(omod) != null) return omod;
+                    createdObjNotOmod++;
+                    return null;
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "AttachPointConfirmer: failed to resolve CreatedObject from COBJ");
+                    createdObjResolveFail++;
+                    return null;
+                }
+            }
+            else
+            {
+                _logger.LogDebug("ResolveOmod: Failed to extract FormKey from CreatedObject link");
+                createdObjResolveFail++;
             }
         }
         catch (Exception ex)
@@ -257,6 +313,25 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         }
 
         return null;
+    }
+
+    private Mutagen.Bethesda.Plugins.FormKey? ToMutagenFormKey(FormKey fk)
+    {
+        try
+        {
+            if (fk == null || string.IsNullOrWhiteSpace(fk.PluginName) || fk.FormId == 0) return null;
+            var fileName = System.IO.Path.GetFileName(fk.PluginName) ?? fk.PluginName;
+            var modType = Mutagen.Bethesda.Plugins.ModType.Plugin;
+            if (fileName.EndsWith(".esm", StringComparison.OrdinalIgnoreCase)) modType = Mutagen.Bethesda.Plugins.ModType.Master;
+            else if (fileName.EndsWith(".esl", StringComparison.OrdinalIgnoreCase)) modType = Mutagen.Bethesda.Plugins.ModType.Light;
+
+            var modKey = new Mutagen.Bethesda.Plugins.ModKey(fileName, modType);
+            return new Mutagen.Bethesda.Plugins.FormKey(modKey, fk.FormId);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static object? TryGetFormLinkValue(object obj, params string[] propertyNames)
