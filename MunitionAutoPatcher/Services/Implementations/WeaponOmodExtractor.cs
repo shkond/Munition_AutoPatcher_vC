@@ -517,14 +517,27 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
         if (typedCache != null)
         {
-            if (context.LinkCache is LinkResolver resolver && resolver.TypedLinkCache != null)
+            context.LinkCache = new LinkResolver(typedCache, _loggerFactory.CreateLogger<LinkResolver>());
+            _logger.LogInformation("BuildExtractionContext: created simplified LinkResolver (cacheType={Type})", typedCache.GetType().FullName);
+            
+            // Quick check: test vanilla FormKey resolution
+            try
             {
-                _logger.LogInformation("BuildExtractionContext: using resolver-backed FormLinkCache (type={Type})", resolver.TypedLinkCache.GetType().FullName);
+                var testKey = new Mutagen.Bethesda.Plugins.FormKey(
+                    new Mutagen.Bethesda.Plugins.ModKey("Fallout4.esm", Mutagen.Bethesda.Plugins.ModType.Master),
+                    0x0001F278); // Vanilla 10mm ammo
+                if (typedCache.TryResolve<IAmmunitionGetter>(testKey, out var testAmmo) && testAmmo != null)
+                {
+                    _logger.LogInformation("QuickCheck: Successfully resolved vanilla ammo Fallout4.esm:0001F278");
+                }
+                else
+                {
+                    _logger.LogWarning("QuickCheck: FAILED to resolve vanilla ammo Fallout4.esm:0001F278 - LinkCache may be incomplete");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                context.LinkCache = new LinkResolver(typedCache, _loggerFactory.CreateLogger<LinkResolver>());
-                _logger.LogInformation("BuildExtractionContext: created FormLinkCache-backed resolver (cacheType={Type})", typedCache.GetType().FullName);
+                _logger.LogWarning(ex, "QuickCheck: Exception during vanilla FormKey test");
             }
         }
         else
@@ -678,16 +691,8 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
 
         if (actualLinkCache != null)
         {
-            if (linkCache is LinkResolver existing && ReferenceEquals(existing.TypedLinkCache, actualLinkCache))
-            {
-                resolver = existing;
-                _logger.LogInformation("BuildConfirmationContext: reusing resolver with concrete cache (type={Type})", actualLinkCache.GetType().FullName);
-            }
-            else
-            {
-                resolver = new LinkResolver(actualLinkCache, _loggerFactory.CreateLogger<LinkResolver>());
-                _logger.LogInformation("BuildConfirmationContext: constructed resolver with concrete LinkCache (type={Type})", actualLinkCache.GetType().FullName);
-            }
+            resolver = new LinkResolver(actualLinkCache, _loggerFactory.CreateLogger<LinkResolver>());
+            _logger.LogInformation("BuildConfirmationContext: constructed simplified LinkResolver (cacheType={Type})", actualLinkCache.GetType().FullName);
         }
         else if (linkCache != null)
         {

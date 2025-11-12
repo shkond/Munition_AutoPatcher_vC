@@ -326,7 +326,6 @@ TBD
 
 ## 貢献
 
-本プロジェクトへの貢献に興味をお持ちいただきありがとうございます！
 
 - 貢献ガイドラインは [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください
 - 行動規範は [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) を参照してください
