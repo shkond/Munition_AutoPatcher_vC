@@ -112,7 +112,7 @@ public class DiagnosticWriter : IDiagnosticWriter
 
             using var sw = new System.IO.StreamWriter(path, false, Encoding.UTF8);
             sw.WriteLine("CandidateType,BaseWeapon,BaseEditorId,CandidateFormKey,CandidateEditorId,CandidateAmmo,CandidateAmmoName,SourcePlugin,Notes,SuggestedTarget,ConfirmedAmmoChange,ConfirmReason");
-            
+
             foreach (var c in candidates)
             {
                 var baseKey = c.BaseWeapon != null ? $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}" : string.Empty;
@@ -123,7 +123,7 @@ public class DiagnosticWriter : IDiagnosticWriter
                 var reason = c.ConfirmReason ?? string.Empty;
                 sw.WriteLine($"{c.CandidateType},{baseKey},{Escape(c.BaseWeaponEditorId)},{candKey},{Escape(c.CandidateEditorId)},{ammoKey},{Escape(ammoName)},{c.SourcePlugin},{Escape(c.Notes)},{c.SuggestedTarget},{confirmed},{Escape(reason)}");
             }
-            
+
             sw.Flush();
             _logger.LogInformation("Wrote results CSV: {Path}", path);
             ctx.Progress?.Report($"OMOD 抽出 CSV を生成しました: {path}");
@@ -149,16 +149,16 @@ public class DiagnosticWriter : IDiagnosticWriter
 
             var artifactsDir = _pathService.GetArtifactsDirectory();
             var diagPath = System.IO.Path.Combine(artifactsDir, $"zero_ref_summary_{ctx.Timestamp:yyyyMMdd_HHmmss}.csv");
-            
+
             using var sw = new System.IO.StreamWriter(diagPath, false, Encoding.UTF8);
             sw.WriteLine("CandidateType,SourcePlugin,CandidateFormKey,CandidateEditorId,ConfirmReason");
-            
+
             foreach (var c in zeroRefCandidates)
             {
                 var candKey = c.CandidateFormKey != null ? $"{c.CandidateFormKey.PluginName}:{c.CandidateFormKey.FormId:X8}" : string.Empty;
                 sw.WriteLine($"{c.CandidateType},{c.SourcePlugin},{candKey},{Escape(c.CandidateEditorId)},{Escape(c.ConfirmReason)}");
             }
-            
+
             sw.Flush();
             _logger.LogInformation("Wrote zero-ref diagnostics: {Path}", diagPath);
             ctx.Progress?.Report($"zero-ref diagnostics を生成しました: {diagPath}");
@@ -204,7 +204,7 @@ public class DiagnosticWriter : IDiagnosticWriter
 
             using var sw = new System.IO.StreamWriter(path, false, Encoding.UTF8);
             sw.WriteLine("CandidateType,BaseWeapon,BaseEditorId,CandidateFormKey,CandidateEditorId,CandidateAmmo,CandidateAmmoName,SourcePlugin,Notes,SuggestedTarget,ConfirmedAmmoChange,ConfirmReason");
-            
+
             foreach (var c in filtered)
             {
                 var baseKey = c.BaseWeapon != null ? $"{c.BaseWeapon.PluginName}:{c.BaseWeapon.FormId:X8}" : string.Empty;
@@ -215,7 +215,7 @@ public class DiagnosticWriter : IDiagnosticWriter
                 var reason = c.ConfirmReason ?? string.Empty;
                 sw.WriteLine($"{c.CandidateType},{baseKey},{Escape(c.BaseWeaponEditorId)},{candKey},{Escape(c.CandidateEditorId)},{ammoKey},{Escape(ammoName)},{c.SourcePlugin},{Escape(c.Notes)},{c.SuggestedTarget},{confirmed},{Escape(reason)}");
             }
-            
+
             sw.Flush();
             _logger.LogInformation("Wrote filtered CSV for {Plugin}: {Path}", pluginFilter, path);
             ctx.Progress?.Report($"{pluginFilter} 向け候補CSV を生成しました: {path}");
@@ -230,7 +230,7 @@ public class DiagnosticWriter : IDiagnosticWriter
     {
         var artifactsDir = _pathService.GetArtifactsDirectory();
         var path = System.IO.Path.Combine(artifactsDir, $"{filePrefix}{ctx.Timestamp:yyyyMMdd_HHmmss_fff}.txt");
-        
+
         using (var sw = new System.IO.StreamWriter(path, false, Encoding.UTF8))
         {
             foreach (var line in lines)
@@ -238,7 +238,7 @@ public class DiagnosticWriter : IDiagnosticWriter
                 sw.WriteLine(line);
             }
         }
-        
+
         return path;
     }
 

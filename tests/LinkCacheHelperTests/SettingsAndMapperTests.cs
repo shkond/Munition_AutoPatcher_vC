@@ -7,66 +7,120 @@ using MunitionAutoPatcher.Models;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Moq;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LinkCacheHelperTests
 {
     public class SettingsAndMapperTests
     {
         [Fact]
-        public void ConfigService_ExcludedPlugins_PersistAndRestore()
+        public void SetExcludedPlugins_WithValidPluginList_PersistsAndRestoresCorrectly()
         {
-            var cfg = new MunitionAutoPatcher.Services.Implementations.ConfigService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MunitionAutoPatcher.Services.Implementations.ConfigService>.Instance);
-            var orig = cfg.GetExcludedPlugins().ToList();
-            var testList = new List<string> { "UT_Test_Plugin.esp" };
+            // Arrange
+            var configService = new ConfigService(NullLogger<ConfigService>.Instance);
+            var originalPlugins = configService.GetExcludedPlugins().ToList();
+            var testPlugins = new List<string> { "UT_Test_Plugin.esp" };
+
             try
             {
-                cfg.SetExcludedPlugins(testList);
-                var got = cfg.GetExcludedPlugins().ToList();
-                Assert.Contains("UT_Test_Plugin.esp", got);
+                // Act
+                configService.SetExcludedPlugins(testPlugins);
+                var retrievedPlugins = configService.GetExcludedPlugins().ToList();
+
+                // Assert
+                Assert.Contains("UT_Test_Plugin.esp", retrievedPlugins);
             }
             finally
             {
-                // restore original
-                cfg.SetExcludedPlugins(orig);
+                // Cleanup - restore original state
+                configService.SetExcludedPlugins(originalPlugins);
             }
         }
 
-        private class DummyOrchestrator : IOrchestrator
+        [Theory]
+        [MemberData(nameof(GetFilteredOmodTestData))]
+        public void FilteredOmodCandidates_WithSelectedMapping_FiltersCorrectly(
+            List<OmodCandidate> candidates,
+            WeaponMappingViewModel? selectedMapping,
+            int expectedFilteredCount,
+            string[] expectedCandidateIds)
         {
-            public bool IsInitialized => true;
-            public Task<bool> InitializeAsync() => Task.FromResult(true);
-            public Task<List<WeaponData>> ExtractWeaponsAsync(IProgress<string>? progress = null) => Task.FromResult(new List<WeaponData>());
-            public Task<bool> GenerateMappingsAsync(List<WeaponData> weapons, IProgress<string>? progress = null) => Task.FromResult(true);
-            public Task<bool> GenerateIniAsync(string outputPath, List<WeaponMapping> mappings, IProgress<string>? progress = null) => Task.FromResult(true);
-            public Task<bool> GeneratePatchAsync(string outputPath, List<WeaponData> weapons, IProgress<string>? progress = null) => Task.FromResult(true);
+            // Arrange
+            var mockOrchestrator = new Mock<IOrchestrator>();
+            mockOrchestrator.Setup(x => x.IsInitialized).Returns(true);
+            mockOrchestrator.Setup(x => x.InitializeAsync()).Returns(Task.FromResult(true));
+            mockOrchestrator.Setup(x => x.ExtractWeaponsAsync(It.IsAny<IProgress<string>?>())).Returns(Task.FromResult(new List<WeaponData>()));
+            mockOrchestrator.Setup(x => x.GenerateMappingsAsync(It.IsAny<List<WeaponData>>(), It.IsAny<IProgress<string>?>())).Returns(Task.FromResult(true));
+            mockOrchestrator.Setup(x => x.GenerateIniAsync(It.IsAny<string>(), It.IsAny<List<WeaponMapping>>(), It.IsAny<IProgress<string>?>())).Returns(Task.FromResult(true));
+            mockOrchestrator.Setup(x => x.GeneratePatchAsync(It.IsAny<string>(), It.IsAny<List<WeaponData>>(), It.IsAny<IProgress<string>?>())).Returns(Task.FromResult(true));
+
+            var mockWeaponsService = new Mock<IWeaponsService>();
+            mockWeaponsService.Setup(x => x.ExtractWeaponsAsync(It.IsAny<IProgress<string>?>())).Returns(Task.FromResult(new List<WeaponData>()));
+            mockWeaponsService.Setup(x => x.GetWeaponAsync(It.IsAny<FormKey>())).Returns(Task.FromResult<WeaponData?>(null));
+            mockWeaponsService.Setup(x => x.GetAllWeapons()).Returns(new List<WeaponData>());
+            mockWeaponsService.Setup(x => x.GetAllAmmo()).Returns(new List<AmmoData>());
+
+            var configService = new ConfigService(NullLogger<ConfigService>.Instance);
+
+            var mockOmodExtractor = new Mock<IWeaponOmodExtractor>();
+            mockOmodExtractor.Setup(x => x.ExtractCandidatesAsync(It.IsAny<IProgress<string>?>())).Returns(Task.FromResult(new List<OmodCandidate>()));
+            mockOmodExtractor.Setup(x => x.ExtractCandidatesAsync(It.IsAny<IProgress<string>?>(), It.IsAny<CancellationToken>())).Returns(Task.FromResult(new List<OmodCandidate>()));
+
+            var viewModel = new MapperViewModel(mockOrchestrator.Object, mockWeaponsService.Object, configService, mockOmodExtractor.Object);
+
+            // Add test candidates
+            foreach (var candidate in candidates)
+            {
+                viewModel.OmodCandidates.Add(candidate);
+            }
+
+            // Act
+            if (selectedMapping != null)
+            {
+                // Force update by toggling selection: set a non-null then the target selection
+                viewModel.SelectedMapping = new WeaponMappingViewModel { WeaponFormKey = "NoMatch:00000000" };
+                viewModel.SelectedMapping = selectedMapping;
+            }
+            else
+            {
+                // Force update by toggling selection: set a non-null then back to null
+                viewModel.SelectedMapping = new WeaponMappingViewModel { WeaponFormKey = "NoMatch:00000000" };
+                viewModel.SelectedMapping = null;
+            }
+
+            // Assert
+            Assert.Equal(expectedFilteredCount, viewModel.FilteredOmodCandidates.Count);
+            foreach (var expectedId in expectedCandidateIds)
+            {
+                Assert.Contains(viewModel.FilteredOmodCandidates, c => c.CandidateEditorId == expectedId);
+            }
         }
 
-        private class DummyWeaponsService : IWeaponsService
+        [Theory]
+        [MemberData(nameof(GetNullOrEmptyPluginListTestData))]
+        public void SetExcludedPlugins_WithNullOrEmptyList_HandlesGracefully(List<string> pluginList)
         {
-            public Task<List<WeaponData>> ExtractWeaponsAsync(IProgress<string>? progress = null) => Task.FromResult(new List<WeaponData>());
-            public Task<WeaponData?> GetWeaponAsync(FormKey formKey) => Task.FromResult<WeaponData?>(null);
-            public List<WeaponData> GetAllWeapons() => new List<WeaponData>();
-            public List<AmmoData> GetAllAmmo() => new List<AmmoData>();
+            // Arrange
+            var configService = new ConfigService(NullLogger<ConfigService>.Instance);
+            var originalPlugins = configService.GetExcludedPlugins().ToList();
+
+            try
+            {
+                // Act & Assert - should not throw
+                var exception = Record.Exception(() => configService.SetExcludedPlugins(pluginList));
+                Assert.Null(exception);
+            }
+            finally
+            {
+                // Cleanup - restore original state
+                configService.SetExcludedPlugins(originalPlugins);
+            }
         }
 
-        private class DummyOmodExtractor : MunitionAutoPatcher.Services.Interfaces.IWeaponOmodExtractor
+        public static IEnumerable<object[]> GetFilteredOmodTestData()
         {
-            public Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress = null) => Task.FromResult(new List<OmodCandidate>());
-            public Task<List<OmodCandidate>> ExtractCandidatesAsync(IProgress<string>? progress, CancellationToken cancellationToken) => Task.FromResult(new List<OmodCandidate>());
-        }
-
-        [Fact]
-        public void Mapper_FilteredOmods_ShowAllWhenNoSelection_And_FilterWhenSelected()
-        {
-            var orchestrator = new DummyOrchestrator();
-            var weapons = new DummyWeaponsService();
-            var config = new MunitionAutoPatcher.Services.Implementations.ConfigService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MunitionAutoPatcher.Services.Implementations.ConfigService>.Instance);
-            var omodExtractor = new DummyOmodExtractor();
-
-            var vm = new MapperViewModel(orchestrator, weapons, config, omodExtractor);
-
-            // Create two candidates, one matching target weapon
-            var matching = new OmodCandidate
+            var matchingCandidate = new OmodCandidate
             {
                 BaseWeapon = new FormKey { PluginName = "TestMod.esp", FormId = 0x123 },
                 CandidateFormKey = new FormKey { PluginName = "TestMod.esp", FormId = 0x123 },
@@ -75,7 +129,7 @@ namespace LinkCacheHelperTests
                 SourcePlugin = "TestMod.esp"
             };
 
-            var other = new OmodCandidate
+            var otherCandidate = new OmodCandidate
             {
                 BaseWeapon = new FormKey { PluginName = "OtherMod.esp", FormId = 0x222 },
                 CandidateFormKey = new FormKey { PluginName = "OtherMod.esp", FormId = 0x222 },
@@ -84,23 +138,29 @@ namespace LinkCacheHelperTests
                 SourcePlugin = "OtherMod.esp"
             };
 
-            vm.OmodCandidates.Add(matching);
-            vm.OmodCandidates.Add(other);
+            // Test case: No selection - should show all candidates
+            yield return new object[]
+            {
+                new List<OmodCandidate> { matchingCandidate, otherCandidate },
+                null, // no selection
+                2, // expected count
+                new string[] { "M_WEAPON_TEST", "M_OTHER" } // expected IDs
+            };
 
-            // Force update by toggling selection: set a non-null then back to null
-            vm.SelectedMapping = new WeaponMappingViewModel { WeaponFormKey = "NoMatch:00000000" };
-            vm.SelectedMapping = null;
+            // Test case: Selection matches one candidate - should show only matching
+            yield return new object[]
+            {
+                new List<OmodCandidate> { matchingCandidate, otherCandidate },
+                new WeaponMappingViewModel { WeaponFormKey = matchingCandidate.BaseWeapon.ToString() },
+                1, // expected count
+                new string[] { "M_WEAPON_TEST" } // expected IDs
+            };
+        }
 
-            // No selection => filtered should include both
-            Assert.Contains(matching, vm.FilteredOmodCandidates);
-            Assert.Contains(other, vm.FilteredOmodCandidates);
-
-            // Select mapping matching the 'matching' candidate
-            vm.SelectedMapping = new WeaponMappingViewModel { WeaponFormKey = matching.BaseWeapon.ToString() };
-
-            // Now filtered should contain only the matching candidate
-            Assert.Contains(matching, vm.FilteredOmodCandidates);
-            Assert.DoesNotContain(other, vm.FilteredOmodCandidates);
+        public static IEnumerable<object[]> GetNullOrEmptyPluginListTestData()
+        {
+            yield return new object[] { new List<string>() }; // empty list
+            yield return new object[] { new List<string> { "" } }; // list with empty string
         }
     }
 }

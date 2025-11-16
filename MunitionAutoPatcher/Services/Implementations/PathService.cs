@@ -19,12 +19,12 @@ public class PathService : IPathService
     {
         var repoRoot = GetRepoRoot();
         var artifactsDir = System.IO.Path.Combine(repoRoot, "artifacts", "RobCo_Patcher");
-        
+
         if (!System.IO.Directory.Exists(artifactsDir))
         {
             System.IO.Directory.CreateDirectory(artifactsDir);
         }
-        
+
         return artifactsDir;
     }
 
@@ -35,12 +35,12 @@ public class PathService : IPathService
         // ConfigService can override this if needed
         var repoRoot = GetRepoRoot();
         var outputDir = System.IO.Path.Combine(repoRoot, "artifacts");
-        
+
         if (!System.IO.Directory.Exists(outputDir))
         {
             System.IO.Directory.CreateDirectory(outputDir);
         }
-        
+
         return outputDir;
     }
 }
