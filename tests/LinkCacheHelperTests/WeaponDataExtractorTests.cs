@@ -23,8 +23,8 @@ namespace LinkCacheHelperTests
         [Theory]
         [MemberData(nameof(GetValidWeaponAndCobjTestData))]
         public async Task ExtractAsync_WithValidWeaponAndCobj_ReturnsExpectedCandidate(
-            FakeWeapon weapon, 
-            FakeConstructibleObject cobj, 
+            FakeWeapon weapon,
+            FakeConstructibleObject cobj,
             string expectedCandidateType,
             string expectedEditorId,
             string expectedSuggestedTarget)
@@ -33,7 +33,7 @@ namespace LinkCacheHelperTests
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
-            
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
@@ -59,7 +59,7 @@ namespace LinkCacheHelperTests
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
-            
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
@@ -78,7 +78,7 @@ namespace LinkCacheHelperTests
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(weapons ?? new object[0]);
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(cobjs ?? new object[0]);
-            
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
@@ -93,15 +93,15 @@ namespace LinkCacheHelperTests
         {
             yield return new object[]
             {
-                new FakeWeapon 
-                { 
+                new FakeWeapon
+                {
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
                     Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "AmmoMod.esp" }, ID = 0x2222 } }
                 },
-                new FakeConstructibleObject 
-                { 
+                new FakeConstructibleObject
+                {
                     CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
-                    EditorID = "COBJ_Editor" 
+                    EditorID = "COBJ_Editor"
                 },
                 "COBJ",
                 "COBJ_Editor",
@@ -113,15 +113,15 @@ namespace LinkCacheHelperTests
         {
             yield return new object[]
             {
-                new FakeWeapon 
-                { 
+                new FakeWeapon
+                {
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Excluded.esp" }, ID = 0x1111 },
                     Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Ammo.esp" }, ID = 0x2222 } }
                 },
-                new FakeConstructibleObject 
-                { 
+                new FakeConstructibleObject
+                {
                     CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "Excluded.esp" }, ID = 0x1111 },
-                    EditorID = "COBJ_Editor" 
+                    EditorID = "COBJ_Editor"
                 },
                 new HashSet<string> { "Excluded.esp" }
             };

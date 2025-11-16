@@ -37,7 +37,7 @@ namespace WeaponDataExtractorTestsProject
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
-            
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
@@ -72,7 +72,7 @@ namespace WeaponDataExtractorTestsProject
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(weapons ?? new object[0]);
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(cobjs ?? new object[0]);
-            
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
@@ -95,7 +95,7 @@ namespace WeaponDataExtractorTestsProject
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
-            
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
@@ -117,13 +117,13 @@ namespace WeaponDataExtractorTestsProject
         {
             yield return new object[]
             {
-                new FakeWeapon 
-                { 
+                new FakeWeapon
+                {
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
                     Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "AmmoMod.esp" }, ID = 0x2222 } }
                 },
-                new FakeConstructibleObject 
-                { 
+                new FakeConstructibleObject
+                {
                     CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
                     EditorID = "COBJ_Editor",
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "SourceMod.esp" }, ID = 0x9999 }
@@ -144,13 +144,13 @@ namespace WeaponDataExtractorTestsProject
             // Test case: Plugin is excluded
             yield return new object[]
             {
-                new FakeWeapon 
-                { 
+                new FakeWeapon
+                {
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "ExcludedMod.esp" }, ID = 0x1111 },
                     Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Ammo.esp" }, ID = 0x2222 } }
                 },
-                new FakeConstructibleObject 
-                { 
+                new FakeConstructibleObject
+                {
                     CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "ExcludedMod.esp" }, ID = 0x1111 },
                     EditorID = "COBJ_Editor",
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "ExcludedMod.esp" }, ID = 0x9999 }
@@ -162,13 +162,13 @@ namespace WeaponDataExtractorTestsProject
             // Test case: Plugin is not excluded
             yield return new object[]
             {
-                new FakeWeapon 
-                { 
+                new FakeWeapon
+                {
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "AllowedMod.esp" }, ID = 0x1111 },
                     Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Ammo.esp" }, ID = 0x2222 } }
                 },
-                new FakeConstructibleObject 
-                { 
+                new FakeConstructibleObject
+                {
                     CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "AllowedMod.esp" }, ID = 0x1111 },
                     EditorID = "COBJ_Editor",
                     FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "AllowedMod.esp" }, ID = 0x9999 }

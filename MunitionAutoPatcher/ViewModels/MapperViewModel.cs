@@ -147,7 +147,7 @@ public class MapperViewModel : ViewModelBase
                 var excludeDlc = _configService.GetExcludeDlcEsms();
                 var excludeCc = _configService.GetExcludeCcEsl();
                 var allAmmo = _weaponsService.GetAllAmmo();
-                    var preferEditor = _configService.GetPreferEditorIdForDisplay();
+                var preferEditor = _configService.GetPreferEditorIdForDisplay();
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var a in allAmmo)
                 {
@@ -384,7 +384,7 @@ public class MapperViewModel : ViewModelBase
                     FilteredOmodCandidates.Add(c);
             }
         }
-    catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in MapperViewModel.UpdateFilteredOmodsForSelectedMapping", ex); }
+        catch (Exception ex) { AppLogger.Log("Suppressed exception (empty catch) in MapperViewModel.UpdateFilteredOmodsForSelectedMapping", ex); }
     }
 
     private void AddSelectedOmodToMappings()

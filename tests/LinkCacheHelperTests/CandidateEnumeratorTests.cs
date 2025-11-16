@@ -45,15 +45,15 @@ namespace LinkCacheHelperTests
 
             // Act
             var results = CandidateEnumerator.EnumerateCandidates(
-                environment, 
-                excludedPlugins, 
-                null, 
+                environment,
+                excludedPlugins,
+                null,
                 NullLogger.Instance);
 
             // Assert
-            Assert.Contains(results, r => 
-                r.CandidateType == expectedCandidateType && 
-                r.SourcePlugin == expectedSourcePlugin && 
+            Assert.Contains(results, r =>
+                r.CandidateType == expectedCandidateType &&
+                r.SourcePlugin == expectedSourcePlugin &&
                 r.CandidateFormKey.PluginName == expectedWeaponPlugin);
         }
 
@@ -71,9 +71,9 @@ namespace LinkCacheHelperTests
 
             // Act
             var results = CandidateEnumerator.EnumerateCandidates(
-                environment, 
-                excludedPlugins, 
-                null, 
+                environment,
+                excludedPlugins,
+                null,
                 NullLogger.Instance);
 
             // Assert
@@ -91,9 +91,9 @@ namespace LinkCacheHelperTests
 
             // Act
             var results = CandidateEnumerator.EnumerateCandidates(
-                environment, 
-                excludedPlugins, 
-                null, 
+                environment,
+                excludedPlugins,
+                null,
                 NullLogger.Instance);
 
             // Assert
@@ -104,35 +104,35 @@ namespace LinkCacheHelperTests
         {
             var weapon = new FakeWeapon
             {
-                FormKey = new FakeFormKey 
-                { 
-                    ModKey = new FakeModKey { FileName = "TestPlugin" }, 
-                    ID = 0x1234 
+                FormKey = new FakeFormKey
+                {
+                    ModKey = new FakeModKey { FileName = "TestPlugin" },
+                    ID = 0x1234
                 },
-                Ammo = new FakeFormLink 
-                { 
-                    FormKey = new FakeFormKey 
-                    { 
-                        ModKey = new FakeModKey { FileName = "AmmoPlugin" }, 
-                        ID = 0xAAAA 
-                    } 
+                Ammo = new FakeFormLink
+                {
+                    FormKey = new FakeFormKey
+                    {
+                        ModKey = new FakeModKey { FileName = "AmmoPlugin" },
+                        ID = 0xAAAA
+                    }
                 }
             };
 
             var cobj = new FakeCOBJ
             {
-                CreatedObject = new FakeFormLink 
-                { 
-                    FormKey = new FakeFormKey 
-                    { 
-                        ModKey = new FakeModKey { FileName = "TestPlugin" }, 
-                        ID = 0x1234 
-                    } 
+                CreatedObject = new FakeFormLink
+                {
+                    FormKey = new FakeFormKey
+                    {
+                        ModKey = new FakeModKey { FileName = "TestPlugin" },
+                        ID = 0x1234
+                    }
                 },
-                FormKey = new FakeFormKey 
-                { 
-                    ModKey = new FakeModKey { FileName = "SourcePlugin" }, 
-                    ID = 0x1111 
+                FormKey = new FakeFormKey
+                {
+                    ModKey = new FakeModKey { FileName = "SourcePlugin" },
+                    ID = 0x1111
                 }
             };
 
@@ -150,27 +150,27 @@ namespace LinkCacheHelperTests
         {
             var weapon = new FakeWeapon
             {
-                FormKey = new FakeFormKey 
-                { 
-                    ModKey = new FakeModKey { FileName = "TestPlugin" }, 
-                    ID = 0x1234 
+                FormKey = new FakeFormKey
+                {
+                    ModKey = new FakeModKey { FileName = "TestPlugin" },
+                    ID = 0x1234
                 }
             };
 
             var cobj = new FakeCOBJ
             {
-                CreatedObject = new FakeFormLink 
-                { 
-                    FormKey = new FakeFormKey 
-                    { 
-                        ModKey = new FakeModKey { FileName = "TestPlugin" }, 
-                        ID = 0x1234 
-                    } 
+                CreatedObject = new FakeFormLink
+                {
+                    FormKey = new FakeFormKey
+                    {
+                        ModKey = new FakeModKey { FileName = "TestPlugin" },
+                        ID = 0x1234
+                    }
                 },
-                FormKey = new FakeFormKey 
-                { 
-                    ModKey = new FakeModKey { FileName = "SourcePlugin" }, 
-                    ID = 0x1111 
+                FormKey = new FakeFormKey
+                {
+                    ModKey = new FakeModKey { FileName = "SourcePlugin" },
+                    ID = 0x1111
                 }
             };
 
