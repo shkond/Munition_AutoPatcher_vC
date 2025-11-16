@@ -5,29 +5,47 @@ namespace LinkCacheHelperTests;
 
 public class TryResolveTests
 {
-    [Fact]
-    public void ReturnsNull_When_LinkLikeIsNull()
+    [Theory]
+    [InlineData(null, "validCache", "Null link parameter")]
+    [InlineData("validLink", null, "Null cache parameter")]
+    [InlineData(null, null, "Both parameters null")]
+    public void TryResolveViaLinkCache_WhenParametersAreNull_ReturnsNull(object? linkLike, object? cache, string scenario)
     {
-        var res = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(null, new object());
-        Assert.Null(res);
+        // Arrange
+        // Parameters are provided by the theory data
+
+        // Act
+        var result = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(linkLike, cache);
+
+        // Assert
+        Assert.Null(result);
     }
 
     [Fact]
-    public void ReturnsNull_When_LinkCacheDoesNotHaveTryResolve()
+    public void TryResolveViaLinkCache_WhenLinkCacheDoesNotHaveTryResolve_ReturnsNull()
     {
-        // Create a dummy object that does not implement TryResolve
+        // Arrange
         var dummyLink = new { Something = 1 };
         var dummyCache = new { NoResolve = true };
-        var res = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(dummyLink, dummyCache);
-        Assert.Null(res);
+
+        // Act
+        var result = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(dummyLink, dummyCache);
+
+        // Assert
+        Assert.Null(result);
     }
 
-    [Fact]
-    public void DoesNotThrow_For_InvalidInputs()
+    [Theory]
+    [InlineData("invalidLink", "invalidCache")]
+    [InlineData(123, 456)]
+    [InlineData(true, false)]
+    public void TryResolveViaLinkCache_WhenInputsAreInvalid_DoesNotThrow(object invalidLink, object invalidCache)
     {
-        var dummyLink = new object();
-        var dummyCache = new object();
-        var ex = Record.Exception(() => MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(dummyLink, dummyCache));
-        Assert.Null(ex);
+        // Arrange
+        // Parameters are provided by the theory data
+
+        // Act & Assert
+        var exception = Record.Exception(() => MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(invalidLink, invalidCache));
+        Assert.Null(exception);
     }
 }

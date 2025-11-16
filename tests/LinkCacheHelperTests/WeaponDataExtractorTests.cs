@@ -7,89 +7,125 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Models;
 using Xunit;
+using Moq;
 
 namespace LinkCacheHelperTests
 {
     public class WeaponDataExtractorTests
     {
+        // Test data classes - keeping these as they represent domain objects rather than services
         private class FakeModKey { public string FileName { get; set; } = string.Empty; }
         private class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
         private class FakeAmmoLink { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public bool IsNull => false; }
         private class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public FakeAmmoLink Ammo { get; set; } = new FakeAmmoLink(); }
         private class FakeConstructibleObject { public object CreatedObject { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = string.Empty; }
 
-        private class NoOpResourcedMutagenEnvironment : IResourcedMutagenEnvironment
+        [Theory]
+        [MemberData(nameof(GetValidWeaponAndCobjTestData))]
+        public async Task ExtractAsync_WithValidWeaponAndCobj_ReturnsExpectedCandidate(
+            FakeWeapon weapon, 
+            FakeConstructibleObject cobj, 
+            string expectedCandidateType,
+            string expectedEditorId,
+            string expectedSuggestedTarget)
         {
-            private readonly IEnumerable<object> _weapons;
-            private readonly IEnumerable<object> _cobjs;
-
-            public NoOpResourcedMutagenEnvironment(IEnumerable<object> weapons, IEnumerable<object> cobjs)
-            {
-                _weapons = weapons;
-                _cobjs = cobjs;
-            }
-
-            public void Dispose() { }
-
-            public IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections()
-            {
-                yield break;
-            }
-
-            public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
-
-            public Noggog.DirectoryPath? GetDataFolderPath() => null;
-
-            public IEnumerable<object> GetWinningConstructibleObjectOverrides() => _cobjs;
-
-            public IEnumerable<object> GetWinningWeaponOverrides() => _weapons;
-        }
-
-        [Fact]
-        public async Task ExtractAsync_HappyPath_ReturnsCandidate()
-        {
-            // Arrange: create a weapon with ammo and a COBJ that creates that weapon
-            var weaponForm = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 };
-            var ammoForm = new FakeFormKey { ModKey = new FakeModKey { FileName = "AmmoMod.esp" }, ID = 0x2222 };
-            var weapon = new FakeWeapon { FormKey = weaponForm, Ammo = new FakeAmmoLink { FormKey = ammoForm } };
-
-            var createdFormKey = weaponForm; // the created object refers to the weapon's form key
-            var cobj = new FakeConstructibleObject { CreatedObject = createdFormKey, EditorID = "COBJ_Editor" };
-
-            using var env = new NoOpResourcedMutagenEnvironment(new object[] { weapon }, new object[] { cobj });
+            // Arrange
+            var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
+            
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
-            var results = await extractor.ExtractAsync(env, new HashSet<string>());
+            var results = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());
 
             // Assert
             Assert.NotNull(results);
             Assert.Single(results);
-            var cand = results.First();
-            Assert.Equal("COBJ", cand.CandidateType);
-            Assert.Equal("COBJ_Editor", cand.CandidateEditorId);
-            Assert.Equal("CreatedWeapon", cand.SuggestedTarget);
+            var candidate = results.First();
+            Assert.Equal(expectedCandidateType, candidate.CandidateType);
+            Assert.Equal(expectedEditorId, candidate.CandidateEditorId);
+            Assert.Equal(expectedSuggestedTarget, candidate.SuggestedTarget);
         }
 
-        [Fact]
-        public async Task ExtractAsync_ExcludedPlugin_SkipsCandidate()
+        [Theory]
+        [MemberData(nameof(GetExcludedPluginTestData))]
+        public async Task ExtractAsync_WithExcludedPlugin_SkipsCandidate(
+            FakeWeapon weapon,
+            FakeConstructibleObject cobj,
+            HashSet<string> excludedPlugins)
         {
             // Arrange
-            var weaponForm = new FakeFormKey { ModKey = new FakeModKey { FileName = "Excluded.esp" }, ID = 0x1111 };
-            var ammoForm = new FakeFormKey { ModKey = new FakeModKey { FileName = "Ammo.esp" }, ID = 0x2222 };
-            var weapon = new FakeWeapon { FormKey = weaponForm, Ammo = new FakeAmmoLink { FormKey = ammoForm } };
-
-            var cobj = new FakeConstructibleObject { CreatedObject = weaponForm, EditorID = "COBJ_Editor" };
-
-            using var env = new NoOpResourcedMutagenEnvironment(new object[] { weapon }, new object[] { cobj });
+            var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
+            
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
-            var results = await extractor.ExtractAsync(env, new HashSet<string> { "Excluded.esp" });
+            var results = await extractor.ExtractAsync(mockEnvironment.Object, excludedPlugins);
 
             // Assert
             Assert.NotNull(results);
             Assert.Empty(results);
+        }
+
+        [Theory]
+        [InlineData(null, null)]
+        [InlineData(new object[0], new object[0])]
+        public async Task ExtractAsync_WithNullOrEmptyCollections_ReturnsEmptyResults(object[]? weapons, object[]? cobjs)
+        {
+            // Arrange
+            var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(weapons ?? new object[0]);
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(cobjs ?? new object[0]);
+            
+            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
+
+            // Act
+            var results = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());
+
+            // Assert
+            Assert.NotNull(results);
+            Assert.Empty(results);
+        }
+
+        public static IEnumerable<object[]> GetValidWeaponAndCobjTestData()
+        {
+            yield return new object[]
+            {
+                new FakeWeapon 
+                { 
+                    FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
+                    Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "AmmoMod.esp" }, ID = 0x2222 } }
+                },
+                new FakeConstructibleObject 
+                { 
+                    CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
+                    EditorID = "COBJ_Editor" 
+                },
+                "COBJ",
+                "COBJ_Editor",
+                "CreatedWeapon"
+            };
+        }
+
+        public static IEnumerable<object[]> GetExcludedPluginTestData()
+        {
+            yield return new object[]
+            {
+                new FakeWeapon 
+                { 
+                    FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Excluded.esp" }, ID = 0x1111 },
+                    Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Ammo.esp" }, ID = 0x2222 } }
+                },
+                new FakeConstructibleObject 
+                { 
+                    CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "Excluded.esp" }, ID = 0x1111 },
+                    EditorID = "COBJ_Editor" 
+                },
+                new HashSet<string> { "Excluded.esp" }
+            };
         }
     }
 }
