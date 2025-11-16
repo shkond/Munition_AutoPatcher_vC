@@ -71,9 +71,8 @@ namespace LinkCacheHelperTests
         }
 
         [Theory]
-        [InlineData(null, null)]
-        [InlineData(new object[0], new object[0])]
-        public async Task ExtractAsync_WithNullOrEmptyCollections_ReturnsEmptyResults(object[]? weapons, object[]? cobjs)
+        [MemberData(nameof(GetNullOrEmptyCollectionTestData))]
+        public async Task ExtractAsync_WithNullOrEmptyCollections_ReturnsEmptyResults(object[] weapons, object[] cobjs)
         {
             // Arrange
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
@@ -126,6 +125,12 @@ namespace LinkCacheHelperTests
                 },
                 new HashSet<string> { "Excluded.esp" }
             };
+        }
+
+        public static IEnumerable<object[]> GetNullOrEmptyCollectionTestData()
+        {
+            yield return new object[] { null, null };
+            yield return new object[] { new object[0], new object[0] };
         }
     }
 }

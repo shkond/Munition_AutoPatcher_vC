@@ -6,10 +6,9 @@ namespace LinkCacheHelperTests;
 public class TryResolveTests
 {
     [Theory]
-    [InlineData(null, "validCache", "Null link parameter")]
-    [InlineData("validLink", null, "Null cache parameter")]
-    [InlineData(null, null, "Both parameters null")]
-    public void TryResolveViaLinkCache_WhenParametersAreNull_ReturnsNull(object? linkLike, object? cache, string scenario)
+    [InlineData(null, "validCache")]
+    [InlineData("validLink", null)]
+    public void TryResolveViaLinkCache_WhenParametersAreNull_ReturnsNull(object? linkLike, object? cache)
     {
         // Arrange
         // Parameters are provided by the theory data

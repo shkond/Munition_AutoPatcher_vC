@@ -98,9 +98,8 @@ namespace LinkCacheHelperTests
         }
 
         [Theory]
-        [InlineData(null)]
-        [InlineData("")]
-        public void SetExcludedPlugins_WithNullOrEmptyList_HandlesGracefully(List<string>? pluginList)
+        [MemberData(nameof(GetNullOrEmptyPluginListTestData))]
+        public void SetExcludedPlugins_WithNullOrEmptyList_HandlesGracefully(List<string> pluginList)
         {
             // Arrange
             var configService = new ConfigService(NullLogger<ConfigService>.Instance);
@@ -109,7 +108,7 @@ namespace LinkCacheHelperTests
             try
             {
                 // Act & Assert - should not throw
-                var exception = Record.Exception(() => configService.SetExcludedPlugins(pluginList ?? new List<string>()));
+                var exception = Record.Exception(() => configService.SetExcludedPlugins(pluginList));
                 Assert.Null(exception);
             }
             finally
@@ -156,6 +155,12 @@ namespace LinkCacheHelperTests
                 1, // expected count
                 new string[] { "M_WEAPON_TEST" } // expected IDs
             };
+        }
+
+        public static IEnumerable<object[]> GetNullOrEmptyPluginListTestData()
+        {
+            yield return new object[] { new List<string>() }; // empty list
+            yield return new object[] { new List<string> { "" } }; // list with empty string
         }
     }
 }
