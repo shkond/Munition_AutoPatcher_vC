@@ -355,7 +355,10 @@ public class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
         {
             var cache = _env.LinkCache;
             if (cache == null) return null;
-            return new LinkResolver(cache);
+            // Create logger with correct type
+            var loggerFactory = Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
+            var linkResolverLogger = loggerFactory.CreateLogger<LinkResolver>();
+            return new LinkResolver(cache, linkResolverLogger);
         }
         catch (Exception ex)
         {

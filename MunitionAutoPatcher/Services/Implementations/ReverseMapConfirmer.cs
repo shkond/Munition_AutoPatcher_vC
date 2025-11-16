@@ -12,13 +12,16 @@ public class ReverseMapConfirmer : ICandidateConfirmer
 {
     private readonly IMutagenAccessor _mutagenAccessor;
     private readonly ILogger<ReverseMapConfirmer> _logger;
+    private readonly ILoggerFactory _loggerFactory;
 
     public ReverseMapConfirmer(
         IMutagenAccessor mutagenAccessor,
-        ILogger<ReverseMapConfirmer> logger)
+        ILogger<ReverseMapConfirmer> logger,
+        ILoggerFactory loggerFactory)
     {
         _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
     }
 
     /// <inheritdoc/>
@@ -221,7 +224,7 @@ public class ReverseMapConfirmer : ICandidateConfirmer
                     {
                         try
                         {
-                            var tmpResolver = new LinkResolver(context.LinkCache);
+                            var tmpResolver = new LinkResolver(context.LinkCache, _loggerFactory.CreateLogger<LinkResolver>());
                             tmpResolver.TryResolve(propValue, out resolved);
                         }
                         catch (Exception ex)

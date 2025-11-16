@@ -39,6 +39,29 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         }
         catch { /* ignore debug failures */ }
 
+        // Quick check: try resolving a known vanilla FormKey
+        try
+        {
+            if (context.LinkCache != null)
+            {
+                var testKey = new Mutagen.Bethesda.Plugins.FormKey(
+                    new Mutagen.Bethesda.Plugins.ModKey("Fallout4.esm", Mutagen.Bethesda.Plugins.ModType.Master),
+                    0x0004D00C); // Known vanilla OMOD
+                if (context.LinkCache.TryResolve<Mutagen.Bethesda.Fallout4.IObjectModificationGetter>(testKey, out var testOmod) && testOmod != null)
+                {
+                    _logger.LogInformation("QuickCheck: Successfully resolved vanilla OMOD Fallout4.esm:0004D00C");
+                }
+                else
+                {
+                    _logger.LogWarning("QuickCheck: FAILED to resolve vanilla OMOD Fallout4.esm:0004D00C - LinkCache may be incomplete");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "QuickCheck: Exception during vanilla FormKey test");
+        }
+
         // Build quick lookup: weapon attach slot keyword keys -> weapon FormKey
         var attachSlotToWeapon = new Dictionary<(string Plugin, uint Id), List<FormKey>>();
         foreach (var weapon in context.AllWeapons)
@@ -142,14 +165,25 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         _logger.LogInformation(
             "AttachPointConfirmer: inspected={Inspected}, resolvedToOmod={Resolved}, hadAttachPoint={AttachPts}, matchedWeapons={Matched}, foundAmmo={Ammo}, confirmed={Confirmed}",
             inspected, resolvedToOmod, hadAttachPoint, matchedWeapons, foundAmmo, confirmed);
-        // Detailed debug counters to help diagnose why resolution may be failing
-        try
+        
+        _logger.LogInformation(
+            "AttachPointConfirmer: failures rootNull={RootNull}, createdObjMissing={CreatedMissing}, createdObjResolveFail={ResolveFail}, createdObjNotOmod={NotOmod}",
+            rootNull, createdObjMissing, createdObjResolveFail, createdObjNotOmod);
+
+        // Log sample of rootNull failures for diagnosis
+        if (rootNull > 0)
         {
-            _logger.LogInformation(
-                "AttachPointConfirmer: debug rootNull={RootNull}, createdObjMissing={CreatedMissing}, createdObjResolveFail={ResolveFail}, createdObjNotOmod={NotOmod}",
-                rootNull, createdObjMissing, createdObjResolveFail, createdObjNotOmod);
+            try
+            {
+                int logged = 0;
+                foreach (var c in candidates.Where(x => !x.ConfirmedAmmoChange).Take(10))
+                {
+                    _logger.LogInformation("RootNull sample[{Index}]: Type={Type} FK={Plugin}:{Id:X8}",
+                        logged++, c.CandidateType, c.CandidateFormKey?.PluginName ?? "NULL", c.CandidateFormKey?.FormId ?? 0);
+                }
+            }
+            catch { /* best-effort */ }
         }
-        catch { /* best-effort logging */ }
     }
 
     private static bool IsOmodLike(OmodCandidate c)
@@ -306,7 +340,7 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                         }
                         else
                         {
-                            _logger.LogDebug("ResolveOmod: LinkCache typed resolve MISS {Plugin}:{Id:X8}", candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
+                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve MISS {Plugin}:{Id:X8}", candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
                         }
                     }
                 }
@@ -318,7 +352,7 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
 
             if (root == null)
             {
-                _logger.LogDebug("ResolveOmod: Resolver returned null for {Plugin}:{Id:X8}",
+                _logger.LogInformation("ResolveOmod: All resolution paths returned null for {Plugin}:{Id:X8}",
                     candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
             }
         }
@@ -382,21 +416,7 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
 
     private Mutagen.Bethesda.Plugins.FormKey? ToMutagenFormKey(FormKey fk)
     {
-        try
-        {
-            if (fk == null || string.IsNullOrWhiteSpace(fk.PluginName) || fk.FormId == 0) return null;
-            var fileName = System.IO.Path.GetFileName(fk.PluginName) ?? fk.PluginName;
-            var modType = Mutagen.Bethesda.Plugins.ModType.Plugin;
-            if (fileName.EndsWith(".esm", StringComparison.OrdinalIgnoreCase)) modType = Mutagen.Bethesda.Plugins.ModType.Master;
-            else if (fileName.EndsWith(".esl", StringComparison.OrdinalIgnoreCase)) modType = Mutagen.Bethesda.Plugins.ModType.Light;
-
-            var modKey = new Mutagen.Bethesda.Plugins.ModKey(fileName, modType);
-            return new Mutagen.Bethesda.Plugins.FormKey(modKey, fk.FormId);
-        }
-        catch
-        {
-            return null;
-        }
+        return FormKeyNormalizer.ToMutagenFormKey(fk);
     }
 
     private static object? TryGetFormLinkValue(object obj, params string[] propertyNames)

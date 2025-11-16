@@ -40,9 +40,9 @@ public class MutagenAccessor : IMutagenAccessor
         try
         {
             var resolver = env.GetLinkCache();
-            if (resolver is LinkResolver typedResolver && typedResolver.TypedLinkCache != null)
+            if (resolver is LinkResolver typedResolver && typedResolver.LinkCache != null)
             {
-                return typedResolver.TypedLinkCache;
+                return typedResolver.LinkCache;
             }
         }
         catch (Exception ex)

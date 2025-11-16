@@ -236,10 +236,10 @@ public class OrchestratorService : IOrchestrator
         {
             _logger.LogDebug("TryGetNativeLinkCache: resolverType={ResolverType}", resolver.GetType().FullName);
 
-            if (resolver is LinkResolver typed && typed.TypedLinkCache != null)
+            if (resolver is LinkResolver typed && typed.LinkCache != null)
             {
-                _logger.LogInformation("TryGetNativeLinkCache: resolver exposes typed cache (type={Type})", typed.TypedLinkCache.GetType().FullName);
-                return typed.TypedLinkCache;
+                _logger.LogInformation("TryGetNativeLinkCache: resolver exposes LinkCache (type={Type})", typed.LinkCache.GetType().FullName);
+                return typed.LinkCache;
             }
 
             var cache = resolver.LinkCache;
