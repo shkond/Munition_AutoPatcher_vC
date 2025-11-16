@@ -16,6 +16,6 @@ namespace MunitionAutoPatcher.Services.Interfaces
         /// <param name="excluded">Set of excluded plugin filenames</param>
         /// <param name="progress">Optional progress reporter</param>
         /// <returns>List of extracted OmodCandidate</returns>
-    Task<List<OmodCandidate>> ExtractAsync(IResourcedMutagenEnvironment env, System.Collections.Generic.HashSet<string> excluded, IProgress<string>? progress = null);
+        Task<List<OmodCandidate>> ExtractAsync(IResourcedMutagenEnvironment env, System.Collections.Generic.HashSet<string> excluded, IProgress<string>? progress = null);
     }
 }

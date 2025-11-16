@@ -36,7 +36,7 @@ public class ReverseMapConfirmer : ICandidateConfirmer
                     continue;
 
                 var baseKey = $"{candidate.BaseWeapon.PluginName}:{candidate.BaseWeapon.FormId:X8}";
-                
+
                 if (!context.ReverseMap.TryGetValue(baseKey, out var refs))
                     continue;
 
@@ -123,7 +123,7 @@ public class ReverseMapConfirmer : ICandidateConfirmer
                     {
                         if (_mutagenAccessor.TryGetPluginAndIdFromRecord(w, out var wPlugin, out var wId))
                         {
-                            return string.Equals(wPlugin, candidate.BaseWeapon!.PluginName, StringComparison.OrdinalIgnoreCase) 
+                            return string.Equals(wPlugin, candidate.BaseWeapon!.PluginName, StringComparison.OrdinalIgnoreCase)
                                    && wId == candidate.BaseWeapon.FormId;
                         }
                     }
@@ -152,7 +152,7 @@ public class ReverseMapConfirmer : ICandidateConfirmer
                         var mk = fk.GetType().GetProperty("ModKey")?.GetValue(fk);
                         var idObj = fk.GetType().GetProperty("ID")?.GetValue(fk);
                         var plugin = mk?.GetType().GetProperty("FileName")?.GetValue(mk)?.ToString() ?? string.Empty;
-                        
+
                         uint id = 0;
                         if (idObj is uint ui)
                             id = ui;
@@ -183,13 +183,13 @@ public class ReverseMapConfirmer : ICandidateConfirmer
         return false;
     }
 
-    private bool TryConfirmViaPropertyScan(OmodCandidate candidate, object sourceRec, 
+    private bool TryConfirmViaPropertyScan(OmodCandidate candidate, object sourceRec,
         (object Record, string PropName, object PropValue) entry, ConfirmationContext context)
     {
         try
         {
             var props = sourceRec.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            
+
             foreach (var prop in props)
             {
                 context.CancellationToken.ThrowIfCancellationRequested();
@@ -264,7 +264,7 @@ public class ReverseMapConfirmer : ICandidateConfirmer
                         candidate.ConfirmedAmmoChange = true;
                         candidate.ConfirmReason = $"Resolved {prop.Name} -> {resolvedTypeName} on {entry.Record.GetType().Name}";
                         candidate.CandidateAmmo = new FormKey { PluginName = plugin, FormId = id };
-                        
+
                         if (resolvedGetter != null)
                         {
                             candidate.CandidateAmmoName = _mutagenAccessor.GetEditorId(resolvedGetter);

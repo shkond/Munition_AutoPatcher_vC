@@ -35,8 +35,8 @@ public class CobjCandidateProvider : ICandidateProvider
             }
 
             var results = _weaponDataExtractor.ExtractAsync(
-                context.Environment, 
-                context.ExcludedPlugins, 
+                context.Environment,
+                context.ExcludedPlugins,
                 context.Progress).GetAwaiter().GetResult();
 
             _logger.LogInformation("Extracted {Count} COBJ candidates", results.Count);
