@@ -33,6 +33,11 @@
 
 [Gates determined based on constitution file]
 
+Note: If research or design requires inspecting Mutagen internals (APIs, generated code,
+or schema files), the investigator MUST use the project's GitHub MCP server integration to
+query the `Mutagen-Modding/Mutagen` repositories for authoritative implementation details
+before drafting implementation code or relying on undocumented APIs.
+
 ## Project Structure
 
 ### Documentation (this feature)

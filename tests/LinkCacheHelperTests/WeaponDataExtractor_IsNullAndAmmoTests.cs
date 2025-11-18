@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Implementations;
+using Mutagen.Bethesda.Plugins.Records;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -10,10 +11,10 @@ namespace LinkCacheHelperTests
 {
     public class WeaponDataExtractor_AdditionalTests
     {
-        private class FakeModKey { public string FileName { get; set; } = string.Empty; }
-        private class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
-        private class FakeAmmoLink { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public bool IsNull => false; }
-        private class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public FakeAmmoLink Ammo { get; set; } = new FakeAmmoLink(); public string? EditorID { get; set; } }
+        public class FakeModKey { public string FileName { get; set; } = string.Empty; }
+        public class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
+        public class FakeAmmoLink { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public bool IsNull => false; }
+        public class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public FakeAmmoLink Ammo { get; set; } = new FakeAmmoLink(); public string? EditorID { get; set; } }
         private class FakeNullLink { public bool IsNull => true; }
         private class FakeConstructibleObject { public object CreatedObject { get; set; } = new FakeFormKey(); public string? EditorID { get; set; } = string.Empty; public FakeFormKey? FormKey { get; set; } }
 
@@ -35,6 +36,11 @@ namespace LinkCacheHelperTests
                 => new[] { ("ConstructibleObject", _cobjs), ("Weapon", _weapons) };
             public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
             public void Dispose() { }
+            // Typed accessors
+            public IEnumerable<Mutagen.Bethesda.Fallout4.IWeaponGetter> GetWinningWeaponOverridesTyped() => System.Linq.Enumerable.Empty<Mutagen.Bethesda.Fallout4.IWeaponGetter>();
+            public IEnumerable<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped() => System.Linq.Enumerable.Empty<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter>();
+            public IEnumerable<Mutagen.Bethesda.Fallout4.IObjectModificationGetter> GetWinningObjectModificationsTyped() => System.Linq.Enumerable.Empty<Mutagen.Bethesda.Fallout4.IObjectModificationGetter>();
+            public IEnumerable<(string Name, IEnumerable<Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter> Items)> EnumerateRecordCollectionsTyped() => System.Linq.Enumerable.Empty<(string, IEnumerable<Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter>)>();
         }
 
         [Fact]

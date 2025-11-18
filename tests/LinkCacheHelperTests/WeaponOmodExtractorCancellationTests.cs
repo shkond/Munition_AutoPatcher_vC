@@ -8,6 +8,7 @@ using MunitionAutoPatcher.Services.Implementations;
 using Microsoft.Extensions.Logging.Abstractions;
 using MunitionAutoPatcher.Models;
 using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Plugins.Cache;
 
@@ -24,7 +25,7 @@ namespace LinkCacheHelperTests
                 new DummyMutagenEnvironmentFactory(),
                 new DummyDiagnosticWriter(),
                 Array.Empty<ICandidateProvider>(),
-                new DummyCandidateConfirmer(),
+                new[] { new DummyCandidateConfirmer() },
                 new DummyMutagenAccessor(),
                 new DummyPathService(),
                 NullLogger<WeaponOmodExtractor>.Instance,
@@ -83,6 +84,11 @@ namespace LinkCacheHelperTests
                 public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
                 public Noggog.DirectoryPath? GetDataFolderPath() => null;
                 public void Dispose() { }
+                    // Typed accessors
+                    public IEnumerable<IWeaponGetter> GetWinningWeaponOverridesTyped() => System.Linq.Enumerable.Empty<IWeaponGetter>();
+                    public IEnumerable<IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped() => System.Linq.Enumerable.Empty<IConstructibleObjectGetter>();
+                    public IEnumerable<IObjectModificationGetter> GetWinningObjectModificationsTyped() => System.Linq.Enumerable.Empty<IObjectModificationGetter>();
+                    public IEnumerable<(string Name, IEnumerable<IMajorRecordGetter> Items)> EnumerateRecordCollectionsTyped() => System.Linq.Enumerable.Empty<(string, IEnumerable<IMajorRecordGetter>)>();
             }
         }
 

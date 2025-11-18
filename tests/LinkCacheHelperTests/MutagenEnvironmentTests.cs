@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Noggog;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Plugins.Cache;
 using MunitionAutoPatcher.Services.Implementations;
 using Xunit;
 
@@ -34,6 +37,7 @@ namespace LinkCacheHelperTests
             }
             private sealed class FakeResolver : MunitionAutoPatcher.Services.Interfaces.ILinkResolver
             {
+                public ILinkCache? LinkCache => null;
                 public bool TryResolve(object linkLike, out object? result) { result = null; return false; }
                 public bool TryResolve<TGetter>(object linkLike, out TGetter? result) where TGetter : class? { result = null; return false; }
                 public object? ResolveByKey(MunitionAutoPatcher.Models.FormKey key) => null;
@@ -41,6 +45,11 @@ namespace LinkCacheHelperTests
             private readonly FakeResolver _resolver = new FakeResolver();
             public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => _resolver;
             public DirectoryPath? GetDataFolderPath() => null;
+            // Typed accessors (added to satisfy newer IMutagenEnvironment surface)
+            public IEnumerable<IWeaponGetter> GetWinningWeaponOverridesTyped() => System.Linq.Enumerable.Empty<IWeaponGetter>();
+            public IEnumerable<IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped() => System.Linq.Enumerable.Empty<IConstructibleObjectGetter>();
+            public IEnumerable<IObjectModificationGetter> GetWinningObjectModificationsTyped() => System.Linq.Enumerable.Empty<IObjectModificationGetter>();
+            public IEnumerable<(string Name, IEnumerable<IMajorRecordGetter> Items)> EnumerateRecordCollectionsTyped() => System.Linq.Enumerable.Empty<(string, IEnumerable<IMajorRecordGetter>)>();
         }
 
         private class FakeResource : IDisposable

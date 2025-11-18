@@ -24,10 +24,10 @@ namespace LinkCacheHelperTests
             try { if (Directory.Exists(_tmpRoot)) Directory.Delete(_tmpRoot, true); } catch { }
         }
 
-        private class FakeModKey { public string FileName { get; set; } = string.Empty; }
-        private class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
+        public class FakeModKey { public string FileName { get; set; } = string.Empty; }
+        public class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
         private class FakeSourceRecord { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); }
-        private class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = string.Empty; }
+        public class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = string.Empty; }
 
         [Fact]
         public void WriteReverseMapMarker_CreatesMarkerFile()

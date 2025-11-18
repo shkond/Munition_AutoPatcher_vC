@@ -216,6 +216,12 @@ public class TestEnvironmentBuilder
 }
 
 /// <summary>
+/// Local minimal interface to satisfy Mutagen DI type resolution in tests.
+/// </summary>
+public interface IDataDirectoryProvider { string Path { get; } }
+public interface IPluginListingsPathContext { string Path { get; } }
+
+/// <summary>
 /// Mock implementation of IDataDirectoryProvider for testing.
 /// </summary>
 public class MockDataDirectoryProvider : IDataDirectoryProvider
@@ -230,7 +236,7 @@ public class MockDataDirectoryProvider : IDataDirectoryProvider
 /// </summary>
 public class MockPluginListingsPathContext : IPluginListingsPathContext
 {
-    public FilePath Path { get; }
+    public string Path { get; }
 
     public MockPluginListingsPathContext(string path) => Path = path;
 }

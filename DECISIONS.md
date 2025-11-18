@@ -1,420 +1,159 @@
 # Munition AutoPatcher vC - 決定事項と開発記録
 
-## プロジェクト概要
+このドキュメントは、Munition AutoPatcher vC の「重要な設計判断（Architecture Decision）」と、
+それに紐づく開発の経緯を記録するためのものです。
 
-Fallout 4 の武器 MOD に対して RobCo Patcher の設定ファイル（INI）を自動生成する WPF アプリケーション。Mutagen を使用してプラグインから武器データを抽出し、弾薬とのマッピングを行い、パッチ設定を生成します。
+- 設計やアーキテクチャに関する合意事項を、後から辿れるようにする
+- なぜそうしたのか（Why）を残し、将来の自分/他の開発者の判断を助ける
+- Pull Request やチャットログに埋もれがちな情報を一箇所に集約する
 
-**最終更新**: 2025-11-01  
-**現在のブランチ**: `merge/backup-into-main`  
-**最新コミット**: feat(extraction): Refactor weapon data extraction and add unit tests
-
----
-
-## アーキテクチャ上の主要決定事項
-
-### 1. MVVM パターンの採用
-- **View**: XAML で定義された純粋な UI 層
-- **ViewModel**: UI ステートとロジック管理（データバインディング、コマンド）
-- **Model**: データ構造（WeaponData、StrategyConfig など）
-
-### 2. 依存性注入（DI）とサービス層
-- `Microsoft.Extensions.DependencyInjection` を使用
-- すべての依存関係は DI コンテナから提供
-- ビジネスロジックはインターフェースを通じてサービス層に分離
-- 主要サービス：
-  - `IWeaponsService`: 武器データ管理
-  - `IConfigService`: 設定管理
-  - `IWeaponOmodExtractor`: OMOD 候補抽出
-  - `IRobCoIniGenerator`: INI ファイル生成
-  - `ILoadOrderService`: ロードオーダー管理
-
-### 3. Mutagen 環境の Factory パターン
-- **`IMutagenEnvironmentFactory`**: Mutagen 環境インスタンスの生成責務
-- **`IResourcedMutagenEnvironment`**: `IMutagenEnvironment` + `IDisposable`
-- **重要**: 必ず `using` ブロックで使用し、リソースリークとファイルロックを防止
-  ```csharp
-  using (var env = factory.Create()) {
-      // Mutagen 操作
-  }
-  ```
-
-### 4. 単一責任原則とモジュール化
-複雑な操作を小さなヘルパークラスに分割：
-- **`CandidateEnumerator`**: OMOD/COBJ 候補の列挙
-- **`ReverseMapBuilder`**: 逆引きマップの構築
-- **`DiagnosticWriter`**: 診断ファイルとマーカーの出力
-- **`LinkCacheHelper`**: LinkCache を使った参照解決（再入ガード付き）
-- **`WeaponDataExtractor`**: 武器データ抽出ロジックの分離
-
-### 5. 非同期処理と UI レスポンシブネス
-- 長時間処理は `Task.Run` と `AsyncRelayCommand` で非同期実行
-- UI スレッドをブロックしない
-- 進捗報告は `IProgress<string>` を通じてリアルタイム更新
-- 抽出処理は UI スレッド外で実行（`MapperViewModel` で `Task.Run` 使用）
-
-### 6. 例外ハンドリングポリシー
-- **空の `catch {}` ブロックは禁止**
-- すべての例外は `AppLogger` でログ記録
-  ```csharp
-  catch (Exception ex) {
-      AppLogger.Log(ex, "エラー内容");
-  }
-  ```
-- 設定保存失敗など重要な例外は再スロー
-
-### 7. LinkCache 再入ガード
-- `AsyncLocal<HashSet<string>>` ベースの再入防止機構を実装
-- 循環参照による無限ループを防止
-- `LinkCacheHelper.TryResolveViaLinkCache` に実装
-
-### 8. 診断とデバッグのサポート
-- フェーズマーカーファイル出力（start/reverse/detector/detection_pass/complete）
-- zero-ref 集約 CSV 出力（候補ごとではなく1回の集約）
-- Noveske 診断 CSV
-- UI ログは `Dispatcher` 経由で非同期転送、再入防止フラグ付き
-
-### 9. 検出器の拡張性
-- `DetectorFactory` パターンで複数の検出器をサポート
-- `MutagenV51Detector`: Mutagen 0.51.x 用の検出器
-- `ReflectionFallbackDetector`: リフレクションベースのフォールバック検出器
+**運用ルール（最小）**
+- 「設計レベル」の変更を行ったら、必ずここにエントリを 1 つ追加する
+- 1 つのエントリは「1 つの決定」に絞る（複数の決定を混ぜない）
+- 書き方は以下のテンプレートに従う
 
 ---
 
-## 現在の実装状況
+## テンプレート
 
-### ✅ 実装済み機能
+新しい決定を追加する際は、このテンプレートをコピーして編集します。
 
-1. **設定画面**
-   - ゲームデータパス設定
-   - 出力パス設定
-   - マッピング戦略設定
-   - 除外プラグイン編集
+```markdown
+### ADR-XXX: <短いタイトル>
 
-2. **武器データ抽出**
-   - Mutagen によるプラグイン読み込み
-   - ロードオーダー考慮
-   - WinningOverrides による競合解決
-   - 武器メタデータ抽出（名前、ダメージ、発射速度、弾薬など）
-   - `IWeaponDataExtractor` インターフェースによる抽出ロジックの分離
+- **Date**: YYYY-MM-DD
+- **Status**: Proposed / Accepted / Deprecated / Superseded by ADR-YYY
+- **Related-PR**: #<number> (あれば)
+- **Author**: @<GitHubユーザ名>
 
-3. **OMOD 候補抽出**
-   - リフレクションベースの抽出
-   - COBJ レコードのスキャン
-   - 逆引きマップ構築（`ReverseMapBuilder`）
-   - 弾薬変更検出（複数検出器対応）
-   - 除外プラグインのフィルタリング
+#### Context
+- なぜこの決定が必要になったのか
+- どのような問題・背景があったのか
+- 関係するファイルや機能（例: `WeaponOmodExtractor`, Mutagen Accessor など）
 
-4. **マッピング画面**
-   - 抽出された武器一覧表示
-   - 武器フィルタリング（選択した武器の OMOD のみ表示）
-   - OMOD マッピング管理
+#### Decision
+- 採用した方針の要約
+- 「こうする」という具体的なルール・インターフェース・責務分担など
 
-5. **INI 生成**
-   - タイムスタンプ付き INI ファイル生成
-   - 手動マッピングフラグサポート
-   - ディレクトリ自動作成
+#### Alternatives
+- 検討したが採用しなかった案と、その理由
+  - 案A: ……（却下理由）
+  - 案B: ……（却下理由）
 
-6. **ログシステム**
-   - `AppLogger` による集約ログ
-   - UI ログは `Dispatcher` 経由で非同期転送
-   - 永続化ログファイル（`munition_autopatcher_ui.log`）
-   - 再入防止フラグによるログループ防止
-
-7. **診断機能**
-   - フェーズマーカーファイル出力
-   - zero-ref 集約 CSV
-   - Noveske 診断 CSV
-   - reverse-map 構築マーカー
-
-8. **テスト**
-   - `LinkCacheHelperTests`
-   - `ReverseMapBuilderTests`
-   - `CandidateEnumeratorTests`
-   - `MutagenAdapterTests`
-   - `AssemblyInfo.cs` で `InternalsVisibleTo` を設定
-
-### 🔄 進行中の改善
-
-- 未コミットの変更がある（7ファイル modified）:
-  - `.gitignore`
-  - `CandidateEnumerator.cs`
-  - `LinkCacheHelper.cs`
-  - `WeaponDataExtractor.cs`
-  - `Program.cs` (tests)
-  - `CandidateEnumeratorTests.cs`
-  - `LinkCacheHelperTests.csproj`
-  - `MutagenAdapterTests.cs`
+#### Consequences
+- この決定によって得られるメリット
+- 発生しうるデメリットや制約
+- 将来的に変更する場合のコストや考慮点
+```
 
 ---
 
-## 未解決タスク・今後の作業
+## 既存の主要な決定（サマリ）
 
-### 優先度: 高 🔴
+> 詳細は今後、個別の ADR として整理していきます。ここでは、すでにプロジェクトで合意済みの
+> 重要な決定を箇条書きでまとめています。
 
-1. **実行検証**
-   - 抽出を再実行して `extract_complete_*.txt` が生成されるか確認
-   - `munition_autopatcher_ui.log` の末尾100行と `artifacts/RobCo_Patcher` のファイル一覧を検証
-   - 完了マーカーが正しく出力されることを確認
+### ADR-001: WPF MVVM + DI アーキテクチャ
 
-2. **未コミット変更のレビューとコミット**
-   - 現在の modified ファイルをレビュー
-   - テストが通ることを確認
-   - コミット可能な状態か確認
-
-3. **CI/CD セットアップ**
-   - `.github/workflows/ci.yml` の作成
-   - `runs-on: windows-latest` を使用
-   - GUI 依存テストの分離またはスキップ
-   - ビルドとテストの自動実行
-
-### 優先度: 中 🟡
-
-4. **デバッグログ強化**
-   - 完了マーカーが出ない場合の調査用ログ追加
-   - `ExtractCandidatesAsync` の reverse-map 以降に滞留ポイントログ
-   - 短時間のデバッグログ（開始/終了/滞留）
-
-5. **テスト拡充**
-   - `DiagnosticWriter` のユニットテスト
-   - `DetectionCoordinator` の分離とテスト
-   - LinkCache 再入ケースの再現テスト
-   - 統合テスト（小さな fixture load order で全フロー検証）
-
-6. **コンポーネント分離の継続**
-   - `ICandidateNameResolver` の抽出
-   - `IDetectionCoordinator` の抽出
-   - `IArtifactWriter` の抽出
-   - `ICandidatePostProcessor` の抽出
-
-### 優先度: 低 🟢
-
-7. **リフレクション周辺の堅牢化**
-   - null チェック強化
-   - 詳細エラーログ
-   - API 互換性テスト
-   - `MutagenReflectionHelpers` のテスト
-
-8. **UI 改善**
-   - 優先表示言語の設定（日本語/英語/EditorID）
-   - `ITranslatedString` のフォールバック改善
-   - `IProgress<ProgressEvent>` のような DTO への切り替え（多情報伝達）
-
-9. **パフォーマンス最適化**
-   - 大規模 CSV のストリーミング書き込み
-   - リフレクション呼び出しのキャッシング
-   - `allWeapons.ToList()` の最適化（必要な場合のみ）
-
-10. **ロギング改善**
-    - `ILogger<T>` (Microsoft.Extensions.Logging) への切り替え
-    - テストと統合の容易化
+- **Date**: 2025-10-28
+- **Status**: Accepted
+- **Context**:
+  - Fallout 4 の武器 MOD から RobCo Patcher 用の設定を生成する WPF アプリとして、
+    UI・ロジック・データを明確に分離し、テストしやすく保守性の高い構成にしたい。
+- **Decision**:
+  - View: XAML による UI 表現のみ（ビジネスロジック禁止）
+  - ViewModel: UI 状態・コマンド・検証を担当（DI でサービスを受け取る）
+  - Model/Service: ビジネスロジックとデータ操作（UI 非依存）
+  - 依存性注入に `Microsoft.Extensions.DependencyInjection` を採用し、すべてのサービスは DI コンテナから提供する。
+- **Consequences**:
+  - テスト容易性と拡張性が向上する一方、初期実装のコード量と抽象化レイヤは増える。
 
 ---
 
-## 参照すべきファイル
+### ADR-002: Mutagen を IMutagenAccessor 経由でのみ利用する
 
-### コアサービス
-- `MunitionAutoPatcher/Services/Implementations/WeaponOmodExtractor.cs` - OMOD 抽出のオーケストレーター
-- `MunitionAutoPatcher/Services/Implementations/LinkCacheHelper.cs` - LinkCache 参照解決と再入ガード
-- `MunitionAutoPatcher/Services/Implementations/WeaponDataExtractor.cs` - 武器データ抽出ロジック
-- `MunitionAutoPatcher/Services/Implementations/MutagenEnvironmentFactory.cs` - Mutagen 環境の生成
-- `MunitionAutoPatcher/Services/Implementations/DetectorFactory.cs` - 検出器の生成
-- `MunitionAutoPatcher/Services/Implementations/WeaponsService.cs` - 武器データ管理
-
-### ヘルパー
-- `MunitionAutoPatcher/Services/Helpers/CandidateEnumerator.cs` - OMOD/COBJ 候補の列挙
-- `MunitionAutoPatcher/Services/Helpers/ReverseMapBuilder.cs` - 逆引きマップ構築
-- `MunitionAutoPatcher/Services/Helpers/DiagnosticWriter.cs` - 診断ファイル出力
-
-### ViewModel
-- `MunitionAutoPatcher/ViewModels/MapperViewModel.cs` - マッピング画面のロジック
-- `MunitionAutoPatcher/ViewModels/SettingsViewModel.cs` - 設定画面のロジック
-- `MunitionAutoPatcher/ViewModels/MainViewModel.cs` - メインウィンドウのロジック
-
-### ユーティリティ
-- `MunitionAutoPatcher/Utilities/RepoUtils.cs` - リポジトリルート探索
-- `MunitionAutoPatcher/AppLogger.cs` - 集約ログ
-
-### テスト
-- `tests/LinkCacheHelperTests/` - LinkCache 関連のテスト
-- `tests/AutoTests/Program.cs` - 自動テストプログラム
-
-### 出力・ログ
-- `artifacts/RobCo_Patcher/` - 抽出フェーズマーカー、CSV
-- `munition_autopatcher_ui.log` - UI ログファイル
-
-### ドキュメント
-- `ARCHITECTURE.md` - アーキテクチャ設計書
-- `README.md` - プロジェクト概要とセットアップ
+- **Date**: 2025-11-18
+- **Status**: Accepted
+- **Context**:
+  - Mutagen.Bethesda.Fallout4 は強力だが複雑であり、API の変更やバージョン差が頻繁に起こりうる。
+  - ViewModel や個別のサービスが Mutagen の型に直接依存すると、リファクタリングやバージョンアップが困難になる。
+- **Decision**:
+  - Mutagen の呼び出しはすべて `IMutagenAccessor`（またはその下の Strategy）に集約する。
+  - View/ViewModel/Service は Mutagen を直接参照せず、Accessor が提供する安定な抽象 API にのみ依存する。
+- **Alternatives**:
+  - 各サービスが直接 Mutagen を参照する案
+    - 取り回しは簡単だが、Mutagen の変更がコード全体に波及するため却下。
+- **Consequences**:
+  - Accessor 層の責務は増えるが、Mutagen の仕様変更や検出ロジックの改良をその層に閉じ込めやすくなる。
+  - テストでは `IMutagenAccessor` をモックするだけで多くのケースをカバーできる。
 
 ---
 
-## 次の推奨アクション
+### ADR-003: Mutagen バージョン pin なし + Detector パターンで機能検知
 
-1. **検証実行**: 抽出を実行し、完了マーカーと UI ログを確認して現在の実装が正常動作するか検証する
-2. **変更のコミット**: 未コミットの7ファイルをレビューし、テストが通ることを確認してコミットする
-3. **CI 構築**: GitHub Actions ワークフローを作成し、自動ビルド・テストを有効化する
-
----
-
-## 過去のチャットサマリー（履歴）
-
-<details>
-<summary>2025-10-28 セッション 1 - MCP/Serena オンボーディング</summary>
-
-### 要約
-MunitionAutoPatcher リポジトリに対する MCP/Serena の検証とオンボーディングを完了しました。プロジェクトをアクティベートし、オンボーディング情報（project_overview、suggested_commands、code_conventions）をメモリに書き込み、`README.md` に CI セクションを追加、`.github/copilot-instructions.md` を英語で整理・重複削除しました。ビルド検証も実行し問題なしです。
-
-### 決定事項
-- MCP/Serena によるオンボーディングとメモリ作成を実行
-- `README.md` に CI セクションを追加
-- `.github/copilot-instructions.md` を整理
-
-### 推奨アクション
-1. DECISIONS.md への要約追記
-2. `.github/workflows/ci.yml` を作成して CI を有効化
-3. テスト実行と CI 上での GUI テスト除外ルールを検証
-
-</details>
-
-<details>
-<summary>2025-10-28 セッション 2 - リファクタリングと保守性向上</summary>
-
-### 要約
-`WeaponOmodExtractor` の責務分割（ヘルパ抽出）、共通ユーティリティ化（`RepoUtils.FindRepoRoot`）、および複数ファイルの空の catch ブロックを例外をログする実装へ置換しました。単体テストを追加しビルドとテストを確認、変更を `merge/backup-into-main` ブランチにコミット＆プッシュしました。
-
-### 主な変更
-- 追加: `MunitionAutoPatcher/Utilities/RepoUtils.cs` - リポジトリルート探索
-- 追加: `MunitionAutoPatcher/Services/Helpers/ReverseMapBuilder.cs`
-- 追加: `MunitionAutoPatcher/Services/Helpers/DiagnosticWriter.cs`
-- 追加: `MunitionAutoPatcher/Services/Helpers/CandidateEnumerator.cs`
-- 更新: `MunitionAutoPatcher/Services/Implementations/WeaponOmodExtractor.cs` - ヘルパ呼び出しに置換
-- 更新: `MunitionAutoPatcher/Services/Implementations/WeaponsService.cs` - `WriteRecordsLog` 実装のクリーンアップ
-- 追加: `tests/LinkCacheHelperTests/ReverseMapBuilderTests.cs`
-- 追加: `tests/LinkCacheHelperTests/CandidateEnumeratorTests.cs`
-- 追加: `MunitionAutoPatcher/Properties/AssemblyInfo.cs` - internals visibility
-
-### 決定事項
-- `RepoUtils.FindRepoRoot()` を導入し既存の局所実装を置換
-- `WeaponOmodExtractor` から `ReverseMapBuilder` / `DiagnosticWriter` / `CandidateEnumerator` を抽出
-- 空の `catch {}` を `catch (Exception ex)` + `AppLogger.Log(...)` に置換
-- 設定保存失敗はログ後に再送出する方針を採用
-
-### オープンアイテム
-- DiagnosticWriter tests - HIGH: ユニットテスト追加
-- Detector separation - MEDIUM: 検出器調整ロジックの抽出
-- Complete FindRepoRoot replacement - MEDIUM: リポジトリ全体で `FindRepoRoot` を置換
-
-</details>
-
-<details>
-<summary>2025-10-28 セッション 3 - LinkCache 再入ガードと抽出改善</summary>
-
-### 要約（約200文字）
-LinkCache 解決の再入ガードを `LinkCacheHelper.TryResolveViaLinkCache` に `AsyncLocal<HashSet<string>>` ベースで実装し、反射周りの nullable 警告を調整しました。zero-ref 出力を候補ごとから1つの集約CSVに変更し、抽出処理を UI スレッド外で実行、AppLogger を Dispatcher 経由で UI へ非同期転送する改善と抽出フェーズのファイルマーカー追加を行い、ビルドは成功。
-
-### 決定事項
-- `LinkCacheHelper.TryResolveViaLinkCache` に `AsyncLocal<HashSet<string>>` ベースの再入ガードを導入
-- zero-ref 出力は候補ごとではなく1回の集約CSVへ変更
-- 抽出処理を UI スレッド外で実行するよう ViewModel を修正（Task.Run を使用）
-- AppLogger は Dispatcher 経由で UI へ非同期転送し、再入防止フラグを追加
-- 抽出内でフェーズ／コマンドのマーカー（start/reverse/detector/detection_pass/complete）をファイル出力
-
-### 未解決タスク
-- 抽出を再実行して `extract_complete_*.txt` が生成されるか確認（優先度: 高）
-- 実行後の `munition_autopatcher_ui.log` の末尾100行と `artifacts/RobCo_Patcher` のファイル一覧を提供（優先度: 高）
-- もし完了マーカーが出ない場合、`ExtractCandidatesAsync` の reverse-map 以降に短時間のデバッグログを追加して再調査（優先度: 中）
-- reflection 呼び出し周辺の堅牢化（null チェック、詳細ログ、ユニットテストで再入ケース再現）（優先度: 低）
-
-</details>
-
-<details>
-<summary>将来のリファクタリング提案 - コンポーネント分離</summary>
-
-### 提案されたインターフェース
-
-1. **IWeaponDataExtractor**
-   - 責務: 武器データの抽出（ExtractFromConstructibleObjects）
-   - ライフタイム: Transient
-
-2. **ICandidateNameResolver**
-   - 責務: 候補の名前解決、weaponMap/ammoMap の構築
-   - ライフタイム: Transient
-
-3. **IDetectionCoordinator**
-   - 責務: 検出器の選択と弾薬変更の確認
-   - ライフタイム: Transient
-
-4. **IArtifactWriter**
-   - 責務: ファイル書き込み（CSV、マーカー）
-   - ライフタイム: Singleton または Transient
-
-5. **ICandidatePostProcessor**
-   - 責務: ConfirmReason の設定、zero-ref 集計
-   - ライフタイム: Transient
-
-### 移行ロードマップ（段階的）
-- ステップ 0: 準備（インターフェース定義）
-- ステップ 1: WeaponDataExtractor の抜き出し（30-60分）
-- ステップ 2: CandidateNameResolver（45-90分）
-- ステップ 3: DetectionCoordinator（30-60分）
-- ステップ 4: ArtifactWriter（30-60分）
-- ステップ 5: CandidatePostProcessor（30-45分）
-- ステップ 6: WeaponOmodExtractor のクリーンアップ（15-30分）
-- ステップ 7: テスト作成 & CI（30-90分）
-
-合計見積: 4-10時間（小刻みに実施）
-
-### DI ライフタイム推奨
-- IMutagenEnvironmentFactory: Transient
-- IWeaponDataExtractor: Transient
-- ICandidateNameResolver: Transient
-- IDetectionCoordinator: Transient
-- IArtifactWriter: Singleton または Transient
-- ICandidatePostProcessor: Transient
-
-理由: 各コンポーネントは基本的にステートレスで、並列実行やテストで複数インスタンスを作ることが想定されるため Transient が無難。
-
-</details>
-
-<details>
-<summary>2025-11-10 セッション 4 - ESPパッチ生成 `success=0` 問題の解決</summary>
-
-### 問題
-ESPパッチを生成しても、有効な変更が1件もない `success=0` の状態となり、実質的に空のパッチしか生成されない問題が確認された。
-
-### 原因分析
-- **根本原因**: 従来の候補検出ロジック (`ReverseMapConfirmer`) は、OMOD/COBJレコードから武器レコードへの直接的な`FormLink`（逆参照）に依存していた。
-- **Fallout 4の仕様**: 多くの武器MODでは、OMOD（武器改造パーツ）とWEAP（武器）の関連付けは、直接リンクではなく、`ap_` プレフィックスを持つキーワード（`Attach Point`）を介して行われる。武器側は `Attach Parent Slots` に対応するキーワードを持つことで、その改造パーツが装着可能であることを示す。
-- **結果**: 直接リンクが存在しないため、逆参照スキャンではこれらの関連性を見つけ出すことができず、パッチ適用候補が0件となっていた。
-
-### 決定事項
-- 従来の逆参照ベースのロジックに加え、**アタッチポイントベースの新しい候補確認ロジック**を導入する。
-- `ICandidateConfirmer` インターフェースを実装する `AttachPointConfirmer` を新規に作成する。
-- この `confirmer` は以下の責務を持つ:
-    1. OMODから `AttachPoint` キーワードを取得する。
-    2. 全ての武器の `AttachParentSlots` をスキャンし、OMODの `AttachPoint` と一致する武器を特定する。
-    3. 一致した場合、その(武器, OMOD)ペアを有効な候補としてマーク (`ConfirmedAmmoChange = true`) し、パッチ生成対象とする。
-- `WeaponOmodExtractor` を改修し、複数の `ICandidateConfirmer`（`ReverseMapConfirmer` と `AttachPointConfirmer`）を連鎖的に実行できるようにする。
-
-### 実装内容
-- **`AttachPointConfirmer.cs`**: 新規追加。上記ロジックを実装。
-- **`WeaponOmodExtractor.cs`**: `IEnumerable<ICandidateConfirmer>` をコンストラクタで受け取り、各 `confirmer` を順次実行するよう修正。
-- **`App.xaml.cs`**: 新しい `AttachPointConfirmer` をDIコンテナに `Singleton` として登録。
-
-### 期待される効果
-この変更により、これまで検出できなかったアタッチポイント経由でのOMODと武器の関連性を正しく検出し、ESPパッチ生成時に `success > 0` となることが期待される。
-
-</details>
+- **Date**: 2025-11-18
+- **Status**: Accepted
+- **Context**:
+  - 長期的には Mutagen のバージョンをアップデートし続けたいが、そのたびに全面的なコード修正は避けたい。
+  - 以前は特定バージョン（例: 0.51.x）に依存する Detector 実装があり、バージョンアップが難しくなっていた。
+- **Decision**:
+  - パッケージバージョンを「固定」せず、アプリ起動時に Mutagen の機能（メソッド・型の有無）を検出する。
+  - `MutagenCapabilityDetector` で機能検知し、`IMutagenApiStrategy` の実装を切り替える。
+- **Alternatives**:
+  - バージョンを固定し、Mutagen の更新タイミングで手動移行する案
+    - 一見シンプルだが、将来の保守性と柔軟性を損なうため不採用。
+- **Consequences**:
+  - Accessor/Detector 層が多少複雑になるが、将来の Mutagen 更新を低コストで吸収できる。
+  - リフレクション等を使う場合も、この層に閉じ込めて型安全 API に変換する必要がある。
 
 ---
 
-## 備考
+### ADR-004: ログ設計 — ILogger + IAppLogger + AppLoggerProvider
 
-### 表示言語に関する注意事項
-本アプリケーションでは、Mutagen が提供する翻訳文字列（ITranslatedString）から表示用文字列を取得する際に、優先言語の選択が重要です。現在の実装では、Mutagen の翻訳文字列を日本語 → 英語 → TargetLanguage の順で選択するロジックを採用しています。
-
-今後の改善として、UI に「優先表示言語」設定を追加し、ユーザーが日本語／英語／EditorID の順序を切り替えられるようにすることが推奨されます。翻訳エントリが存在しない場合は EditorID をフォールバック表示することで、文字化けや不正なレンダリングを回避できます。
+- **Date**: 2025-11-18
+- **Status**: Accepted
+- **Context**:
+  - 既存コードでは `AppLogger` によるログと、将来導入予定の `ILogger<T>`（Microsoft.Extensions.Logging）が混在する可能性がある。
+  - ログ出力先パス、重大度、UI 通知のルールを統一したい。
+- **Decision**:
+  - 既定ログパスは `./artifacts/logs/munition_autopatcher_ui.log` とし、アプリ起動時に作成と書込可否を検証する。
+  - サービス層は `ILogger<T>` を使用し、UI 層とユーザ通知は `IAppLogger` を使用する。
+  - `AppLoggerProvider` が `ILoggerProvider` を実装し、ログのファイル出力と `IAppLogger` への転送（Warning 以上）を行う。
+  - コンソール出力（`Console.WriteLine` / `Debug.WriteLine`）は禁止。
+- **Consequences**:
+  - ログ経路が明確になり、重大なエラーを UI に確実に届けられる。
+  - ログ初期化/フォールバック処理が App 起動コードに必要になる。
 
 ---
 
-**このドキュメントは開発の進捗に応じて更新されます。**
+### ADR-005: AI 支援開発のステージ制運用
+
+- **Date**: 2025-11-18
+- **Status**: Accepted
+- **Context**:
+  - AI が Mutagen API や内部仕様を十分に参照せず、リフレクションや推測コードに依存する提案をすることがあった。
+  - 型安全で保守しやすいコードを得るためには、AI 利用のプロセス自体を制御する必要がある。
+- **Decision**:
+  - AI を利用する際は、以下のステージを明示的に分けて運用する:
+    - Stage 1: API 選定レビュー（ProposedAPIs 列挙のみ。コード生成禁止）
+    - Stage 2: 設計合意（入出力・ErrorPolicy・Performance・DisposePlan の合意）
+    - Stage 3: 最小スパイク（短い snippet / pseudo-code）
+    - Stage 4: 本実装
+  - AI への固定ガードレール:
+    - Reflection / dynamic 使用禁止
+    - Mutagen 呼び出しは Accessor 経由のみ
+    - 非同期 + WinningOverrides + LinkCache + DisposePlan を明示
+  - Stage 1 の AI 回答には必ず以下のセクションを含める:
+    - ProposedAPIs / Rationale / ErrorPolicy / Performance / DisposePlan / References
+- **Consequences**:
+  - 1 回で「コードまで」出してもらうより、やり取りは増えるが、設計品質と型安全性が向上する。
+  - 決定された設計は本ファイルと CONSTITUTION に反映しやすくなる。
+
+---
+
+## 今後の追記方針
+
+- ここに挙げた ADR は暫定サマリです。今後、具体的な PR やリファクタリングのタイミングで、
+  より詳細な ADR を追加・更新していきます。
+- 新しいインターフェース追加や、Mutagen の扱い方を大きく変えるような変更を行う場合は、
+  必ずこのファイルにエントリを追加してください。

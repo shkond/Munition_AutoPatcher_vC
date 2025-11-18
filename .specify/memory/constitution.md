@@ -2,27 +2,28 @@
 
 <!--
 Sync Impact Report
-- Version change: unknown -> 1.0.0
-- Modified principles: none (initial formalization)
-- Added sections: Metadata block (Version / Ratification / LastAmended)
+- Version change: 1.0.0 -> 1.1.0
+- Modified principles: AI-Assisted Development (Section 12) — explicit sourcing requirement
+- Added sections: AI citation rule for Mutagen using GitHub MCP server
 - Removed sections: none
 - Templates requiring updates:
-  - ⚠ `.specify/templates/plan-template.md` (contains placeholder tokens like [FEATURE], [DATE])
-  - ⚠ `.specify/templates/tasks-template.md` (contains task placeholders such as [ID], [Story], [language])
-  - ⚠ Review `.specify/templates/commands/*.md` for agent-specific tokens (manual check)
+  - ✅ `.specify/templates/plan-template.md` (Constitution Check: now references MCP server)
+  - ✅ `.specify/templates/agent-file-template.md` (agent guidance updated)
+  - ⚠ `.specify/templates/spec-template.md` (requires a small References note; updated)
+  - ⚠ `.specify/templates/tasks-template.md` (no required changes but review recommended)
 - Follow-up TODOs:
   - TODO(RATIFICATION_DATE): Ratification date not present in repo; please supply YYYY-MM-DD.
-  - Manual review required for templates marked ⚠ to decide whether placeholders should be
-    parameterized or replaced by project-specific fields.
--->
+  - Manual review: verify `.specify/templates/commands/*.md` for agent-specific tokens that
+    should be made generic (e.g., agent names) and ensure MCP-server usage is referenced where
+    Mutagen research is expected.
 
 ---
 
 **Metadata**
 
-- **CONSTITUTION_VERSION**: 1.0.0
+- **CONSTITUTION_VERSION**: 1.1.0
 - **RATIFICATION_DATE**: TODO(RATIFICATION_DATE)
-- **LAST_AMENDED_DATE**: 2025-11-14
+- **LAST_AMENDED_DATE**: 2025-11-18
 
 
 目的
@@ -198,6 +199,11 @@ Stage 1 の出力フォーマット（AI 回答に必須）
 - Performance: 1-pass 方針や LinkCache の生存範囲等
 - DisposePlan: GameEnvironment / LinkCache の寿命管理案
 - References: 公式ドキュメント URL または
+  - When research requires inspecting Mutagen code or generated artifacts, AI MUST use the
+    GitHub MCP server to query the `Mutagen-Modding/Mutagen` repositories (examples: fetch
+    generated C# files, XML schemas, or record definitions). Use the MCP server tools for
+    implementation details and the repository contents before generating code that depends on
+    Mutagen internals.
 
 Stage 2 の内容（設計合意テンプレ）
 - 入力/出力の具体シグネチャ（DTO/モデル定義を含む）

@@ -71,7 +71,7 @@ namespace LinkCacheHelperTests
             var detector = new NoopDetector();
             var mutagenAccessor = new MockMutagenAccessor();
             var logger = NullLogger<ReverseMapConfirmer>.Instance;
-            var confirmer = new ReverseMapConfirmer(mutagenAccessor, logger);
+            var confirmer = new ReverseMapConfirmer(mutagenAccessor, logger, NullLoggerFactory.Instance);
 
             var context = new ConfirmationContext
             {

@@ -49,7 +49,7 @@ namespace LinkCacheHelperTests
         {
             var linkLike = new object();
             var linkCache = new FakeLinkCacheWithTryResolve();
-            var resolver = new LinkResolver(linkCache);
+            var resolver = new LinkResolver(linkCache, Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkResolver>.Instance);
 
             Assert.True(resolver.TryResolve(linkLike, out var first));
             Assert.NotNull(first);
@@ -68,7 +68,7 @@ namespace LinkCacheHelperTests
         {
             var linkLike = new object();
             var linkCache = new FakeLinkCacheWithTypedTryResolve();
-            var resolver = new LinkResolver(linkCache);
+            var resolver = new LinkResolver(linkCache, Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkResolver>.Instance);
 
             Assert.True(resolver.TryResolve<AmmoGetter>(linkLike, out var ammo));
             Assert.NotNull(ammo);
@@ -85,7 +85,7 @@ namespace LinkCacheHelperTests
         {
             var fk = new FormKey { PluginName = "m.esp", FormId = 0x10 };
             var linkCache = new FakeLinkCacheWithResolve();
-            var resolver = new LinkResolver(linkCache);
+            var resolver = new LinkResolver(linkCache, Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkResolver>.Instance);
 
             var r1 = resolver.ResolveByKey(fk);
             Assert.NotNull(r1);
