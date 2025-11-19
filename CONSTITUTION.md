@@ -200,7 +200,7 @@ Stage 1 の出力フォーマット（AI 回答に必須）
 - DisposePlan: GameEnvironment / LinkCache の寿命管理案
 - References: 公式ドキュメント URL または
   - When research requires inspecting Mutagen code or generated artifacts, AI MUST use the
-    GitHub MCP server or browser https://github.com/shkond/Munition_AutoPatcher_vC to query the `Mutagen-Modding/Mutagen` repositories (examples: fetch
+    GitHub MCP server query the `Mutagen-Modding/Mutagen` repositories (examples: fetch
     generated C# files, XML schemas, or record definitions). Use the MCP server tools for
     implementation details and the repository contents before generating code that depends on
     Mutagen internals.

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using MunitionAutoPatcher;
 using System.Collections.Concurrent;
+using Mutagen.Bethesda.Plugins;
 
 namespace MunitionAutoPatcher.Utilities
 {
@@ -229,6 +230,14 @@ namespace MunitionAutoPatcher.Utilities
                     }
                 }
                 catch { /* fall back to reflection-based path */ }
+
+                // Fast path for FormKey
+                if (record is FormKey fkDirect)
+                {
+                    plugin = fkDirect.ModKey.FileName.ToString();
+                    id = fkDirect.ID;
+                    return !string.IsNullOrEmpty(plugin) && id != 0u;
+                }
 
                 if (!TryGetFormKey(record, out var fk))
                 {

@@ -9,6 +9,7 @@ public class OmodCandidate
     public FormKey CandidateFormKey { get; set; } = new FormKey();
     public string CandidateEditorId { get; set; } = string.Empty;
     public FormKey? CandidateAmmo { get; set; }
+    public string CandidateAmmoEditorId { get; set; } = string.Empty;
     public string CandidateAmmoName { get; set; } = string.Empty;
     public string SourcePlugin { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;

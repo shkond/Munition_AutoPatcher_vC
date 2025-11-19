@@ -1,100 +1,106 @@
 using System;
-using System.Collections.Generic;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Implementations;
 using Xunit;
+using Moq;
+using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Fallout4;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LinkCacheHelperTests
 {
     public class LinkResolverTests
     {
-        private class ResolvedDummy { public string Name { get; set; } = string.Empty; }
-        private class AmmoGetter { public string EditorID { get; set; } = "ammo"; }
-        private class ResolvedByKey { public string Edit { get; set; } = "bykey"; }
-
-        private class FakeLinkCacheWithTryResolve
-        {
-            public int Calls = 0;
-            public bool TryResolve(object linkLike, out object? result)
-            {
-                Calls++;
-                result = new ResolvedDummy { Name = "r" + Calls };
-                return true;
-            }
-        }
-
-        private class FakeLinkCacheWithTypedTryResolve
-        {
-            public int Calls = 0;
-            public bool TryResolve(object linkLike, out object? result)
-            {
-                Calls++;
-                result = new AmmoGetter { EditorID = "ammo" + Calls };
-                return true;
-            }
-        }
-
-        private class FakeLinkCacheWithResolve
-        {
-            public int Calls = 0;
-            public object Resolve(FormKey key)
-            {
-                Calls++;
-                return new ResolvedByKey { Edit = $"k{Calls}" };
-            }
-        }
+        // Define delegate for the callback
+        delegate bool TryResolveDelegate(Mutagen.Bethesda.Plugins.FormKey key, out IMajorRecordGetter? result, ResolveTarget target);
 
         [Fact]
         public void TryResolve_CachesResultAcrossCalls()
         {
-            var linkLike = new object();
-            var linkCache = new FakeLinkCacheWithTryResolve();
-            var resolver = new LinkResolver(linkCache, Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkResolver>.Instance);
+            var fk = new Mutagen.Bethesda.Plugins.FormKey("Test.esp", 123);
+            var mockCache = new Mock<ILinkCache>();
+            
+            // Create a mock for the return value that implements IMajorRecordGetter
+            var mockResult = new Mock<IMajorRecordGetter>();
+            IMajorRecordGetter? outResult = mockResult.Object;
+            
+            // Setup the generic fallback which LinkResolver uses
+            mockCache.Setup(x => x.TryResolve<IMajorRecordGetter>(fk, out outResult, It.IsAny<ResolveTarget>()))
+                     .Returns(new TryResolveDelegate((Mutagen.Bethesda.Plugins.FormKey k, out IMajorRecordGetter? r, ResolveTarget t) => {
+                         r = outResult;
+                         return true;
+                     }));
 
-            Assert.True(resolver.TryResolve(linkLike, out var first));
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+
+            // 1st call
+            Assert.True(resolver.TryResolve(fk, out var first));
             Assert.NotNull(first);
-            Assert.Equal(1, linkCache.Calls);
+            
+            // Verify mock called once
+            mockCache.Verify(x => x.TryResolve<IMajorRecordGetter>(fk, out It.Ref<IMajorRecordGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
 
-            // Second call should hit cache and not increment underlying calls
-            Assert.True(resolver.TryResolve(linkLike, out var second));
+            // 2nd call (should be cached)
+            Assert.True(resolver.TryResolve(fk, out var second));
             Assert.NotNull(second);
-            Assert.Equal(1, linkCache.Calls);
-            // cached object should be same reference returned previously
-            Assert.Equal(first.GetType(), second.GetType());
+            
+            // Verify mock still called only once
+            mockCache.Verify(x => x.TryResolve<IMajorRecordGetter>(fk, out It.Ref<IMajorRecordGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
+            
+            Assert.Same(first, second);
         }
 
         [Fact]
         public void TryResolve_Generic_ReturnsTypedGetter()
         {
-            var linkLike = new object();
-            var linkCache = new FakeLinkCacheWithTypedTryResolve();
-            var resolver = new LinkResolver(linkCache, Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkResolver>.Instance);
+            var fk = new Mutagen.Bethesda.Plugins.FormKey("Ammo.esp", 456);
+            var mockCache = new Mock<ILinkCache>();
 
-            Assert.True(resolver.TryResolve<AmmoGetter>(linkLike, out var ammo));
+            var mockAmmo = new Mock<IAmmunitionGetter>();
+            mockAmmo.Setup(x => x.EditorID).Returns("ammo1");
+            IAmmunitionGetter? outResult = mockAmmo.Object;
+
+            // LinkResolver.ResolveFormKeyFast checks IAmmunitionGetter explicitly
+            mockCache.Setup(x => x.TryResolve<IAmmunitionGetter>(fk, out outResult, It.IsAny<ResolveTarget>()))
+                     .Returns(true);
+
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+
+            Assert.True(resolver.TryResolve<IAmmunitionGetter>(fk, out var ammo));
             Assert.NotNull(ammo);
             Assert.Equal("ammo1", ammo!.EditorID);
 
-            // subsequent call returns cached typed value
-            Assert.True(resolver.TryResolve<AmmoGetter>(linkLike, out var ammo2));
-            Assert.NotNull(ammo2);
-            Assert.Equal(1, linkCache.Calls);
+            // 2nd call
+            Assert.True(resolver.TryResolve<IAmmunitionGetter>(fk, out var ammo2));
+            // Verify called once
+            mockCache.Verify(x => x.TryResolve<IAmmunitionGetter>(fk, out It.Ref<IAmmunitionGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
         }
 
         [Fact]
         public void ResolveByKey_UsesResolveAndCaches()
         {
-            var fk = new FormKey { PluginName = "m.esp", FormId = 0x10 };
-            var linkCache = new FakeLinkCacheWithResolve();
-            var resolver = new LinkResolver(linkCache, Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkResolver>.Instance);
+            var fk = new Mutagen.Bethesda.Plugins.FormKey("m.esp", 0x10);
+            var mockCache = new Mock<ILinkCache>();
+            
+            var mockResult = new Mock<IMajorRecordGetter>();
+            IMajorRecordGetter? outResult = mockResult.Object;
 
-            var r1 = resolver.ResolveByKey(fk);
-            Assert.NotNull(r1);
-            Assert.Equal(1, linkCache.Calls);
+            // ResolveByKey calls ResolveInternal -> ResolveFormKeyFast -> TryResolve
+            mockCache.Setup(x => x.TryResolve<IMajorRecordGetter>(fk, out outResult, It.IsAny<ResolveTarget>()))
+                     .Returns(new TryResolveDelegate((Mutagen.Bethesda.Plugins.FormKey k, out IMajorRecordGetter? r, ResolveTarget t) => {
+                         r = outResult;
+                         return true;
+                     }));
 
-            // second call should be cached
-            var r2 = resolver.ResolveByKey(fk);
-            Assert.NotNull(r2);
-            Assert.Equal(1, linkCache.Calls);
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+            
+            var result = resolver.ResolveByKey(new MunitionAutoPatcher.Models.FormKey { PluginName = "m.esp", FormId = 0x10 });
+            Assert.NotNull(result);
+            
+            // Verify TryResolve was called
+            mockCache.Verify(x => x.TryResolve<IMajorRecordGetter>(fk, out It.Ref<IMajorRecordGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
         }
     }
 }

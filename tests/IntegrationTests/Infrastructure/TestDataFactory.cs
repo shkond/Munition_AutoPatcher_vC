@@ -1,4 +1,6 @@
+using Mutagen.Bethesda;
 using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins.Records;
 
 namespace IntegrationTests.Infrastructure;
 
@@ -32,7 +34,7 @@ public static class TestDataFactory
                 // Create constructible object that creates the weapon
                 var cobj = mod.ConstructibleObjects.AddNew();
                 cobj.EditorID = "cobj_TestWeapon";
-                cobj.CreatedObject = weapon.ToLink();
+                cobj.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
             });
     }
 
@@ -78,15 +80,15 @@ public static class TestDataFactory
                 // Create COBJs for each weapon
                 var cobj556 = mod.ConstructibleObjects.AddNew();
                 cobj556.EditorID = "cobj_AssaultRifle556";
-                cobj556.CreatedObject = rifle556.ToLink();
+                cobj556.CreatedObject = rifle556.ToLink().AsSetter().AsNullable();
 
                 var cobj762 = mod.ConstructibleObjects.AddNew();
                 cobj762.EditorID = "cobj_SniperRifle762";
-                cobj762.CreatedObject = rifle762.ToLink();
+                cobj762.CreatedObject = rifle762.ToLink().AsSetter().AsNullable();
 
                 var cobjShotgun = mod.ConstructibleObjects.AddNew();
                 cobjShotgun.EditorID = "cobj_CombatShotgun";
-                cobjShotgun.CreatedObject = shotgun.ToLink();
+                cobjShotgun.CreatedObject = shotgun.ToLink().AsSetter().AsNullable();
             });
     }
 
@@ -120,7 +122,7 @@ public static class TestDataFactory
 
             var cobj = mod.ConstructibleObjects.AddNew();
             cobj.EditorID = "cobj_CustomWeapon";
-            cobj.CreatedObject = weapon.ToLink();
+            cobj.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
         });
 
         return builder;
@@ -147,7 +149,7 @@ public static class TestDataFactory
 
             var cobj = mod.ConstructibleObjects.AddNew();
             cobj.EditorID = "cobj_IncludedWeapon";
-            cobj.CreatedObject = weapon.ToLink();
+            cobj.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
         });
 
         // Plugin that should be excluded
@@ -164,7 +166,7 @@ public static class TestDataFactory
 
             var cobj = mod.ConstructibleObjects.AddNew();
             cobj.EditorID = "cobj_ExcludedWeapon";
-            cobj.CreatedObject = weapon.ToLink();
+            cobj.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
         });
 
         return builder;
@@ -188,7 +190,7 @@ public static class TestDataFactory
 
                 var cobj = mod.ConstructibleObjects.AddNew();
                 cobj.EditorID = "cobj_WeaponNoAmmo";
-                cobj.CreatedObject = weapon.ToLink();
+                cobj.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
             });
     }
 
@@ -217,7 +219,7 @@ public static class TestDataFactory
 
                 var cobjValid = mod.ConstructibleObjects.AddNew();
                 cobjValid.EditorID = "cobj_ValidWeapon";
-                cobjValid.CreatedObject = weapon.ToLink();
+                cobjValid.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
             });
     }
 }

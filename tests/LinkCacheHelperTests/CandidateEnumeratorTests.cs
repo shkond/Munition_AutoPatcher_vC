@@ -82,7 +82,7 @@ namespace LinkCacheHelperTests
 
         [Theory]
         [MemberData(nameof(GetNullOrEmptyCollectionTestData))]
-        public void EnumerateCandidates_WithNullOrEmptyCollections_ReturnsEmptyResults(FakeCOBJ[] cobjs, FakeWeapon[] weapons)
+        public void EnumerateCandidates_WithNullOrEmptyCollections_ReturnsEmptyResults(FakeCOBJ[]? cobjs, FakeWeapon[]? weapons)
         {
             // Arrange
             var priorityOrder = new FakePriorityOrder(cobjs ?? new FakeCOBJ[0], weapons ?? new FakeWeapon[0]);
@@ -183,10 +183,10 @@ namespace LinkCacheHelperTests
             };
         }
 
-        public static IEnumerable<object[]> GetNullOrEmptyCollectionTestData()
+        public static IEnumerable<object?[]> GetNullOrEmptyCollectionTestData()
         {
-            yield return new object[] { null, null };
-            yield return new object[] { new FakeCOBJ[0], new FakeWeapon[0] };
+            yield return new object?[] { null, null };
+            yield return new object?[] { new FakeCOBJ[0], new FakeWeapon[0] };
         }
     }
 }

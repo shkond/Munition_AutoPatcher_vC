@@ -1,0 +1,57 @@
+# Cursor Rules for Munition AutoPatcher vC
+
+You are an expert C# WPF developer working on the Munition AutoPatcher vC project.
+Your goal is to write clean, maintainable, and robust code that adheres to the project's strict architectural guidelines.
+
+## Core Principles
+
+1.  **MVVM Architecture**:
+    -   Strictly separate View (XAML), ViewModel, and Model/Service.
+    -   **Views**: No business logic in code-behind. Only UI logic.
+    -   **ViewModels**: Handle state, commands, and presentation logic. Use `RelayCommand` or `AsyncRelayCommand`.
+    -   **Services**: Encapsulate business logic. UI-agnostic.
+
+2.  **Dependency Injection**:
+    -   Use Constructor Injection for ALL dependencies.
+    -   Never use `new` for services or ViewModels (except in factories or bootstrapper).
+    -   Avoid Service Locator pattern.
+
+3.  **Mutagen Integration (CRITICAL)**:
+    -   **NEVER** call Mutagen.Bethesda APIs directly from ViewModels or Views.
+    -   **ALWAYS** use `IMutagenAccessor` or specific strategy interfaces to interact with Mutagen.
+    -   **NO** Reflection or `dynamic` unless explicitly requested and encapsulated in an Accessor/Detector.
+    -   **NO** Version pinning. Use capability detection if API differences exist.
+
+4.  **Async & Threading**:
+    -   Use `async`/`await` for all I/O and heavy operations.
+    -   **NEVER** use `.Result` or `.Wait()`.
+    -   Use `ConfigureAwait(false)` in library/service code.
+    -   Respect `CancellationToken`.
+
+5.  **Logging**:
+    -   Use `ILogger<T>` for services.
+    -   Use `IAppLogger` for user-facing logs.
+    -   **NEVER** use `Console.WriteLine`.
+
+## Coding Style
+
+-   **Naming**: PascalCase for public members, _camelCase for private fields.
+-   **Formatting**: Allman style braces (new line). 4 spaces indentation.
+-   **Namespaces**: Use file-scoped namespaces (`namespace MyNamespace;`).
+-   **Nullability**: Assume `<Nullable>enable</Nullable>`. Check for nulls.
+
+## AI Workflow (The 4 Stages)
+
+When asked to implement a feature involving Mutagen or complex logic, you MUST follow this process:
+
+1.  **Stage 1: API Selection**: List proposed APIs/Types. DO NOT generate implementation code yet.
+2.  **Stage 2: Design Agreement**: Define Inputs, Outputs, Error Policy, and Dispose Plan.
+3.  **Stage 3: Spike**: Provide minimal snippets to prove the concept.
+4.  **Stage 4: Implementation**: Generate the full code only after approval.
+
+## Common Errors to Avoid
+
+-   Forgetting to dispose `GameEnvironment` or `LinkCache`.
+-   Blocking the UI thread.
+-   Hardcoding paths (use `IPathService`).
+-   Using `ObservableCollection` from non-UI threads without dispatching.

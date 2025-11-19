@@ -72,7 +72,7 @@ namespace LinkCacheHelperTests
 
         [Theory]
         [MemberData(nameof(GetNullOrEmptyCollectionTestData))]
-        public async Task ExtractAsync_WithNullOrEmptyCollections_ReturnsEmptyResults(object[] weapons, object[] cobjs)
+        public async Task ExtractAsync_WithNullOrEmptyCollections_ReturnsEmptyResults(object[]? weapons, object[]? cobjs)
         {
             // Arrange
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
@@ -127,10 +127,10 @@ namespace LinkCacheHelperTests
             };
         }
 
-        public static IEnumerable<object[]> GetNullOrEmptyCollectionTestData()
+        public static IEnumerable<object?[]> GetNullOrEmptyCollectionTestData()
         {
-            yield return new object[] { null, null };
-            yield return new object[] { new object[0], new object[0] };
+            yield return new object?[] { null, null };
+            yield return new object?[] { new object[0], new object[0] };
         }
     }
 }
