@@ -3,12 +3,16 @@ using MunitionAutoPatcher.Services.Implementations;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Threading.Tasks;
 using IntegrationTests.Infrastructure;
+using MunitionAutoPatcher.Models;
+using Mutagen.Bethesda;
+using Mutagen.Bethesda.Plugins.Records;
+using System.Collections.Generic;
+using System.Linq;
+using System;
 
 namespace IntegrationTests;
 
 /// <summary>
-/// Example integration test that demonstrates the exact scenario requested:
-/// Create weapon A that references ammo B, then verify WeaponDataExtractor
 /// correctly resolves the relationship in a virtual Mutagen environment.
 /// 
 /// This test serves as a reference implementation for the integration testing approach.
@@ -47,7 +51,7 @@ public class ExampleIntegrationTest
                 // Create constructible object that creates weapon A
                 var cobj = mod.ConstructibleObjects.AddNew();
                 cobj.EditorID = "cobj_WeaponA";
-                cobj.CreatedObject = weaponA.ToLink();
+                cobj.CreatedObject = weaponA.ToLink().AsSetter().AsNullable();
             })
             .Build();
 
@@ -142,15 +146,15 @@ public class ExampleIntegrationTest
                 // Create COBJs for each weapon
                 var cobj556 = mod.ConstructibleObjects.AddNew();
                 cobj556.EditorID = "cobj_Rifle556";
-                cobj556.CreatedObject = rifle556.ToLink();
+                cobj556.CreatedObject = rifle556.ToLink().AsSetter().AsNullable();
 
                 var cobj762 = mod.ConstructibleObjects.AddNew();
                 cobj762.EditorID = "cobj_Rifle762";
-                cobj762.CreatedObject = rifle762.ToLink();
+                cobj762.CreatedObject = rifle762.ToLink().AsSetter().AsNullable();
 
                 var cobjShotgun = mod.ConstructibleObjects.AddNew();
                 cobjShotgun.EditorID = "cobj_Shotgun";
-                cobjShotgun.CreatedObject = shotgun.ToLink();
+                cobjShotgun.CreatedObject = shotgun.ToLink().AsSetter().AsNullable();
             })
             .Build();
 

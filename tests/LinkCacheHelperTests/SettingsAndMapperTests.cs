@@ -118,7 +118,7 @@ namespace LinkCacheHelperTests
             }
         }
 
-        public static IEnumerable<object[]> GetFilteredOmodTestData()
+        public static IEnumerable<object?[]> GetFilteredOmodTestData()
         {
             var matchingCandidate = new OmodCandidate
             {
@@ -139,7 +139,7 @@ namespace LinkCacheHelperTests
             };
 
             // Test case: No selection - should show all candidates
-            yield return new object[]
+            yield return new object?[]
             {
                 new List<OmodCandidate> { matchingCandidate, otherCandidate },
                 null, // no selection
@@ -148,7 +148,7 @@ namespace LinkCacheHelperTests
             };
 
             // Test case: Selection matches one candidate - should show only matching
-            yield return new object[]
+            yield return new object?[]
             {
                 new List<OmodCandidate> { matchingCandidate, otherCandidate },
                 new WeaponMappingViewModel { WeaponFormKey = matchingCandidate.BaseWeapon.ToString() },

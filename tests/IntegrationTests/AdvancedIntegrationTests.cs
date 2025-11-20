@@ -4,13 +4,15 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Threading.Tasks;
 using IntegrationTests.Infrastructure;
 using MunitionAutoPatcher.Models;
+using Mutagen.Bethesda;
+using Mutagen.Bethesda.Plugins.Records;
+using System.Collections.Generic;
+using System.Linq;
+using System;
 
 namespace IntegrationTests;
 
 /// <summary>
-/// Advanced integration tests that demonstrate complex scenarios and edge cases
-/// for WeaponDataExtractor with virtual Mutagen environments.
-/// </summary>
 public class AdvancedIntegrationTests
 {
     /// <summary>
@@ -50,7 +52,7 @@ public class AdvancedIntegrationTests
                 // Create COBJ for each weapon
                 var cobj = mod.ConstructibleObjects.AddNew();
                 cobj.EditorID = $"cobj_Weapon_{i:D3}";
-                cobj.CreatedObject = weapon.ToLink();
+                cobj.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
             }
         });
 

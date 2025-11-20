@@ -4,11 +4,15 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Threading.Tasks;
 using IntegrationTests.Infrastructure;
 using MunitionAutoPatcher.Models;
+using Mutagen.Bethesda;
+using Mutagen.Bethesda.Plugins.Records;
+using System.Collections.Generic;
+using System.Linq;
+using System;
 
 namespace IntegrationTests;
 
 /// <summary>
-/// Integration tests for WeaponDataExtractor using virtual Mutagen environments.
 /// These tests verify that WeaponDataExtractor correctly processes weapon-ammunition
 /// relationships in realistic plugin environments without requiring actual game files.
 /// </summary>

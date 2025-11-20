@@ -8,6 +8,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins;
+using MutagenFormKey = Mutagen.Bethesda.Plugins.FormKey;
 
 namespace MunitionAutoPatcher.Services.Implementations
 {
@@ -31,7 +34,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                 resultsLocal.AddRange(
                     cobjs.Select(cobj =>
                     {
-                        try { return ProcessCobj(cobj, allWeapons, excluded); }
+                        try { return ProcessCobj(cobj, allWeapons, excluded, env); }
                         catch (Exception ex)
                         {
                             _logger.LogError(ex, "Suppressed exception in WeaponDataExtractor: processing COBJ candidate");
@@ -50,7 +53,7 @@ namespace MunitionAutoPatcher.Services.Implementations
             return Task.FromResult(resultsLocal);
         }
 
-        private OmodCandidate? ProcessCobj(object cobj, List<object> allWeapons, HashSet<string> excluded)
+        private OmodCandidate? ProcessCobj(object cobj, List<object> allWeapons, HashSet<string> excluded, IResourcedMutagenEnvironment env)
         {
             try
             {
@@ -96,10 +99,29 @@ namespace MunitionAutoPatcher.Services.Implementations
 
                 var possibleWeapon = TryFindMatchingWeapon(allWeapons, createdPlugin, createdId);
 
-                FormKey? createdAmmoKey = null;
+                string baseWeaponEditorId = string.Empty;
+                MutagenFormKey? createdAmmoKey = null;
                 if (possibleWeapon != null)
                 {
+                    MutagenReflectionHelpers.TryGetPropertyValue<string>(possibleWeapon, "EditorID", out var wEdid);
+                    baseWeaponEditorId = wEdid ?? string.Empty;
                     TryExtractAmmoKey(possibleWeapon, out createdAmmoKey);
+                }
+
+                string candidateAmmoEditorId = string.Empty;
+                string candidateAmmoName = string.Empty;
+
+                if (createdAmmoKey != null)
+                {
+                    var linkCache = env.GetLinkCache()?.LinkCache;
+                    if (linkCache != null)
+                    {
+                        if (linkCache.TryResolve<IAmmunitionGetter>(createdAmmoKey.Value, out var ammoRecord))
+                        {
+                            candidateAmmoEditorId = ammoRecord.EditorID ?? string.Empty;
+                            candidateAmmoName = ammoRecord.Name?.ToString() ?? string.Empty;
+                        }
+                    }
                 }
 
                 MutagenReflectionHelpers.TryGetPropertyValue<string>(cobj, "EditorID", out var edid);
@@ -113,8 +135,10 @@ namespace MunitionAutoPatcher.Services.Implementations
                     CandidateType = "COBJ",
                     CandidateFormKey = new Models.FormKey { PluginName = createdPlugin, FormId = createdId },
                     CandidateEditorId = candEditorId,
-                    CandidateAmmo = createdAmmoKey != null ? new Models.FormKey { PluginName = createdAmmoKey.PluginName, FormId = createdAmmoKey.FormId } : null,
-                    CandidateAmmoName = string.Empty,
+                    BaseWeaponEditorId = baseWeaponEditorId,
+                    CandidateAmmo = createdAmmoKey != null ? new Models.FormKey { PluginName = createdAmmoKey.Value.ModKey.FileName, FormId = createdAmmoKey.Value.ID } : null,
+                    CandidateAmmoEditorId = candidateAmmoEditorId,
+                    CandidateAmmoName = candidateAmmoName,
                     SourcePlugin = srcPluginVal,
                     Notes = $"COBJ source: {srcPluginVal}:{(createdId != 0 ? createdId.ToString("X8") : "00000000")}",
                     SuggestedTarget = "CreatedWeapon"
@@ -168,7 +192,7 @@ namespace MunitionAutoPatcher.Services.Implementations
         }
 
         // Helper: extract Ammo FormKey from a weapon-like object
-        private bool TryExtractAmmoKey(object possibleWeapon, out FormKey? ammoKey)
+        private bool TryExtractAmmoKey(object possibleWeapon, out MutagenFormKey? ammoKey)
         {
             ammoKey = null;
             try
@@ -179,7 +203,7 @@ namespace MunitionAutoPatcher.Services.Implementations
                     {
                         if (MunitionAutoPatcher.Utilities.MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(fk, out var fileName, out var id2))
                         {
-                            ammoKey = new FormKey { PluginName = fileName, FormId = id2 };
+                            ammoKey = new MutagenFormKey(ModKey.FromNameAndExtension(fileName), id2);
                             return true;
                         }
                     }

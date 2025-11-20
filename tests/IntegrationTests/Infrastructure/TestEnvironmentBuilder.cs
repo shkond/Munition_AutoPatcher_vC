@@ -5,11 +5,12 @@ using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda;
+using Mutagen.Bethesda.Plugins.Binary;
+using Mutagen.Bethesda.Plugins.Records;
 using Noggog;
 
 namespace IntegrationTests.Infrastructure;
 
-/// <summary>
 /// Builder for creating virtual Mutagen environments for integration testing.
 /// Provides in-memory plugin environments without requiring actual game files.
 /// </summary>
@@ -59,7 +60,7 @@ public class TestEnvironmentBuilder
         // Write the mod to the mock file system
         var filePath = Path.Combine(_testDataPath, pluginName);
         using var memStream = new MemoryStream();
-        mod.BeginWrite.ToStream(memStream).WithNoLoadOrder().Write();
+        mod.WriteToBinary(memStream);
         _mockFileSystem.AddFile(filePath, new MockFileData(memStream.ToArray()));
         
         return this;
@@ -132,14 +133,14 @@ public class TestEnvironmentBuilder
             var weapon = mod.Weapons.FirstOrDefault(w => w.EditorID == weaponEditorId);
             if (weapon != null)
             {
-                cobj.CreatedObject = weapon.ToLink();
+                cobj.CreatedObject = weapon.ToLink().AsSetter().AsNullable();
             }
             else
             {
                 // Create a placeholder weapon if it doesn't exist
                 var newWeapon = mod.Weapons.AddNew();
                 newWeapon.EditorID = weaponEditorId;
-                cobj.CreatedObject = newWeapon.ToLink();
+                cobj.CreatedObject = newWeapon.ToLink().AsSetter().AsNullable();
             }
         });
     }
@@ -191,7 +192,7 @@ public class TestEnvironmentBuilder
         
         var masterPath = Path.Combine(_testDataPath, "Fallout4.esm");
         using var memStream = new MemoryStream();
-        masterMod.BeginWrite.ToStream(memStream).WithNoLoadOrder().Write();
+        masterMod.WriteToBinary(memStream);
         _mockFileSystem.AddFile(masterPath, new MockFileData(memStream.ToArray()));
     }
 
@@ -202,7 +203,7 @@ public class TestEnvironmentBuilder
         
         // Create load order content with master files first, then plugins
         var loadOrderContent = string.Join(Environment.NewLine, 
-            _modKeys.Select(m => m.Type == ModType.Master ? m.FileName : $"*{m.FileName}"));
+            _modKeys.Select(m => m.Type == ModType.Master ? m.FileName.ToString() : $"*{m.FileName}"));
         
         _mockFileSystem.AddFile(loadOrderPath, new MockFileData(loadOrderContent));
     }
@@ -214,6 +215,9 @@ public class TestEnvironmentBuilder
             @"Fallout4\Plugins.txt");
     }
 }
+        
+public interface IDataDirectoryProvider { string Path { get; } }
+public interface IPluginListingsPathContext { string Path { get; } }
 
 /// <summary>
 /// Mock implementation of IDataDirectoryProvider for testing.
@@ -230,7 +234,7 @@ public class MockDataDirectoryProvider : IDataDirectoryProvider
 /// </summary>
 public class MockPluginListingsPathContext : IPluginListingsPathContext
 {
-    public FilePath Path { get; }
+    public string Path { get; }
 
     public MockPluginListingsPathContext(string path) => Path = path;
 }

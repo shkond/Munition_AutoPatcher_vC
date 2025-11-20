@@ -8,31 +8,31 @@ using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Models;
 using Xunit;
 using Moq;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins;
+using MutagenFormKey = Mutagen.Bethesda.Plugins.FormKey;
 
 namespace LinkCacheHelperTests
 {
     public class WeaponDataExtractorTests
     {
-        // Test data classes - keeping these as they represent domain objects rather than services
-        private class FakeModKey { public string FileName { get; set; } = string.Empty; }
-        private class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
-        private class FakeAmmoLink { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public bool IsNull => false; }
-        private class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public FakeAmmoLink Ammo { get; set; } = new FakeAmmoLink(); }
-        private class FakeConstructibleObject { public object CreatedObject { get; set; } = new FakeFormKey(); public string EditorID { get; set; } = string.Empty; }
-
         [Theory]
         [MemberData(nameof(GetValidWeaponAndCobjTestData))]
         public async Task ExtractAsync_WithValidWeaponAndCobj_ReturnsExpectedCandidate(
-            FakeWeapon weapon,
-            FakeConstructibleObject cobj,
+            Mock<IWeaponGetter> mockWeapon,
+            Mock<IConstructibleObjectGetter> mockCobj,
             string expectedCandidateType,
             string expectedEditorId,
             string expectedSuggestedTarget)
         {
             // Arrange
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
-            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
-            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverridesTyped()).Returns(new[] { mockWeapon.Object });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverridesTyped()).Returns(new[] { mockCobj.Object });
+
+            // Also setup untyped for fallback if needed, though Typed should be preferred
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { mockWeapon.Object });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
 
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
@@ -51,14 +51,17 @@ namespace LinkCacheHelperTests
         [Theory]
         [MemberData(nameof(GetExcludedPluginTestData))]
         public async Task ExtractAsync_WithExcludedPlugin_SkipsCandidate(
-            FakeWeapon weapon,
-            FakeConstructibleObject cobj,
+            Mock<IWeaponGetter> mockWeapon,
+            Mock<IConstructibleObjectGetter> mockCobj,
             HashSet<string> excludedPlugins)
         {
             // Arrange
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
-            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { weapon });
-            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { cobj });
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverridesTyped()).Returns(new[] { mockWeapon.Object });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverridesTyped()).Returns(new[] { mockCobj.Object });
+            
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { mockWeapon.Object });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
 
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
@@ -72,12 +75,17 @@ namespace LinkCacheHelperTests
 
         [Theory]
         [MemberData(nameof(GetNullOrEmptyCollectionTestData))]
-        public async Task ExtractAsync_WithNullOrEmptyCollections_ReturnsEmptyResults(object[] weapons, object[] cobjs)
+        public async Task ExtractAsync_WithNullOrEmptyCollections_ReturnsEmptyResults(
+            IEnumerable<IWeaponGetter>? weapons, 
+            IEnumerable<IConstructibleObjectGetter>? cobjs)
         {
             // Arrange
             var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
-            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(weapons ?? new object[0]);
-            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(cobjs ?? new object[0]);
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverridesTyped()).Returns(weapons ?? Enumerable.Empty<IWeaponGetter>());
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverridesTyped()).Returns(cobjs ?? Enumerable.Empty<IConstructibleObjectGetter>());
+
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(weapons?.Cast<object>() ?? Enumerable.Empty<object>());
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(cobjs?.Cast<object>() ?? Enumerable.Empty<object>());
 
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
@@ -91,18 +99,31 @@ namespace LinkCacheHelperTests
 
         public static IEnumerable<object[]> GetValidWeaponAndCobjTestData()
         {
+            var weaponFormKey = new MutagenFormKey(new ModKey("TestMod", ModType.Plugin), 0x1234);
+            var ammoFormKey = new MutagenFormKey(new ModKey("AmmoMod", ModType.Plugin), 0x2222);
+
+            var mockWeapon = new Mock<IWeaponGetter>();
+            mockWeapon.Setup(w => w.FormKey).Returns(weaponFormKey);
+            mockWeapon.Setup(w => w.EditorID).Returns("TestWeapon");
+            
+            var mockAmmoLink = new Mock<IFormLinkGetter<IAmmunitionGetter>>();
+            mockAmmoLink.Setup(a => a.FormKey).Returns(ammoFormKey);
+            mockAmmoLink.Setup(a => a.IsNull).Returns(false);
+            mockWeapon.Setup(w => w.Ammo).Returns(mockAmmoLink.Object);
+
+            var mockCobj = new Mock<IConstructibleObjectGetter>();
+            mockCobj.Setup(c => c.FormKey).Returns(new MutagenFormKey(new ModKey("TestMod", ModType.Plugin), 0x9999));
+            mockCobj.Setup(c => c.EditorID).Returns("COBJ_Editor");
+            
+            var mockCreatedObjectLink = new Mock<IFormLinkNullableGetter<IConstructibleObjectTargetGetter>>();
+            mockCreatedObjectLink.Setup(l => l.FormKey).Returns(weaponFormKey);
+            mockCreatedObjectLink.Setup(l => l.IsNull).Returns(false);
+            mockCobj.Setup(c => c.CreatedObject).Returns(mockCreatedObjectLink.Object);
+
             yield return new object[]
             {
-                new FakeWeapon
-                {
-                    FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
-                    Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "AmmoMod.esp" }, ID = 0x2222 } }
-                },
-                new FakeConstructibleObject
-                {
-                    CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "TestMod.esp" }, ID = 0x1234 },
-                    EditorID = "COBJ_Editor"
-                },
+                mockWeapon,
+                mockCobj,
                 "COBJ",
                 "COBJ_Editor",
                 "CreatedWeapon"
@@ -111,26 +132,35 @@ namespace LinkCacheHelperTests
 
         public static IEnumerable<object[]> GetExcludedPluginTestData()
         {
+            var weaponFormKey = new MutagenFormKey(new ModKey("Excluded", ModType.Plugin), 0x1111);
+            var ammoFormKey = new MutagenFormKey(new ModKey("Ammo", ModType.Plugin), 0x2222);
+
+            var mockWeapon = new Mock<IWeaponGetter>();
+            mockWeapon.Setup(w => w.FormKey).Returns(weaponFormKey);
+            
+            var mockAmmoLink = new Mock<IFormLinkGetter<IAmmunitionGetter>>();
+            mockAmmoLink.Setup(a => a.FormKey).Returns(ammoFormKey);
+            mockWeapon.Setup(w => w.Ammo).Returns(mockAmmoLink.Object);
+
+            var mockCobj = new Mock<IConstructibleObjectGetter>();
+            mockCobj.Setup(c => c.FormKey).Returns(new MutagenFormKey(new ModKey("Excluded", ModType.Plugin), 0x8888));
+            
+            var mockCreatedObjectLink = new Mock<IFormLinkNullableGetter<IConstructibleObjectTargetGetter>>();
+            mockCreatedObjectLink.Setup(l => l.FormKey).Returns(weaponFormKey);
+            mockCobj.Setup(c => c.CreatedObject).Returns(mockCreatedObjectLink.Object);
+
             yield return new object[]
             {
-                new FakeWeapon
-                {
-                    FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Excluded.esp" }, ID = 0x1111 },
-                    Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Ammo.esp" }, ID = 0x2222 } }
-                },
-                new FakeConstructibleObject
-                {
-                    CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "Excluded.esp" }, ID = 0x1111 },
-                    EditorID = "COBJ_Editor"
-                },
+                mockWeapon,
+                mockCobj,
                 new HashSet<string> { "Excluded.esp" }
             };
         }
 
-        public static IEnumerable<object[]> GetNullOrEmptyCollectionTestData()
+        public static IEnumerable<object?[]> GetNullOrEmptyCollectionTestData()
         {
-            yield return new object[] { null, null };
-            yield return new object[] { new object[0], new object[0] };
+            yield return new object?[] { null, null };
+            yield return new object?[] { new IWeaponGetter[0], new IConstructibleObjectGetter[0] };
         }
     }
 }

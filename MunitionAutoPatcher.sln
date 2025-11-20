@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MunitionAutoPatcher", "Muni
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{605EED4C-AB4F-4E04-8067-6B153BE8CC48}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoTests", "tests\AutoTests\AutoTests.csproj", "{06A7BC15-2D5D-4F13-824A-86A723299F0D}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LinkCacheHelperTests", "tests\LinkCacheHelperTests\LinkCacheHelperTests.csproj", "{94C1702B-EBB8-4F02-B2A5-16C86DD250F2}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntegrationTests", "tests\IntegrationTests\IntegrationTests.csproj", "{B8F3E8A1-2C4D-4E5F-9A7B-3D8E9F1A2B3C}"
@@ -90,7 +88,6 @@ Global
                 HideSolutionNode = FALSE
         EndGlobalSection
         GlobalSection(NestedProjects) = preSolution
-                {06A7BC15-2D5D-4F13-824A-86A723299F0D} = {605EED4C-AB4F-4E04-8067-6B153BE8CC48}
                 {94C1702B-EBB8-4F02-B2A5-16C86DD250F2} = {605EED4C-AB4F-4E04-8067-6B153BE8CC48}
                 {B8F3E8A1-2C4D-4E5F-9A7B-3D8E9F1A2B3C} = {605EED4C-AB4F-4E04-8067-6B153BE8CC48}
                 {C9E4F5A2-3D6E-4F7A-8B9C-4E5F6A7B8C9D} = {605EED4C-AB4F-4E04-8067-6B153BE8CC48}
