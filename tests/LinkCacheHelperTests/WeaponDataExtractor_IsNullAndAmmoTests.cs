@@ -6,84 +6,77 @@ using MunitionAutoPatcher.Services.Implementations;
 using Mutagen.Bethesda.Plugins.Records;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using Moq;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins;
+using MutagenFormKey = Mutagen.Bethesda.Plugins.FormKey;
 
 namespace LinkCacheHelperTests
 {
     public class WeaponDataExtractor_AdditionalTests
     {
-        public class FakeModKey { public string FileName { get; set; } = string.Empty; }
-        public class FakeFormKey { public FakeModKey ModKey { get; set; } = new FakeModKey(); public uint ID { get; set; } }
-        public class FakeAmmoLink { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public bool IsNull => false; }
-        public class FakeWeapon { public FakeFormKey FormKey { get; set; } = new FakeFormKey(); public FakeAmmoLink Ammo { get; set; } = new FakeAmmoLink(); public string? EditorID { get; set; } }
-        private class FakeNullLink { public bool IsNull => true; }
-        private class FakeConstructibleObject { public object CreatedObject { get; set; } = new FakeFormKey(); public string? EditorID { get; set; } = string.Empty; public FakeFormKey? FormKey { get; set; } }
-
-        private class NoOpResourcedMutagenEnvironment : IResourcedMutagenEnvironment
-        {
-            private readonly IEnumerable<object> _weapons;
-            private readonly IEnumerable<object> _cobjs;
-
-            public NoOpResourcedMutagenEnvironment(IEnumerable<object> weapons, IEnumerable<object> cobjs)
-            {
-                _weapons = weapons;
-                _cobjs = cobjs;
-            }
-
-            public Noggog.DirectoryPath? GetDataFolderPath() => null;
-            public IEnumerable<object> GetWinningConstructibleObjectOverrides() => _cobjs;
-            public IEnumerable<object> GetWinningWeaponOverrides() => _weapons;
-            public IEnumerable<(string Name, IEnumerable<object> Items)> EnumerateRecordCollections()
-                => new[] { ("ConstructibleObject", _cobjs), ("Weapon", _weapons) };
-            public MunitionAutoPatcher.Services.Interfaces.ILinkResolver? GetLinkCache() => null;
-            public void Dispose() { }
-            // Typed accessors
-            public IEnumerable<Mutagen.Bethesda.Fallout4.IWeaponGetter> GetWinningWeaponOverridesTyped() => System.Linq.Enumerable.Empty<Mutagen.Bethesda.Fallout4.IWeaponGetter>();
-            public IEnumerable<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped() => System.Linq.Enumerable.Empty<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter>();
-            public IEnumerable<Mutagen.Bethesda.Fallout4.IObjectModificationGetter> GetWinningObjectModificationsTyped() => System.Linq.Enumerable.Empty<Mutagen.Bethesda.Fallout4.IObjectModificationGetter>();
-            public IEnumerable<(string Name, IEnumerable<Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter> Items)> EnumerateRecordCollectionsTyped() => System.Linq.Enumerable.Empty<(string, IEnumerable<Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter>)>();
-        }
-
         [Fact]
         public async Task ExtractAsync_Skips_WhenCreatedObjectIsNullLike()
         {
-            var cobj = new FakeConstructibleObject
-            {
-                CreatedObject = new FakeNullLink(),
-                EditorID = "COBJ_NULL"
-            };
+            // Arrange
+            var mockCobj = new Mock<IConstructibleObjectGetter>();
+            var mockCreatedObjectLink = new Mock<IFormLinkNullableGetter<IConstructibleObjectTargetGetter>>();
+            mockCreatedObjectLink.Setup(l => l.IsNull).Returns(true);
+            mockCobj.Setup(c => c.CreatedObject).Returns(mockCreatedObjectLink.Object);
+            mockCobj.Setup(c => c.EditorID).Returns("COBJ_NULL");
 
-            var env = new NoOpResourcedMutagenEnvironment(Enumerable.Empty<object>(), new[] { cobj });
+            var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverridesTyped()).Returns(Enumerable.Empty<IWeaponGetter>());
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverridesTyped()).Returns(new[] { mockCobj.Object });
+            
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(Enumerable.Empty<object>());
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
-            var result = await extractor.ExtractAsync(env, new HashSet<string>());
+            // Act
+            var result = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());
 
+            // Assert
             Assert.Empty(result);
         }
 
         [Fact]
         public async Task ExtractAsync_Extracts_AmmoKey_WhenWeaponHasAmmoFormKey()
         {
-            // Arrange weapon with matching FormKey and ammo link
-            var weapon = new FakeWeapon
-            {
-                FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Base.esp" }, ID = 0x00000111 },
-                Ammo = new FakeAmmoLink { FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Ammo.esp" }, ID = 0x000000A1 } },
-                EditorID = "W_BASE"
-            };
+            // Arrange
+            var weaponFormKey = new MutagenFormKey(new ModKey("Base", ModType.Plugin), 0x00000111);
+            var ammoFormKey = new MutagenFormKey(new ModKey("Ammo", ModType.Plugin), 0x000000A1);
 
-            // COBJ that creates the weapon above
-            var cobj = new FakeConstructibleObject
-            {
-                CreatedObject = new FakeFormKey { ModKey = new FakeModKey { FileName = "Base.esp" }, ID = 0x00000111 },
-                EditorID = "COBJ_CREATE_BASE",
-                FormKey = new FakeFormKey { ModKey = new FakeModKey { FileName = "Src.esp" }, ID = 0x0000F001 }
-            };
+            var mockWeapon = new Mock<IWeaponGetter>();
+            mockWeapon.Setup(w => w.FormKey).Returns(weaponFormKey);
+            mockWeapon.Setup(w => w.EditorID).Returns("W_BASE");
+            
+            var mockAmmoLink = new Mock<IFormLinkGetter<IAmmunitionGetter>>();
+            mockAmmoLink.Setup(a => a.FormKey).Returns(ammoFormKey);
+            mockAmmoLink.Setup(a => a.IsNull).Returns(false);
+            mockWeapon.Setup(w => w.Ammo).Returns(mockAmmoLink.Object);
 
-            var env = new NoOpResourcedMutagenEnvironment(new object[] { weapon }, new object[] { cobj });
+            var mockCobj = new Mock<IConstructibleObjectGetter>();
+            mockCobj.Setup(c => c.FormKey).Returns(new MutagenFormKey(new ModKey("Src", ModType.Plugin), 0x0000F001));
+            mockCobj.Setup(c => c.EditorID).Returns("COBJ_CREATE_BASE");
+            
+            var mockCreatedObjectLink = new Mock<IFormLinkNullableGetter<IConstructibleObjectTargetGetter>>();
+            mockCreatedObjectLink.Setup(l => l.FormKey).Returns(weaponFormKey);
+            mockCreatedObjectLink.Setup(l => l.IsNull).Returns(false);
+            mockCobj.Setup(c => c.CreatedObject).Returns(mockCreatedObjectLink.Object);
+
+            var mockEnvironment = new Mock<IResourcedMutagenEnvironment>();
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverridesTyped()).Returns(new[] { mockWeapon.Object });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverridesTyped()).Returns(new[] { mockCobj.Object });
+
+            mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { mockWeapon.Object });
+            mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
+
             var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
-            var result = await extractor.ExtractAsync(env, new HashSet<string>());
+            var result = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());
 
             // Assert
             Assert.Single(result);

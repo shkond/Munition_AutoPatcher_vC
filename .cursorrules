@@ -3,6 +3,41 @@
 You are an expert C# WPF developer working on the Munition AutoPatcher vC project.
 Your goal is to write clean, maintainable, and robust code that adheres to the project's strict architectural guidelines.
 
+## Reference Repositories (CRITICAL)
+
+⚠️ **IMPORTANT: This project targets FALLOUT 4, NOT Skyrim**
+
+When using MCP tools to query Mutagen documentation:
+
+### Primary References
+
+- **Mutagen.Bethesda.Fallout4**: https://github.com/Mutagen-Modding/Mutagen
+  - Specifically reference **Fallout 4** implementations, NOT Skyrim
+  - Key files to reference:
+    - `Mutagen.Bethesda.Fallout4/Records/Major Records/Weapon.xml`
+    - `Mutagen.Bethesda.Fallout4/Records/Major Records/ObjectModification.xml`
+    - `Mutagen.Bethesda.Fallout4/Records/Major Records/ConstructibleObject.xml`
+
+### Context Guidelines for AI
+
+1. **Game Specification**: Always specify "Fallout 4" when querying Mutagen APIs
+   - ❌ BAD: `@github Show me Weapon record structure`
+   - ✅ GOOD: `@github Show me Fallout 4 Weapon record structure in Mutagen.Bethesda.Fallout4`
+
+2. **Version Pinning**: This project uses Mutagen v0.51.5
+   - Reference tag: `0.51.5` when fetching implementation details
+
+3. **Game-Specific Records**:
+   - WEAP (Weapon)
+   - OMOD (Object Modification)
+   - COBJ (Constructible Object)
+   - AMMO (Ammunition)
+   - FLST (Form List)
+
+### Example MCP Queries
+
+@github Fetch Mutagen.Bethesda.Fallout4/Records/Major Records/Weapon.xml from Mutagen-Modding/Mutagen
+
 ## Core Principles
 
 1.  **MVVM Architecture**:

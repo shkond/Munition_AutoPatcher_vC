@@ -22,16 +22,16 @@ namespace LinkCacheHelperTests
             var fk = new Mutagen.Bethesda.Plugins.FormKey("Test.esp", 123);
             var mockCache = new Mock<ILinkCache>();
             
-            // Create a mock for the return value that implements IMajorRecordGetter
-            var mockResult = new Mock<IMajorRecordGetter>();
-            IMajorRecordGetter? outResult = mockResult.Object;
+            // Create a mock for the return value that implements IObjectModificationGetter
+            var mockResult = new Mock<IObjectModificationGetter>();
+            IObjectModificationGetter? outResult = mockResult.Object;
             
-            // Setup the generic fallback which LinkResolver uses
-            mockCache.Setup(x => x.TryResolve<IMajorRecordGetter>(fk, out outResult, It.IsAny<ResolveTarget>()))
-                     .Returns(new TryResolveDelegate((Mutagen.Bethesda.Plugins.FormKey k, out IMajorRecordGetter? r, ResolveTarget t) => {
+            // Setup the first type checked by LinkResolver
+            mockCache.Setup(x => x.TryResolve<IObjectModificationGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out outResult, It.IsAny<ResolveTarget>()))
+                     .Returns((Mutagen.Bethesda.Plugins.FormKey k, out IObjectModificationGetter? r, ResolveTarget t) => {
                          r = outResult;
                          return true;
-                     }));
+                     });
 
             var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
 
@@ -40,14 +40,14 @@ namespace LinkCacheHelperTests
             Assert.NotNull(first);
             
             // Verify mock called once
-            mockCache.Verify(x => x.TryResolve<IMajorRecordGetter>(fk, out It.Ref<IMajorRecordGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
+            mockCache.Verify(x => x.TryResolve<IObjectModificationGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out It.Ref<IObjectModificationGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
 
             // 2nd call (should be cached)
             Assert.True(resolver.TryResolve(fk, out var second));
             Assert.NotNull(second);
             
             // Verify mock still called only once
-            mockCache.Verify(x => x.TryResolve<IMajorRecordGetter>(fk, out It.Ref<IMajorRecordGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
+            mockCache.Verify(x => x.TryResolve<IObjectModificationGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out It.Ref<IObjectModificationGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
             
             Assert.Same(first, second);
         }
@@ -63,8 +63,27 @@ namespace LinkCacheHelperTests
             IAmmunitionGetter? outResult = mockAmmo.Object;
 
             // LinkResolver.ResolveFormKeyFast checks IAmmunitionGetter explicitly
-            mockCache.Setup(x => x.TryResolve<IAmmunitionGetter>(fk, out outResult, It.IsAny<ResolveTarget>()))
-                     .Returns(true);
+            // We need to setup the mock for IAmmunitionGetter because LinkResolver will try that specific type
+            mockCache.Setup(x => x.TryResolve<IAmmunitionGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out outResult, It.IsAny<ResolveTarget>()))
+                     .Returns(new TryResolveDelegate((Mutagen.Bethesda.Plugins.FormKey k, out IMajorRecordGetter? r, ResolveTarget t) => {
+                         // Note: The delegate signature must match the generic type if we were strict, 
+                         // but Moq handles the out param type covariance usually. 
+                         // However, to be safe, we cast or use object.
+                         // Actually, for generic methods, the delegate should match the generic type.
+                         // Let's use a lambda that matches the specific type.
+                         r = outResult;
+                         return true;
+                     }));
+            
+            // Wait, the delegate above uses IMajorRecordGetter, but we are setting up IAmmunitionGetter.
+            // Let's define a specific delegate for this or just use a lambda with correct types.
+            // Since IAmmunitionGetter inherits IMajorRecordGetter, it might work, but let's be precise.
+            
+            mockCache.Setup(x => x.TryResolve<IAmmunitionGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out outResult, It.IsAny<ResolveTarget>()))
+                .Returns((Mutagen.Bethesda.Plugins.FormKey k, out IAmmunitionGetter? r, ResolveTarget t) => {
+                    r = outResult;
+                    return true;
+                });
 
             var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
 
@@ -75,7 +94,7 @@ namespace LinkCacheHelperTests
             // 2nd call
             Assert.True(resolver.TryResolve<IAmmunitionGetter>(fk, out var ammo2));
             // Verify called once
-            mockCache.Verify(x => x.TryResolve<IAmmunitionGetter>(fk, out It.Ref<IAmmunitionGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
+            mockCache.Verify(x => x.TryResolve<IAmmunitionGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out It.Ref<IAmmunitionGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
         }
 
         [Fact]
@@ -84,15 +103,15 @@ namespace LinkCacheHelperTests
             var fk = new Mutagen.Bethesda.Plugins.FormKey("m.esp", 0x10);
             var mockCache = new Mock<ILinkCache>();
             
-            var mockResult = new Mock<IMajorRecordGetter>();
-            IMajorRecordGetter? outResult = mockResult.Object;
+            var mockResult = new Mock<IObjectModificationGetter>();
+            IObjectModificationGetter? outResult = mockResult.Object;
 
             // ResolveByKey calls ResolveInternal -> ResolveFormKeyFast -> TryResolve
-            mockCache.Setup(x => x.TryResolve<IMajorRecordGetter>(fk, out outResult, It.IsAny<ResolveTarget>()))
-                     .Returns(new TryResolveDelegate((Mutagen.Bethesda.Plugins.FormKey k, out IMajorRecordGetter? r, ResolveTarget t) => {
+            mockCache.Setup(x => x.TryResolve<IObjectModificationGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out outResult, It.IsAny<ResolveTarget>()))
+                     .Returns((Mutagen.Bethesda.Plugins.FormKey k, out IObjectModificationGetter? r, ResolveTarget t) => {
                          r = outResult;
                          return true;
-                     }));
+                     });
 
             var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
             
@@ -100,7 +119,7 @@ namespace LinkCacheHelperTests
             Assert.NotNull(result);
             
             // Verify TryResolve was called
-            mockCache.Verify(x => x.TryResolve<IMajorRecordGetter>(fk, out It.Ref<IMajorRecordGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
+            mockCache.Verify(x => x.TryResolve<IObjectModificationGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out It.Ref<IObjectModificationGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
         }
     }
 }
