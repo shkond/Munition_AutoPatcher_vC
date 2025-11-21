@@ -43,4 +43,31 @@ public interface IMutagenAccessor
     /// Tries to get the EditorID from a record object using reflection.
     /// </summary>
     string GetEditorId(object? record);
+
+    /// <summary>
+    /// 型安全なレコード解決（同期版）
+    /// Mutagen境界を守るため、LinkCacheへの直接アクセスをこのメソッドに集約します。
+    /// </summary>
+    /// <typeparam name="T">解決するレコードの型（IMajorRecordGetterのサブタイプ）</typeparam>
+    /// <param name="env">Mutagen環境</param>
+    /// <param name="formKey">解決対象のFormKey</param>
+    /// <param name="record">解決されたレコード（失敗時はnull）</param>
+    /// <returns>解決に成功した場合はtrue</returns>
+    bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, Models.FormKey formKey, out T? record) 
+        where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter;
+
+    /// <summary>
+    /// 型安全なレコード解決（非同期版）
+    /// キャンセレーショントークンに対応した非同期APIです。
+    /// </summary>
+    /// <typeparam name="T">解決するレコードの型（IMajorRecordGetterのサブタイプ）</typeparam>
+    /// <param name="env">Mutagen環境</param>
+    /// <param name="formKey">解決対象のFormKey</param>
+    /// <param name="ct">キャンセレーショントークン</param>
+    /// <returns>解決成功フラグとレコードのタプル</returns>
+    Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(
+        IResourcedMutagenEnvironment env, 
+        Models.FormKey formKey, 
+        CancellationToken ct) 
+        where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter;
 }

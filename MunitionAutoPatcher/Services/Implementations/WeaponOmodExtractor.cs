@@ -214,7 +214,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 {
                     try
                     {
-                        confirmer.Confirm(candidates, confirmationContext);
+                        await confirmer.ConfirmAsync(candidates, confirmationContext, cancellationToken).ConfigureAwait(false);
                         _logger.LogInformation("Confirmer {Confirmer} complete", confirmer.GetType().Name);
                     }
                     catch (Exception ex)

@@ -21,7 +21,7 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public void Confirm(IEnumerable<OmodCandidate> candidates, ConfirmationContext context)
+    public async Task ConfirmAsync(IEnumerable<OmodCandidate> candidates, ConfirmationContext context, CancellationToken cancellationToken)
     {
         // Dump first few candidate form keys for debugging
         try

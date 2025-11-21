@@ -218,4 +218,62 @@ public class MutagenAccessor : IMutagenAccessor
             return string.Empty;
         }
     }
+
+    /// <inheritdoc/>
+    public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, Models.FormKey formKey, out T? record) 
+        where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter
+    {
+        record = null;
+        
+        try
+        {
+            var mfk = FormKeyNormalizer.ToMutagenFormKey(formKey);
+            if (!mfk.HasValue)
+            {
+                _logger.LogDebug("MutagenAccessor.TryResolveRecord<{Type}>: Invalid FormKey {Plugin}:{Id:X8}", 
+                    typeof(T).Name, formKey.PluginName, formKey.FormId);
+                return false;
+            }
+
+            var linkCache = BuildConcreteLinkCache(env);
+            if (linkCache == null)
+            {
+                _logger.LogWarning("MutagenAccessor.TryResolveRecord<{Type}>: LinkCache unavailable for {Plugin}:{Id:X8}", 
+                    typeof(T).Name, formKey.PluginName, formKey.FormId);
+                return false;
+            }
+
+            if (linkCache.TryResolve<T>(mfk.Value, out record))
+            {
+                _logger.LogDebug("MutagenAccessor.TryResolveRecord<{Type}>: Resolved {Plugin}:{Id:X8}", 
+                    typeof(T).Name, formKey.PluginName, formKey.FormId);
+                return true;
+            }
+
+            _logger.LogDebug("MutagenAccessor.TryResolveRecord<{Type}>: Resolution failed for {Plugin}:{Id:X8}", 
+                typeof(T).Name, formKey.PluginName, formKey.FormId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.TryResolveRecord<{Type}>: Exception resolving {Plugin}:{Id:X8}", 
+                typeof(T).Name, formKey?.PluginName ?? "NULL", formKey?.FormId ?? 0);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(
+        IResourcedMutagenEnvironment env, 
+        Models.FormKey formKey, 
+        CancellationToken ct) 
+        where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter
+    {
+        // 現時点では同期実装を呼び出し（将来的な拡張ポイント）
+        await Task.CompletedTask;
+        ct.ThrowIfCancellationRequested();
+        
+        var success = TryResolveRecord<T>(env, formKey, out var record);
+        return (success, record);
+    }
 }

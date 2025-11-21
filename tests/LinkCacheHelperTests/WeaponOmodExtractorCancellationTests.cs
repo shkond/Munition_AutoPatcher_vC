@@ -112,7 +112,7 @@ namespace LinkCacheHelperTests
 
         private sealed class DummyCandidateConfirmer : ICandidateConfirmer
         {
-            public void Confirm(IEnumerable<OmodCandidate> candidates, ConfirmationContext context) { }
+            public Task ConfirmAsync(IEnumerable<OmodCandidate> candidates, ConfirmationContext context, CancellationToken cancellationToken) => Task.CompletedTask;
         }
 
         private sealed class DummyMutagenAccessor : IMutagenAccessor
@@ -124,6 +124,8 @@ namespace LinkCacheHelperTests
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId) { pluginName = string.Empty; formId = 0; return false; }
             public string GetEditorId(object? record) => string.Empty;
+            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, out T? record) where T : class, IMajorRecordGetter { record = null; return false; }
+            public Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, CancellationToken ct) where T : class, IMajorRecordGetter => Task.FromResult<(bool, T?)>((false, null));
         }
 
         private sealed class DummyPathService : IPathService
