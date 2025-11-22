@@ -25,7 +25,7 @@ public class ReverseMapConfirmer : ICandidateConfirmer
     }
 
     /// <inheritdoc/>
-    public void Confirm(IEnumerable<OmodCandidate> candidates, ConfirmationContext context)
+    public async Task ConfirmAsync(IEnumerable<OmodCandidate> candidates, ConfirmationContext context, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting candidate confirmation via reverse-map");
 

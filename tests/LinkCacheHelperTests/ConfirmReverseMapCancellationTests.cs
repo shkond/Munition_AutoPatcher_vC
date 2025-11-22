@@ -43,10 +43,12 @@ namespace LinkCacheHelperTests
                 return false;
             }
             public string GetEditorId(object? record) => string.Empty;
+            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, out T? record) where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter { record = null; return false; }
+            public Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, CancellationToken ct) where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter => Task.FromResult<(bool, T?)>((false, null));
         }
 
         [Fact]
-        public void ReverseMapConfirmer_CancelsDuringProcessing_ThrowsOperationCanceledException()
+        public async Task ReverseMapConfirmer_CancelsDuringProcessing_ThrowsOperationCanceledException()
         {
             // Arrange: prepare a candidate and a reverseMap with many slow entries so cancellation can occur while iterating
             var candidate = new OmodCandidate
@@ -86,7 +88,7 @@ namespace LinkCacheHelperTests
             };
 
             // Act & Assert: invoking should throw OperationCanceledException
-            Assert.Throws<OperationCanceledException>(() => confirmer.Confirm(candidates, context));
+            await Assert.ThrowsAsync<OperationCanceledException>(async () => await confirmer.ConfirmAsync(candidates, context, cts.Token));
         }
     }
 }

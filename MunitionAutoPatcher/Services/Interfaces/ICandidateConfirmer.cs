@@ -11,5 +11,8 @@ public interface ICandidateConfirmer
     /// Confirms candidates by checking if they modify weapon ammo via reverse-reference map.
     /// Updates candidates in-place with confirmation status and reasons.
     /// </summary>
-    void Confirm(IEnumerable<OmodCandidate> candidates, ConfirmationContext context);
+    /// <param name="candidates">候補のコレクション</param>
+    /// <param name="context">確認に必要なコンテキスト</param>
+    /// <param name="cancellationToken">キャンセレーショントークン</param>
+    Task ConfirmAsync(IEnumerable<OmodCandidate> candidates, ConfirmationContext context, CancellationToken cancellationToken);
 }
