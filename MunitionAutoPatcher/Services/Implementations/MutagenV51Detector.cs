@@ -33,7 +33,32 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
     private bool TryDetectAmmoChangeTyped(IAObjectModificationGetter omod, object? originalLinkObj, out object? newLinkObj)
     {
         newLinkObj = null;
-        return false; // TODO: Implement in next PR
+        
+        foreach (var prop in omod.Properties) // IAObjectModPropertyGetter<Weapon.Property>
+        {
+            try
+            {
+                if (prop.Property == Weapon.Property.Ammo)
+                {
+                    if (prop is IFormLinkContainerGetter flc)
+                    {
+                        var firstLink = flc.EnumerateFormLinks().FirstOrDefault();
+                        if (firstLink != null)
+                        {
+                            newLinkObj = firstLink;
+                            return true; // TODO: Add IsSameAmmo check in next PR
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "MutagenV51Detector: Error inspecting property in typed path");
+                continue;
+            }
+        }
+        
+        return false;
     }
 
     public bool DoesOmodChangeAmmo(object omod, object? originalAmmoLink, out object? newAmmoLink)
