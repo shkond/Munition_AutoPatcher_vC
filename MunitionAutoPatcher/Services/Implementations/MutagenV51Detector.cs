@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Utilities;
+using Mutagen.Bethesda.Fallout4;
+using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
 using System.Reflection;
 
 namespace MunitionAutoPatcher.Services.Implementations;
@@ -24,10 +27,28 @@ public class MutagenV51Detector : IAmmunitionChangeDetector
 
     public string Name => "MutagenV51Detector";
 
+    /// <summary>
+    /// Tries to detect ammo changes using strict Mutagen types.
+    /// </summary>
+    private bool TryDetectAmmoChangeTyped(IAObjectModificationGetter omod, object? originalLinkObj, out object? newLinkObj)
+    {
+        newLinkObj = null;
+        return false; // TODO: Implement in next PR
+    }
+
     public bool DoesOmodChangeAmmo(object omod, object? originalAmmoLink, out object? newAmmoLink)
     {
         newAmmoLink = null;
         if (omod == null) return false;
+
+        if (omod is IAObjectModificationGetter omodTyped)
+        {
+            if (TryDetectAmmoChangeTyped(omodTyped, originalAmmoLink, out var candidate))
+            {
+                newAmmoLink = candidate;
+                return true;
+            }
+        }
 
         try
         {
