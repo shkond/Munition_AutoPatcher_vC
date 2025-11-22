@@ -22,21 +22,11 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
     }
     public async Task ConfirmAsync(IEnumerable<OmodCandidate> candidates, ConfirmationContext context, CancellationToken cancellationToken)
     {
-        // Dump first few candidate form keys for debugging
-        try
-        {
-            int dumpCount = 0;
-            foreach (var c in candidates.Take(20))
-            {
-                try
-                {
-                    var fk = c.CandidateFormKey;
-                    _logger.LogInformation("CandidateDump[{Index}]: Type={Type} FK={Plugin}:{Id:X8}", dumpCount++, c.CandidateType, fk?.PluginName ?? "NULL", fk?.FormId ?? 0);
-                }
-                catch { /* best-effort debug only */ }
-            }
-        }
-        catch { /* ignore debug failures */ }
+        // Initialize diagnostics
+        var diag = new OmodResolutionDiagnostics();
+        int rootNull = 0, createdObjMissing = 0, createdObjResolveFail = 0, createdObjNotOmod = 0;
+        int inspected = 0, resolvedToOmod = 0, hadAttachPoint = 0, matchedWeapons = 0, foundAmmo = 0, confirmed = 0;
+
         // Quick check: try resolving a known vanilla FormKey
         try
         {
@@ -93,19 +83,25 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                 _logger.LogDebug(ex, "AttachPointConfirmer: error while building weapon slot map");
             }
         }
-        int inspected = 0;
-        int resolvedToOmod = 0;
-        int hadAttachPoint = 0;
-        int matchedWeapons = 0;
-        int foundAmmo = 0;
-        int confirmed = 0;
-        // debugging counters for resolution failures
-        int rootNull = 0, createdObjMissing = 0, createdObjResolveFail = 0, createdObjNotOmod = 0;
         
+        // Phase 5改善案F: enumerate回数を1回に削減（debug dumpとメイン処理を統合）
+        int dumpCount = 0;
         foreach (var candidate in candidates)
         {
             try
             {
+                // Debug dump for first 20 candidates
+                if (dumpCount < 20)
+                {
+                    try
+                    {
+                        var fk = candidate.CandidateFormKey;
+                        _logger.LogInformation("CandidateDump[{Index}]: Type={Type} FK={Plugin}:{Id:X8}",
+                            dumpCount++, candidate.CandidateType, fk?.PluginName ?? "NULL", fk?.FormId ?? 0);
+                    }
+                    catch { /* best-effort debug only */ }
+                }
+
                 inspected++;
                 // Skip already confirmed
                 if (candidate.ConfirmedAmmoChange) continue;
@@ -152,13 +148,23 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                 _logger.LogDebug(ex, "AttachPointConfirmer: error confirming candidate");
             }
         }
-        _logger.LogInformation(
-            "AttachPointConfirmer: inspected={Inspected}, resolvedToOmod={Resolved}, hadAttachPoint={AttachPts}, matchedWeapons={Matched}, foundAmmo={Ammo}, confirmed={Confirmed}",
-            inspected, resolvedToOmod, hadAttachPoint, matchedWeapons, foundAmmo, confirmed);
-        
-        _logger.LogInformation(
-            "AttachPointConfirmer: failures rootNull={RootNull}, createdObjMissing={CreatedMissing}, createdObjResolveFail={ResolveFail}, createdObjNotOmod={NotOmod}",
-            rootNull, createdObjMissing, createdObjResolveFail, createdObjNotOmod);
+
+        // Phase 5改善案C: 診断構造体で一括ログ出力
+        diag = new OmodResolutionDiagnostics
+        {
+            TotalCandidates = inspected,
+            OmodResolved = resolvedToOmod,
+            AttachPointMatched = hadAttachPoint,
+            MatchedWeapons = matchedWeapons,
+            AmmoReferenceDetected = foundAmmo,
+            Confirmed = confirmed,
+            RootNull = rootNull,
+            CreatedObjMissing = createdObjMissing,
+            CreatedObjResolveFail = createdObjResolveFail,
+            CreatedObjNotOmod = createdObjNotOmod
+        };
+        diag.LogSummary(_logger);
+
         // Log sample of rootNull failures for diagnosis
         if (rootNull > 0)
         {
@@ -173,7 +179,6 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
             }
             catch { /* best-effort */ }
         }
-        await Task.CompletedTask; // Satisfy async signature
     }
     private static bool IsOmodLike(OmodCandidate c)
     {
