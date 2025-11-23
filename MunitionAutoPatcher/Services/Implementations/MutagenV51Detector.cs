@@ -8,11 +8,16 @@ using System.Reflection;
 namespace MunitionAutoPatcher.Services.Implementations;
 
 /// <summary>
-/// Mutagen v0.51-aware detector with type-safe implementation for Fallout4.
-/// This implementation uses direct Mutagen types (IObjectModificationGetter, IAmmunitionGetter)
-/// for optimal performance and type safety. Falls back to reflection-based detector for
-/// non-Mutagen types or unexpected structures.
+/// Mutagen v0.51-aware detector with type-safe implementation for Fallout4 weapon OMODs.
+/// This implementation uses IWeaponModificationGetter and Weapon.Property.Ammo for optimal
+/// performance and type safety. Falls back to reflection-based detector for non-weapon OMODs.
 /// </summary>
+/// <remarks>
+/// FO4 武器弾薬パッチャー専用設計：
+/// - IWeaponModificationGetter のみを処理対象とする
+/// - Weapon.Property.Ammo による型安全な enum 判定
+/// - 防具/NPC OMOD は仕様として無視される
+/// </remarks>
 public class MutagenV51Detector : ITypedAmmunitionChangeDetector
 {
     private readonly ReflectionFallbackDetector _fallback;
@@ -36,75 +41,51 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
     public string Name => "MutagenV51Detector";
 
     /// <summary>
-    /// 型安全版の弾薬変更検出（ITypedAmmunitionChangeDetector 実装）
+    /// 武器 OMOD の弾薬変更を型安全に検出（ITypedAmmunitionChangeDetector 実装）
     /// </summary>
     public bool DoesOmodChangeAmmo(
-        IObjectModificationGetter omod,
+        IWeaponModificationGetter weaponMod,
         IAmmunitionGetter? originalAmmo,
         out IAmmunitionGetter? newAmmo)
     {
         newAmmo = null;
-        if (omod == null) return false;
+        if (weaponMod?.Properties == null || weaponMod.Properties.Count == 0)
+            return false;
 
         try
         {
-            var properties = omod.Properties;
-            if (properties == null || properties.Count == 0)
-                return false;
-
-            foreach (var prop in properties)
+            foreach (var prop in weaponMod.Properties)
             {
-                // Ammo または Projectile プロパティをチェック
-                if (prop.Property != ObjectModProperty.Ammo &&
-                    prop.Property != ObjectModProperty.Projectile)
+                // ✓ 型安全な enum 判定: Weapon.Property.Ammo のみ処理
+                if (prop.Property != Weapon.Property.Ammo)
                     continue;
 
-                // ValueType が FormIdInt の場合のみ処理（Ammo 変更の標準形式）
-                if (prop.ValueType != ObjectModProperty.ValueType.FormIdInt)
-                {
-                    _logger.LogWarning(
-                        "Unexpected ValueType {ValueType} for Ammo/Projectile property in OMOD {EditorId}",
-                        prop.ValueType, omod.EditorID);
-                    continue;
-                }
-
-                // Value1 から FormID を取得（float として格納されているので uint にキャスト）
-                var formId = (uint)prop.Value1;
-                if (formId == 0)
+                // FormKey を取得（2段階アプローチ）
+                if (!TryGetFormKeyFromProperty(weaponMod, prop, out var ammoFormKey))
                     continue;
 
-                // OMOD 自体の ModKey を使って完全な FormKey を構築
-                var baseModKey = omod.FormKey.ModKey;
-                var ammoFormKey = new FormKey(baseModKey, formId);
-
-                // IMutagenAccessor で IAmmunitionGetter を解決
+                // LinkCache 経由で IAmmunitionGetter を解決
                 var appFormKey = Models.FormKey.FromMutagenFormKey(ammoFormKey);
-                if (!_accessor.TryResolveRecord<IAmmunitionGetter>(_env, appFormKey, out var ammoGetter))
+                if (!_accessor.TryResolveRecord<IAmmunitionGetter>(_env, appFormKey, out var ammo))
                 {
                     _logger.LogDebug(
-                        "MutagenV51Detector: Failed to resolve ammo FormKey {FormKey} for OMOD {EditorId}",
-                        ammoFormKey, omod.EditorID);
+                        "MutagenV51Detector: Failed to resolve ammo FormKey {FormKey} for weapon OMOD {EditorId}",
+                        ammoFormKey, weaponMod.EditorID);
                     continue;
                 }
 
-                // 元の弾薬と同じかチェック
-                if (originalAmmo != null && ammoGetter != null)
-                {
-                    if (originalAmmo.FormKey.Equals(ammoGetter.FormKey))
-                    {
-                        // 同じ弾薬 → 変更なし
-                        continue;
-                    }
-                }
+                // 元の弾薬と同じ場合はスキップ
+                if (originalAmmo != null && ammo.FormKey.Equals(originalAmmo.FormKey))
+                    continue;
 
-                // 新しい弾薬として返す
-                newAmmo = ammoGetter;
+                newAmmo = ammo;
                 return true;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MutagenV51Detector: typed detection path failed");
+            _logger.LogError(ex, "MutagenV51Detector: typed detection path failed for weapon OMOD {EditorId}",
+                weaponMod.EditorID ?? "(unknown)");
         }
 
         return false;
@@ -112,8 +93,13 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
 
     /// <summary>
     /// object ベース版（IAmmunitionChangeDetector 実装）
-    /// 型チェック後に typed 版に委譲、または fallback detector を使用
+    /// 型チェック後に武器専用 typed 版に委譲、または fallback detector を使用
     /// </summary>
+    /// <remarks>
+    /// NOTE: Currently we only support weapon modification OMODs (IWeaponModificationGetter).
+    /// Armor/NPC/etc. modifications are intentionally ignored for this FO4 ammo patcher.
+    /// If we later add support for other record types, extend the type checks below.
+    /// </remarks>
     public bool DoesOmodChangeAmmo(object omod, object? originalAmmoLink, out object? newAmmoLink)
     {
         newAmmoLink = null;
@@ -121,26 +107,31 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
 
         try
         {
-            // 1. Typed path: IObjectModificationGetter にキャストできる場合は型安全ロジックを使う
-            if (omod is IObjectModificationGetter omodGetter)
+            // 型判定: IWeaponModificationGetter のみ処理（FO4 武器専用）
+            if (omod is not IWeaponModificationGetter weaponMod)
             {
-                IAmmunitionGetter? originalAmmoTyped = TryExtractAmmoFromObject(originalAmmoLink);
-                if (DoesOmodChangeAmmo(omodGetter, originalAmmoTyped, out var newAmmoTyped))
-                {
-                    newAmmoLink = newAmmoTyped;
-                    return true;
-                }
-
-                // 型安全ロジックで「弾薬変更なし」と判断された場合は false
+                _logger.LogDebug(
+                    "MutagenV51Detector: non-weapon modification type {Type} ignored (FO4 weapon ammo patcher)",
+                    omod.GetType().Name);
                 return false;
             }
+
+            // originalAmmoLink から IAmmunitionGetter を抽出
+            var originalAmmo = originalAmmoLink as IAmmunitionGetter;
+
+            // 型安全版に委譲
+            if (!DoesOmodChangeAmmo(weaponMod, originalAmmo, out var newAmmoTyped))
+                return false;
+
+            newAmmoLink = newAmmoTyped;
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MutagenV51Detector: typed detection path failed, falling back to reflection detector");
+            _logger.LogError(ex, "MutagenV51Detector: weapon OMOD detection failed, falling back to reflection detector");
         }
 
-        // 2. Typed path が使えない or 例外発生時のみ reflection fallback
+        // Fallback: 例外発生時または非武器 OMOD の場合
         try
         {
             return _fallback.DoesOmodChangeAmmo(omod, originalAmmoLink, out newAmmoLink);
@@ -154,16 +145,54 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
     }
 
     /// <summary>
-    /// object から IAmmunitionGetter を抽出
+    /// AObjectModProperty から FormKey を取得
     /// </summary>
-    private static IAmmunitionGetter? TryExtractAmmoFromObject(object? value)
+    /// <remarks>
+    /// ValueType が FormIDInt の場合、Value1 から生 FormID を抽出します。
+    /// OMOD の ModKey と組み合わせて完全な FormKey を構築します。
+    /// </remarks>
+    private bool TryGetFormKeyFromProperty(
+        IWeaponModificationGetter weaponMod,
+        IAObjectModPropertyGetter<Weapon.Property> prop,
+        out FormKey formKey)
     {
-        if (value is IAmmunitionGetter ammo)
-            return ammo;
+        formKey = default;
 
-        // IFormLinkGetter<IAmmunitionGetter> の場合は解決が必要だが、
-        // ここでは LinkCache を持っていないので null を返す
-        // （呼び出し側で FormKey ベース比較を行う）
-        return null;
+        // Value1 から生 FormID を抽出（リフレクション最小限）
+        try
+        {
+            var propType = prop.GetType();
+            var valueTypeProp = propType.GetProperty("ValueType");
+            var value1Prop = propType.GetProperty("Value1");
+
+            if (valueTypeProp == null || value1Prop == null)
+                return false;
+
+            var valueType = valueTypeProp.GetValue(prop);
+            if (valueType?.ToString() != "FormIDInt")
+                return false;
+
+            var value1 = value1Prop.GetValue(prop);
+            if (value1 is not float floatValue)
+                return false;
+
+            var rawId = (uint)floatValue;
+            if (rawId == 0)
+                return false;
+
+            // OMOD の ModKey と組み合わせて FormKey を構築
+            var modKey = weaponMod.FormKey.ModKey;
+            if (modKey.IsNull)
+                return false;
+
+            formKey = new FormKey(modKey, rawId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "MutagenV51Detector: failed to extract FormID from Value1 for weapon OMOD {EditorId}",
+                weaponMod.EditorID ?? "(unknown)");
+            return false;
+        }
     }
 }

@@ -29,32 +29,26 @@ public static class DetectorFactory
             if (mutagenAssembly != null && mutagenAssembly.Version != null)
             {
                 var v = mutagenAssembly.Version;
+                // NOTE: MutagenV51Detector requires DI (IMutagenAccessor, IResourcedMutagenEnvironment)
+                // which is not available in this static factory context.
+                // For now, we always return ReflectionFallbackDetector.
+                // TODO: Move detector selection to DI container (App.xaml.cs)
+                
+                /* Disabled until DI integration is complete
                 // If we detect Mutagen v0.51, return a tuned detector
                 if (v.Major == 0 && v.Minor == 51)
                 {
                     try
                     {
                         logger.LogInformation("DetectorFactory: selecting MutagenV51Detector for detected Mutagen v0.51 runtime");
-                        return new MutagenV51Detector(loggerFactory.CreateLogger<MutagenV51Detector>(), loggerFactory);
+                        return new MutagenV51Detector(loggerFactory.CreateLogger<MutagenV51Detector>(), loggerFactory, accessor, env);
                     }
                     catch (Exception ex)
                     {
-                        // Persist a marker so it's obvious in artifacts that the optimized detector failed and a fallback was used.
-                        try
-                        {
-                            var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
-                            var artifactsDir = System.IO.Path.Combine(repoRoot ?? string.Empty, "artifacts");
-                            try { System.IO.Directory.CreateDirectory(artifactsDir); } catch (Exception dirEx) { logger.LogWarning(dirEx, "DetectorFactory: failed to create artifacts directory"); }
-                            var marker = System.IO.Path.Combine(artifactsDir, $"detector_fallback_marker_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-                            try { System.IO.File.WriteAllText(marker, $"MutagenV51Detector construction failed: {ex}\n"); } catch (Exception fileEx) { logger.LogWarning(fileEx, "DetectorFactory: failed to write detector fallback marker"); }
-                        }
-                        catch (Exception innerEx)
-                        {
-                            logger.LogWarning(innerEx, "DetectorFactory: failed while attempting to write detector fallback marker");
-                        }
                         logger.LogWarning(ex, "DetectorFactory: failed to construct MutagenV51Detector, falling back");
                     }
                 }
+                */
             }
         }
         catch (Exception ex)
