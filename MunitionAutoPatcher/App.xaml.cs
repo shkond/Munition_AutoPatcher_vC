@@ -52,6 +52,16 @@ public partial class App : Application
             // Register a factory that will create IMutagenEnvironment instances on demand.
             services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
 
+            // Register IResourcedMutagenEnvironment as Singleton (Mutagen v0.51 固定)
+            services.AddSingleton<IResourcedMutagenEnvironment>(sp =>
+            {
+                var factory = sp.GetRequiredService<IMutagenEnvironmentFactory>();
+                return factory.Create();
+            });
+
+            // Register IAmmunitionChangeDetector as MutagenV51Detector (Mutagen v0.51 固定)
+            services.AddSingleton<IAmmunitionChangeDetector, MutagenV51Detector>();
+
             // Register extraction infrastructure
             services.AddSingleton<IPathService, PathService>();
             services.AddSingleton<IMutagenAccessor, MutagenAccessor>();

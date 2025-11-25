@@ -25,6 +25,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
     private readonly ILogger<WeaponOmodExtractor> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IEspPatchService? _espPatchService;
+    private readonly IAmmunitionChangeDetector _detector; // ✅ DI 経由で受け取る
 
     public WeaponOmodExtractor(
         ILoadOrderService loadOrderService,
@@ -37,6 +38,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         IPathService pathService,
         ILogger<WeaponOmodExtractor> logger,
         ILoggerFactory loggerFactory,
+        IAmmunitionChangeDetector detector, // ✅ DI パラメータ追加
         IEspPatchService? espPatchService = null)
     {
         _loadOrderService = loadOrderService ?? throw new ArgumentNullException(nameof(loadOrderService));
@@ -49,6 +51,7 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
         _pathService = pathService ?? throw new ArgumentNullException(nameof(pathService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _detector = detector ?? throw new ArgumentNullException(nameof(detector)); // ✅ 初期化
         _espPatchService = espPatchService; // optional for backward compatibility
     }
 
@@ -169,30 +172,17 @@ public class WeaponOmodExtractor : IWeaponOmodExtractor
                 reverseMap = new Dictionary<string, List<(object Record, string PropName, object PropValue)>>(StringComparer.OrdinalIgnoreCase);
             }
 
-            // Select detector
-            IAmmunitionChangeDetector? detector = null;
+            // Use DI-injected detector
+            var detector = _detector;
+            _logger.LogInformation("Using DI-injected detector: {DetectorName}", detector.Name);
+
             try
             {
-                var mutAsm = typeof(Mutagen.Bethesda.Environments.GameEnvironment).Assembly.GetName();
-                detector = DetectorFactory.GetDetector(mutAsm, _loggerFactory);
-                _logger.LogInformation("Selected detector: {DetectorName}", detector?.Name ?? "None");
-
-                if (detector != null)
-                {
-                    try
-                    {
-                        _diagnosticWriter.WriteDetectorSelected(detector.Name ?? "Unknown", context);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to write detector marker (non-fatal)");
-                    }
-                }
+                _diagnosticWriter.WriteDetectorSelected(detector.Name ?? "Unknown", context);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to select detector, using fallback");
-                detector = new ReflectionFallbackDetector(_loggerFactory.CreateLogger<ReflectionFallbackDetector>());
+                _logger.LogWarning(ex, "Failed to write detector marker (non-fatal)");
             }
 
             // Confirm candidates via reverse-reference analysis

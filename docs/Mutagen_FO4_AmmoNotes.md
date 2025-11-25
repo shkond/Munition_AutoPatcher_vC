@@ -303,3 +303,275 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
 - [ObjectModProperty.cs](https://github.com/Mutagen-Modding/Mutagen/blob/main/Mutagen.Bethesda.Fallout4/Records/Common%20Subrecords/ObjectModProperty.cs)
 - [Weapon.cs](https://github.com/Mutagen-Modding/Mutagen/blob/main/Mutagen.Bethesda.Fallout4/Records/Major%20Records/Weapon.cs)
 - [FormKey.cs](https://github.com/Mutagen-Modding/Mutagen/blob/main/Mutagen.Bethesda.Core/Plugins/FormKey.cs)
+
+## Repository verification (2025-11-25)
+
+Summary of checks performed against the Mutagen repository (source file references included):
+
+- **Per-record Property enums confirmed**: `Weapon.Property`, `Armor.Property`, `Npc.Property` are defined and used as the generic `AObjectModProperty<T>` type parameter (example: `Weapon.Property.Ammo = 61`). See `Weapon.cs` and generated modification types.
+- **Generic/blank fallback**: `AObjectModification.NoneProperty` is an empty enum used for the generic/unknown OMOD case. See `ObjectModification.cs` where `ObjectTemplateBinaryCreateTranslation<AObjectModification.NoneProperty>` is chosen for generic/unknown record types.
+- **Typed properties list**: Generated classes expose typed property collections, e.g. `ExtendedList<AObjectModProperty<Weapon.Property>>` with `IReadOnlyList<IAObjectModPropertyGetter<Weapon.Property>>` for `IWeaponModificationGetter`. See `WeaponModification_Generated.cs` and `AObjectModProperty_Generated.cs`.
+- **ValueType mapping (ammo semantics)**: `ObjectModProperty.ValueType` contains `FormIdInt` and `FormIdFloat`; `ValueType.FormIdInt` maps to `FunctionType.FormID` and is the form used for ammo changes (value stored in `Value1` as a 32-bit FormID cast via `(uint)prop.Value1`). See `ObjectModProperty.cs`.
+
+These findings confirm the design notes in this document: Mutagen uses record-specific `Property` enums for type safety, an empty `NoneProperty` for generic cases, and `ValueType.FormIdInt` as the canonical representation for ammo changes.
+
+If you want, I can also paste the 100–200 line excerpts (with file/line references) for any of the referenced files (`ObjectModification.cs`, `Weapon.cs`, `WeaponModification_Generated.cs`, `AObjectModProperty_Generated.cs`, `ObjectModProperty.cs`).
+
+## Excerpts from Mutagen source (selected snippets)
+
+Below are selected contiguous excerpts copied from the Mutagen repository for quick reference.
+
+`Mutagen.Bethesda.Fallout4/Records/Major Records/WeaponModification_Generated.cs`
+public partial class WeaponModification :
+    AObjectModification,
+    IEquatable<IWeaponModificationGetter>,
+    ILoquiObjectSetter<WeaponModification>,
+    IWeaponModificationInternal
+{
+    protected WeaponModification()
+    {
+        CustomCtor();
+    }
+    partial void CustomCtor();
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private ExtendedList<AObjectModProperty<Weapon.Property>> _Properties = new ExtendedList<AObjectModProperty<Weapon.Property>>();
+    public ExtendedList<AObjectModProperty<Weapon.Property>> Properties
+    {
+        get => this._Properties;
+        init => this._Properties = value;
+    }
+    #region Interface Members
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    IReadOnlyList<IAObjectModPropertyGetter<Weapon.Property>> IWeaponModificationGetter.Properties => _Properties;
+    #endregion
+
+    public override void Print(
+        StructuredStringBuilder sb,
+        string? name = null)
+    {
+        WeaponModificationMixIn.Print(
+            item: this,
+            sb: sb,
+            name: name);
+    }
+
+    public new class Mask<TItem> :
+        AObjectModification.Mask<TItem>,
+        IEquatable<Mask<TItem>>,
+        IMask<TItem>
+    {
+        public Mask(TItem initialValue)
+        : base(initialValue)
+        {
+            this.Properties = new MaskItem<TItem, IEnumerable<MaskItemIndexed<TItem, AObjectModProperty.Mask<TItem>?>>?>(initialValue, []);
+        }
+        ...
+    }
+    ...
+}
+
+`Mutagen.Bethesda.Fallout4/Records/Major Records/AObjectModification_Generated.cs` (IAObjectModificationGetter / binary overlay snippets)
+public abstract partial class AObjectModification :
+    Fallout4MajorRecord,
+    IAObjectModificationInternal,
+    IEquatable<IAObjectModificationGetter>,
+    ILoquiObjectSetter<AObjectModification>
+{
+    protected AObjectModification()
+    {
+        CustomCtor();
+    }
+    partial void CustomCtor();
+
+    public TranslatedString? Name { get; set; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    ITranslatedStringGetter? IAObjectModificationGetter.Name => this.Name;
+
+    public TranslatedString? Description { get; set; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    ITranslatedStringGetter? IAObjectModificationGetter.Description => this.Description;
+
+    public Model? Model { get => _Model; set => _Model = value; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    IModelGetter? IAObjectModificationGetter.Model => this.Model;
+
+    public UInt16 Unknown { get; set; } = default(UInt16);
+    public Byte MaxRank { get; set; } = default(Byte);
+    public Byte LevelTierScaledOffset { get; set; } = default(Byte);
+
+    private readonly IFormLink<IKeywordGetter> _AttachPoint = new FormLink<IKeywordGetter>();
+    public IFormLink<IKeywordGetter> AttachPoint
+    {
+        get => _AttachPoint;
+        set => _AttachPoint.SetTo(value);
+    }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    IFormLinkGetter<IKeywordGetter> IAObjectModificationGetter.AttachPoint => this.AttachPoint;
+
+    private ExtendedList<ObjectModItem> _Items = new ExtendedList<ObjectModItem>();
+    public ExtendedList<ObjectModItem> Items { get => this._Items; init => this._Items = value; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    IReadOnlyList<IObjectModItemGetter> IAObjectModificationGetter.Items => _Items;
+
+    private ExtendedList<ObjectModInclude> _Includes = new ExtendedList<ObjectModInclude>();
+    public ExtendedList<ObjectModInclude> Includes { get => this._Includes; init => this._Includes = value; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    IReadOnlyList<IObjectModIncludeGetter> IAObjectModificationGetter.Includes => _Includes;
+    ...
+}
+
+partial class AObjectModificationBinaryCreateTranslation
+{
+    public static partial ParseResult FillBinaryDataParseCustom(
+        MutagenFrame frame,
+        IAObjectModificationInternal item,
+        PreviousParse lastParsed)
+    {
+        frame.ReadSubrecordHeader(RecordTypes.DATA);
+        var includeCount = frame.ReadInt32();
+        var propertyCount = frame.ReadInt32();
+        item.Unknown = frame.ReadUInt16();
+        var formType = new RecordType(frame.ReadInt32());
+        item.MaxRank = frame.ReadUInt8();
+        item.LevelTierScaledOffset = frame.ReadUInt8();
+        ...
+        switch (item)
+        {
+            case IArmorModificationInternal armorMod:
+                armorMod.Properties.SetTo(
+                    ObjectTemplateBinaryCreateTranslation<Armor.Property>.ReadProperties(frame, propertyCount));
+                break;
+            case INpcModificationInternal npcMod:
+                npcMod.Properties.SetTo(
+                    ObjectTemplateBinaryCreateTranslation<Npc.Property>.ReadProperties(frame, propertyCount));
+                break;
+            case IWeaponModificationInternal weaponMod:
+                weaponMod.Properties.SetTo(
+                    ObjectTemplateBinaryCreateTranslation<Weapon.Property>.ReadProperties(frame, propertyCount));
+                break;
+            case IObjectModificationInternal objMod:
+                objMod.Properties.SetTo(
+                    ObjectTemplateBinaryCreateTranslation<AObjectModification.NoneProperty>.ReadProperties(frame, propertyCount));
+                break;
+            case IUnknownObjectModificationInternal unknown:
+                unknown.Properties.SetTo(
+                    ObjectTemplateBinaryCreateTranslation<AObjectModification.NoneProperty>.ReadProperties(frame, propertyCount));
+                unknown.ModificationType = formType;
+                break;
+            default:
+                throw new NotImplementedException();
+        }
+        return (int)AObjectModification_FieldIndex.Model;
+    }
+}
+
+partial class ObjectModificationBinaryOverlay
+{
+    public IReadOnlyList<IAObjectModPropertyGetter<AObjectModification.NoneProperty>> Properties { get; internal set; } = Array.Empty<IAObjectModPropertyGetter<AObjectModification.NoneProperty>>();
+}
+partial class WeaponModificationBinaryOverlay
+{
+    public IReadOnlyList<IAObjectModPropertyGetter<Weapon.Property>> Properties { get; internal set; } = Array.Empty<IAObjectModPropertyGetter<Weapon.Property>>();
+}
+
+`Mutagen.Bethesda.Fallout4/Records/Common Subrecords/AObjectModProperty_Generated.cs`
+public abstract partial class AObjectModProperty<T> :
+    IAObjectModProperty<T>,
+    IEquatable<IAObjectModPropertyGetter<T>>,
+    ILoquiObjectSetter<AObjectModProperty<T>>
+    where T : struct, Enum
+{
+    public AObjectModProperty()
+    {
+        CustomCtor();
+    }
+    partial void CustomCtor();
+
+    public T Property { get; set; } = default(T);
+    public Single Step { get; set; } = default(Single);
+
+    public virtual void Print(
+        StructuredStringBuilder sb,
+        string? name = null)
+    {
+        AObjectModPropertyMixIn.Print(
+            item: this,
+            sb: sb,
+            name: name);
+    }
+}
+
+public partial interface IAObjectModPropertyGetter<out T> :
+    ILoquiObject,
+    IBinaryItem,
+    IFormLinkContainerGetter,
+    ILoquiObject<IAObjectModPropertyGetter<T>>
+    where T : struct, Enum
+{
+    object CommonInstance(Type type0);
+    object? CommonSetterInstance(Type type0);
+    object CommonSetterTranslationInstance();
+    static ILoquiRegistration StaticRegistration => AObjectModProperty_Registration.Instance;
+    T Property { get; }
+    Single Step { get; }
+}
+
+`Mutagen.Bethesda.Fallout4/Records/Common Subrecords/ObjectModProperty.cs` (ValueType enum + mapping)
+public static class ObjectModProperty
+{
+    public enum ValueType
+    {
+        Int = 0,
+        Float = 1,
+        Bool = 2,
+        String = 3,
+        FormIdInt = 4,
+        Enum = 5,
+        FormIdFloat = 6,
+    }
+
+    public enum FunctionType
+    {
+        Float,
+        Bool,
+        Enum,
+        FormID
+    }
+
+    public static FunctionType GetFunctionType(ValueType val)
+    {
+        return val switch
+        {
+            ValueType.Int => FunctionType.Float,
+            ValueType.Float => FunctionType.Float,
+            ValueType.Bool => FunctionType.Bool,
+            ValueType.String => FunctionType.Float,
+            ValueType.FormIdInt => FunctionType.FormID,
+            ValueType.Enum => FunctionType.Enum,
+            ValueType.FormIdFloat => FunctionType.Float,
+            _ => throw new ArgumentOutOfRangeException(nameof(val), val, null)
+        };
+    }
+    ...
+}
+
+`Mutagen.Bethesda.Fallout4/Records/Common Subrecords/ObjectModIntProperty_Generated.cs` (Value fields / FunctionType)
+public partial class ObjectModIntProperty<T> :
+    AObjectModProperty<T>,
+    IEquatable<IObjectModIntPropertyGetter<T>>,
+    ILoquiObjectSetter<ObjectModIntProperty<T>>,
+    IObjectModIntProperty<T>
+    where T : struct, Enum
+{
+    public ObjectModIntProperty()
+    {
+        CustomCtor();
+    }
+
+    public UInt32 Value { get; set; } = default(UInt32);
+    public UInt32 Value2 { get; set; } = default(UInt32);
+    public ObjectModProperty.FloatFunctionType FunctionType { get; set; } = default(ObjectModProperty.FloatFunctionType);
+    ...
+}
+
