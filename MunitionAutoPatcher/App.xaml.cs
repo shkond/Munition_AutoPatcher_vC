@@ -34,12 +34,35 @@ public partial class App : Application
         {
             try
             {
-                // logging.SetMinimumLevel(LogLevel.Debug); // Set global minimum log level to Debug
+                // ファイルベース Logger を追加（LinkResolver / AttachPointConfirmer 専用）
+                var repoRoot = MunitionAutoPatcher.Utilities.RepoUtils.FindRepoRoot();
+                var logsDir = System.IO.Path.Combine(repoRoot, "artifacts", "logs");
+                var resolverLogPath = System.IO.Path.Combine(logsDir, "resolver_debug.log");
+                
+                logging.AddProvider(new MunitionAutoPatcher.Logging.FileLoggerProvider(resolverLogPath));
+
+                // カテゴリフィルタ: LinkResolver と AttachPointConfirmer は Debug レベル以上をファイルに出力
+                logging.AddFilter<MunitionAutoPatcher.Logging.FileLoggerProvider>(
+                    "MunitionAutoPatcher.Services.Implementations.LinkResolver", 
+                    LogLevel.Debug);
+                logging.AddFilter<MunitionAutoPatcher.Logging.FileLoggerProvider>(
+                    "MunitionAutoPatcher.Services.Implementations.AttachPointConfirmer", 
+                    LogLevel.Debug);
+
+                // AppLoggerProvider（UI 向け）: LinkResolver と AttachPointConfirmer の Debug を除外
+                logging.AddFilter<MunitionAutoPatcher.Logging.AppLoggerProvider>(
+                    "MunitionAutoPatcher.Services.Implementations.LinkResolver", 
+                    LogLevel.Information); // Debug を除外
+                logging.AddFilter<MunitionAutoPatcher.Logging.AppLoggerProvider>(
+                    "MunitionAutoPatcher.Services.Implementations.AttachPointConfirmer", 
+                    LogLevel.Information); // Debug を除外
+
+                // AppLoggerProvider を追加（UI 向け）
                 logging.AddProvider(new MunitionAutoPatcher.Logging.AppLoggerProvider());
-                // Increase verbosity for targeted categories to surface debugging information during ESP generation
+
+                // 既存のフィルタ設定
                 logging.AddFilter("MunitionAutoPatcher.Services.Implementations.MutagenV51EnvironmentAdapter", LogLevel.Debug);
                 logging.AddFilter("MunitionAutoPatcher.Services.Implementations.ReverseReferenceCandidateProvider", LogLevel.Debug);
-                logging.AddFilter("MunitionAutoPatcher.Services.Implementations.LinkResolver", LogLevel.Debug);
             }
             catch { }
         })
