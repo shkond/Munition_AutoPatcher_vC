@@ -144,8 +144,13 @@ dotnet restore
 # ソリューションを Release ビルド
 dotnet build MunitionAutoPatcher.sln -c Release
 
-# テスト（プロジェクト単位、--no-build は事前にビルド済みの場合に有用）
-dotnet test tests/AutoTests/AutoTests.csproj -c Release --no-build --verbosity normal
+# テスト（全テストプロジェクトを実行）
+dotnet test -c Release --no-build --verbosity normal
+
+# または個別のテストプロジェクトを実行する場合
+dotnet test tests/IntegrationTests/IntegrationTests.csproj -c Release --verbosity normal
+dotnet test tests/LinkCacheHelperTests/LinkCacheHelperTests.csproj -c Release --verbosity normal
+dotnet test tests/WeaponDataExtractorTests/WeaponDataExtractorTests.csproj -c Release --verbosity normal
 
 # 形式整形（任意）
 dotnet format
@@ -175,7 +180,7 @@ jobs:
          - name: Build
             run: dotnet build MunitionAutoPatcher.sln -c Release --no-restore
          - name: Test
-            run: dotnet test tests/AutoTests/AutoTests.csproj -c Release --no-build --verbosity normal
+            run: dotnet test -c Release --no-build --verbosity normal
 ```
 
 ポイント:
@@ -324,8 +329,19 @@ AsyncRelayCommand を使用して、長時間実行される処理（データ�
 
 TBD
 
-## 貢献
+## ドキュメント
 
+プロジェクトの詳細なドキュメントについては、以下を参照してください：
+
+| ドキュメント | 説明 |
+|-------------|------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | アプリケーションアーキテクチャとコア設計原則 |
+| [DECISIONS.md](DECISIONS.md) | アーキテクチャ決定記録（ADR） |
+| [CODING_CONVENTIONS.md](CODING_CONVENTIONS.md) | コーディング規約と命名規則 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | コントリビューションガイドライン |
+| [docs/](docs/README.md) | 補足ドキュメント（技術リファレンス等） |
+
+## 貢献
 
 - 貢献ガイドラインは [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください
 - 行動規範は [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) を参照してください
