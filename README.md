@@ -324,8 +324,19 @@ AsyncRelayCommand を使用して、長時間実行される処理（データ�
 
 TBD
 
-## 貢献
+## ドキュメント
 
+プロジェクトの詳細なドキュメントについては、以下を参照してください：
+
+| ドキュメント | 説明 |
+|-------------|------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | アプリケーションアーキテクチャとコア設計原則 |
+| [DECISIONS.md](DECISIONS.md) | アーキテクチャ決定記録（ADR） |
+| [CODING_CONVENTIONS.md](CODING_CONVENTIONS.md) | コーディング規約と命名規則 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | コントリビューションガイドライン |
+| [docs/](docs/README.md) | 補足ドキュメント（技術リファレンス等） |
+
+## 貢献
 
 - 貢献ガイドラインは [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください
 - 行動規範は [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) を参照してください

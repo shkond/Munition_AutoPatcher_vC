@@ -58,6 +58,11 @@ config/*.local.json
 .DS_Store
 Thumbs.db
 
+## Temporary output files at root
+integration_test_output.txt
+linkcache_test_output.txt
+cloc-by-folder.txt
+
 ## Temp folders used in repo
 /t/
 
