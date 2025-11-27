@@ -3,6 +3,7 @@ using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher.Utilities;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Records;
 using System.Reflection;
 
 namespace MunitionAutoPatcher.Services.Implementations;
@@ -104,6 +105,15 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
     {
         newAmmoLink = null;
         if (omod == null) return false;
+
+        if (omod is IAObjectModificationGetter omodTyped)
+        {
+            if (TryDetectAmmoChangeTyped(omodTyped, originalAmmoLink, out var candidate))
+            {
+                newAmmoLink = candidate;
+                return true;
+            }
+        }
 
         try
         {
