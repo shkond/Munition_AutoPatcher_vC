@@ -5,7 +5,6 @@ This directory contains integration tests that use Mutagen's virtual environment
 ## Test Projects
 
 - **IntegrationTests**: Comprehensive integration tests using TestEnvironmentBuilder for virtual Mutagen environments
-- **AutoTests**: Existing automated integration tests
 - **LinkCacheHelperTests**: Unit tests for core services
 - **WeaponDataExtractorTests**: Specialized tests for weapon data extraction
 

@@ -144,8 +144,13 @@ dotnet restore
 # ソリューションを Release ビルド
 dotnet build MunitionAutoPatcher.sln -c Release
 
-# テスト（プロジェクト単位、--no-build は事前にビルド済みの場合に有用）
-dotnet test tests/AutoTests/AutoTests.csproj -c Release --no-build --verbosity normal
+# テスト（全テストプロジェクトを実行）
+dotnet test -c Release --no-build --verbosity normal
+
+# または個別のテストプロジェクトを実行する場合
+dotnet test tests/IntegrationTests/IntegrationTests.csproj -c Release --verbosity normal
+dotnet test tests/LinkCacheHelperTests/LinkCacheHelperTests.csproj -c Release --verbosity normal
+dotnet test tests/WeaponDataExtractorTests/WeaponDataExtractorTests.csproj -c Release --verbosity normal
 
 # 形式整形（任意）
 dotnet format
@@ -175,7 +180,7 @@ jobs:
          - name: Build
             run: dotnet build MunitionAutoPatcher.sln -c Release --no-restore
          - name: Test
-            run: dotnet test tests/AutoTests/AutoTests.csproj -c Release --no-build --verbosity normal
+            run: dotnet test -c Release --no-build --verbosity normal
 ```
 
 ポイント:
