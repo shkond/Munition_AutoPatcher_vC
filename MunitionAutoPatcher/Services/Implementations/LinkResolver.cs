@@ -95,33 +95,33 @@ namespace MunitionAutoPatcher.Services.Implementations
             // Try typed paths first
             if (_cache.TryResolve<IObjectModificationGetter>(fk, out var omod) && omod != null)
             {
-                _logger.LogInformation("LinkResolver: typed resolve SUCCESS IObjectModificationGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
+                _logger.LogDebug("LinkResolver: typed resolve SUCCESS IObjectModificationGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
                 return omod;
             }
             if (_cache.TryResolve<IConstructibleObjectGetter>(fk, out var cobj) && cobj != null)
             {
-                _logger.LogInformation("LinkResolver: typed resolve SUCCESS IConstructibleObjectGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
+                _logger.LogDebug("LinkResolver: typed resolve SUCCESS IConstructibleObjectGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
                 return cobj;
             }
             if (_cache.TryResolve<IWeaponGetter>(fk, out var weap) && weap != null)
             {
-                _logger.LogInformation("LinkResolver: typed resolve SUCCESS IWeaponGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
+                _logger.LogDebug("LinkResolver: typed resolve SUCCESS IWeaponGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
                 return weap;
             }
             if (_cache.TryResolve<IAmmunitionGetter>(fk, out var ammo) && ammo != null)
             {
-                _logger.LogInformation("LinkResolver: typed resolve SUCCESS IAmmunitionGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
+                _logger.LogDebug("LinkResolver: typed resolve SUCCESS IAmmunitionGetter {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
                 return ammo;
             }
 
             // Generic fallback - use typed overload to avoid obsolete warning
             if (_cache.TryResolve<IMajorRecordGetter>(fk, out var any) && any != null)
             {
-                _logger.LogInformation("LinkResolver: generic resolve SUCCESS {Mod}:{Id:X8} Type={Type}", fk.ModKey.FileName, fk.ID, any.GetType().Name);
+                _logger.LogDebug("LinkResolver: generic resolve SUCCESS {Mod}:{Id:X8} Type={Type}", fk.ModKey.FileName, fk.ID, any.GetType().Name);
                 return any;
             }
 
-            _logger.LogInformation("LinkResolver: resolve MISS {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
+            _logger.LogDebug("LinkResolver: resolve MISS {Mod}:{Id:X8}", fk.ModKey.FileName, fk.ID);
             return null;
         }
     }

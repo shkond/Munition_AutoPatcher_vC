@@ -22,6 +22,14 @@ public sealed class ConfirmationContext
     /// <summary>
     /// All weapon records for lookup.
     /// </summary>
+    /// <remarks>
+    /// This collection contains ONLY winning overrides from the load order,
+    /// not all weapon records across all plugins. Populated by 
+    /// <c>IMutagenAccessor.GetWinningWeaponOverrides()</c> which internally calls
+    /// <c>loadOrder.PriorityOrder.Weapon().WinningOverrides()</c>.
+    /// This ensures optimal performance and accuracy by using only the final,
+    /// effective weapon records as they appear in-game.
+    /// </remarks>
     public List<object> AllWeapons { get; set; } = new();
 
     /// <summary>

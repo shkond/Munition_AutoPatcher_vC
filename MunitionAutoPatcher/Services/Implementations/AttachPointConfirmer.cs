@@ -322,26 +322,26 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
                         if (context.LinkCache.TryResolve<IObjectModificationGetter>(mfk.Value, out var omod) && omod != null)
                         {
                             root = omod;
-                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IObjectModificationGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                            _logger.LogDebug("ResolveOmod: LinkCache typed resolve SUCCESS IObjectModificationGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
                         }
                         else if (context.LinkCache.TryResolve<IConstructibleObjectGetter>(mfk.Value, out var cobj) && cobj != null)
                         {
                             root = cobj;
-                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IConstructibleObjectGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                            _logger.LogDebug("ResolveOmod: LinkCache typed resolve SUCCESS IConstructibleObjectGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
                         }
                         else if (context.LinkCache.TryResolve<IWeaponGetter>(mfk.Value, out var weap) && weap != null)
                         {
                             root = weap;
-                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IWeaponGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                            _logger.LogDebug("ResolveOmod: LinkCache typed resolve SUCCESS IWeaponGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
                         }
                         else if (context.LinkCache.TryResolve<IAmmunitionGetter>(mfk.Value, out var ammo) && ammo != null)
                         {
                             root = ammo;
-                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve SUCCESS IAmmunitionGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
+                            _logger.LogDebug("ResolveOmod: LinkCache typed resolve SUCCESS IAmmunitionGetter {Mod}:{Id:X8}", mfk.Value.ModKey.FileName, mfk.Value.ID);
                         }
                         else
                         {
-                            _logger.LogInformation("ResolveOmod: LinkCache typed resolve MISS {Plugin}:{Id:X8}", candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
+                            _logger.LogDebug("ResolveOmod: LinkCache typed resolve MISS {Plugin}:{Id:X8}", candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
                         }
                     }
                 }
@@ -352,7 +352,7 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
             }
             if (root == null)
             {
-                _logger.LogInformation("ResolveOmod: All resolution paths returned null for {Plugin}:{Id:X8}",
+                _logger.LogDebug("ResolveOmod: All resolution paths returned null for {Plugin}:{Id:X8}",
                     candidate.CandidateFormKey.PluginName, candidate.CandidateFormKey.FormId);
             }
         }

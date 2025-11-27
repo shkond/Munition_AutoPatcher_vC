@@ -22,4 +22,16 @@ public record FormKey
             FormId = Convert.ToUInt32(parts[1], 16)
         };
     }
+
+    /// <summary>
+    /// Mutagen の FormKey から App の FormKey への変換
+    /// </summary>
+    public static FormKey FromMutagenFormKey(Mutagen.Bethesda.Plugins.FormKey mutagenFormKey)
+    {
+        return new FormKey
+        {
+            PluginName = mutagenFormKey.ModKey.FileName.ToString(),
+            FormId = mutagenFormKey.ID
+        };
+    }
 }
