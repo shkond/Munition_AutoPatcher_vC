@@ -311,31 +311,46 @@ public sealed class ViewModelHarness : IAsyncDisposable
                 }
             }
 
-            // Build the game environment
+            // Build the game environment (for compatibility with existing code)
             var gameEnv = envBuilder.Build();
+            
+            // Build an in-memory LinkCache that contains all test records.
+            // This is critical because GameEnvironment.Typical.Builder may not properly
+            // resolve records from MockFileSystem. The in-memory cache ensures all
+            // test-created records (weapons, COBJs, ammo, etc.) are resolvable.
+            var inMemoryLinkCache = envBuilder.BuildInMemoryLinkCache();
 
             // Create async harness with scenario timeout
             var timeoutSeconds = _scenario.GetEffectiveTimeoutSeconds();
             var asyncHarness = new AsyncTestHarness(timeoutSeconds, _testOutput);
 
-            // Wrap game environment in ResourcedMutagenEnvironment
-            var mutagenAdapter = new MutagenV51EnvironmentAdapter(gameEnv);
+            // Wrap game environment in ResourcedMutagenEnvironment with in-memory LinkCache
+            var mutagenAdapter = new MutagenV51EnvironmentAdapter(gameEnv, inMemoryLinkCache);
             var resourcedEnv = _environment ?? new ResourcedMutagenEnvironment(
                 mutagenAdapter,
                 mutagenAdapter, // Adapter is also disposable
                 NullLogger<ResourcedMutagenEnvironment>.Instance);
 
             // Build service provider with test overrides
+            // IMPORTANT: Use WithMutagenEnvironment to inject the test environment via IMutagenEnvironmentFactory
+            // This ensures WeaponOmodExtractor.ExtractCandidatesAsync() uses our test environment
+            // instead of trying to auto-detect Fallout 4 installation
             var serviceProvider = TestServiceProvider.CreateBuilder()
                 .WithGameDataPath(dataPath)
                 .WithOutputPath(outputPath)
                 .WithTempRoot(tempRoot)
                 .WithScenarioId(_scenario.Id)
                 .WithTestOutput(_testOutput)
-                .ConfigureServices(services =>
+                .WithMutagenEnvironment(() => 
                 {
-                    // Replace the placeholder IResourcedMutagenEnvironment with real one
-                    services.AddSingleton<IResourcedMutagenEnvironment>(resourcedEnv);
+                    // Create a new adapter for each factory call
+                    // The adapter wraps the same gameEnv but each call gets its own wrapper
+                    // Use the in-memory LinkCache so test records are resolvable
+                    var adapter = new MutagenV51EnvironmentAdapter(gameEnv, inMemoryLinkCache);
+                    return new ResourcedMutagenEnvironment(
+                        adapter,
+                        new NoOpDisposable(), // Factory-created envs use NoOpDisposable to avoid double-dispose
+                        NullLogger<ResourcedMutagenEnvironment>.Instance);
                 })
                 .Build();
 
@@ -368,16 +383,32 @@ public sealed class ViewModelHarness : IAsyncDisposable
 /// <summary>
 /// Adapter that wraps IGameEnvironment to implement IMutagenEnvironment for test compatibility.
 /// This is a minimal implementation for E2E tests.
+/// Note: Exposes InnerGameEnvironment for MutagenAccessor.BuildConcreteLinkCache() to capture the LinkCache.
 /// </summary>
 file sealed class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposable
 {
     private readonly IGameEnvironment<IFallout4Mod, IFallout4ModGetter> _gameEnv;
+    private readonly ILinkCache<IFallout4Mod, IFallout4ModGetter>? _inMemoryLinkCache;
 
     public MutagenV51EnvironmentAdapter(
-        IGameEnvironment<IFallout4Mod, IFallout4ModGetter> gameEnv)
+        IGameEnvironment<IFallout4Mod, IFallout4ModGetter> gameEnv,
+        ILinkCache<IFallout4Mod, IFallout4ModGetter>? inMemoryLinkCache = null)
     {
         _gameEnv = gameEnv;
+        _inMemoryLinkCache = inMemoryLinkCache;
     }
+
+    /// <summary>
+    /// Exposes the inner IGameEnvironment for MutagenAccessor to extract the LinkCache.
+    /// This property must exist and match the naming expected by MutagenAccessor.BuildConcreteLinkCache().
+    /// </summary>
+    public IGameEnvironment<IFallout4Mod, IFallout4ModGetter> InnerGameEnvironment => _gameEnv;
+
+    /// <summary>
+    /// Gets the effective LinkCache (either in-memory test cache or game environment cache).
+    /// </summary>
+    public ILinkCache<IFallout4Mod, IFallout4ModGetter> EffectiveLinkCache 
+        => _inMemoryLinkCache ?? _gameEnv.LinkCache;
 
     public void Dispose()
     {
@@ -413,7 +444,11 @@ file sealed class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposabl
 
     public ILinkResolver? GetLinkCache()
     {
-        return new LinkResolverAdapter(_gameEnv.LinkCache);
+        // Return a production LinkResolver so that MutagenAccessor.BuildConcreteLinkCache()
+        // can extract the underlying ILinkCache via LinkResolver.LinkCache property.
+        // This is critical for AttachPointConfirmer and other services that need direct LinkCache access.
+        // Use EffectiveLinkCache which prefers the in-memory test cache over game environment cache.
+        return new LinkResolver(EffectiveLinkCache, NullLogger<LinkResolver>.Instance);
     }
 
     public Noggog.DirectoryPath? GetDataFolderPath()
@@ -519,4 +554,12 @@ file sealed class LinkResolverAdapter : ILinkResolver
         }
         return null;
     }
+}
+
+/// <summary>
+/// A no-op disposable for use when we don't need actual disposal.
+/// </summary>
+file sealed class NoOpDisposable : IDisposable
+{
+    public void Dispose() { }
 }

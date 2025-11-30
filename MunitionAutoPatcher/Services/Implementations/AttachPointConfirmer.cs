@@ -292,23 +292,35 @@ public sealed class AttachPointConfirmer : ICandidateConfirmer
         object? root = null;
         try
         {
-            _logger.LogDebug("ResolveOmod: CandidateType={Type} CandidateFormKey={Plugin}:{Id:X8}",
+            _logger.LogInformation("ResolveOmod: CandidateType={Type} CandidateFormKey={Plugin}:{Id:X8} LinkCachePresent={HasLinkCache} ResolverPresent={HasResolver}",
                 candidate.CandidateType,
                 candidate.CandidateFormKey.PluginName,
-                candidate.CandidateFormKey.FormId);
+                candidate.CandidateFormKey.FormId,
+                context.LinkCache != null,
+                context.Resolver != null);
             // Prefer resolving via a concrete Mutagen FormKey when possible
             try
             {
                 var mfk = ToMutagenFormKey(candidate.CandidateFormKey);
+                _logger.LogInformation("ResolveOmod: MutagenFormKey={ModKey}:{Id:X8}", mfk?.ModKey.FileName ?? "<null>", mfk?.ID ?? 0);
                 if (mfk != null && context.Resolver != null && context.Resolver.TryResolve(mfk.Value, out var resolved) && resolved != null)
                 {
                     root = resolved;
+                    _logger.LogInformation("ResolveOmod: Resolver.TryResolve SUCCESS type={Type}", resolved?.GetType().Name);
+                }
+                else
+                {
+                    _logger.LogInformation("ResolveOmod: Resolver.TryResolve returned null or false");
                 }
             }
-            catch { /* ignore and fallback to generic */ }
+            catch (Exception ex) 
+            { 
+                _logger.LogWarning(ex, "ResolveOmod: Resolver.TryResolve threw exception");
+            }
             if (root == null)
             {
                 root = context.Resolver?.ResolveByKey(candidate.CandidateFormKey);
+                _logger.LogInformation("ResolveOmod: ResolveByKey result={HasResult}", root != null);
             }
             // If resolver didn't return anything, try direct typed resolution via concrete LinkCache
             if (root == null && context.LinkCache != null)

@@ -17,10 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example GitHub Actions CI workflow
 - Configuration sample files (config.sample.json)
 - Configuration documentation (config/README.md)
+- ADR-009: FormKeyNormalizer bug fix documentation
 
 ### Changed
 - Enhanced .github/copilot-instructions.md with detailed guidelines
 - Updated README.md with references to contribution guidelines
+- Updated README.md project structure to reflect current codebase (Models: 9, Interfaces: 17, Implementations: 30)
+- MutagenV51EnvironmentAdapter now supports InMemoryLinkCache for testing
+- WeaponDataExtractor sets CandidateFormKey to COBJ record instead of created Weapon
+
+### Fixed
+- **FormKeyNormalizer double extension bug** - `new ModKey(fileName, modType)` incorrectly added extensions twice (e.g., "TestMod.esp.esp"). Fixed by using `ModKey.FromNameAndExtension()`.
+- **WeaponDataExtractor CandidateFormKey** - Was incorrectly set to CreatedObject (Weapon) FormKey instead of COBJ FormKey, causing LinkCache resolution failures.
+- **MutagenV51EnvironmentAdapter InMemoryLinkCache** - Added support for in-memory LinkCache to enable proper E2E testing.
+- **TestEnvironmentBuilder mod duplication** - `WithPlugin()` now reuses existing mods instead of creating duplicates.
+- E2E tests now pass with 193/193 tests successful
+
+### Removed
+- Obsolete archive files: DECISIONS_old*.md, plan*.md, PR_*.md, CONSTITUTION.md (superseded by .specify/memory/constitution.md)
 
 ## [0.1.0] - Previous Work
 

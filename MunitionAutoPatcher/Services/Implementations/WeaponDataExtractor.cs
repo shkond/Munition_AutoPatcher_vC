@@ -127,20 +127,24 @@ namespace MunitionAutoPatcher.Services.Implementations
                 MutagenReflectionHelpers.TryGetPropertyValue<string>(cobj, "EditorID", out var edid);
                 var candEditorId = edid ?? string.Empty;
 
-                MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(cobj, out var srcPluginVal, out _);
-                srcPluginVal = srcPluginVal ?? string.Empty;
+                // Get COBJ's own FormKey (plugin and ID)
+                MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(cobj, out var cobjPlugin, out var cobjId);
+                cobjPlugin = cobjPlugin ?? string.Empty;
 
                 return new OmodCandidate
                 {
                     CandidateType = "COBJ",
-                    CandidateFormKey = new Models.FormKey { PluginName = createdPlugin, FormId = createdId },
+                    // Use COBJ's FormKey as the candidate key (this is what AttachPointConfirmer will resolve)
+                    CandidateFormKey = new Models.FormKey { PluginName = cobjPlugin, FormId = cobjId },
                     CandidateEditorId = candEditorId,
                     BaseWeaponEditorId = baseWeaponEditorId,
+                    // Store the CreatedObject (weapon) FormKey in BaseWeapon for reference
+                    BaseWeapon = new Models.FormKey { PluginName = createdPlugin, FormId = createdId },
                     CandidateAmmo = createdAmmoKey != null ? new Models.FormKey { PluginName = createdAmmoKey.Value.ModKey.FileName, FormId = createdAmmoKey.Value.ID } : null,
                     CandidateAmmoEditorId = candidateAmmoEditorId,
                     CandidateAmmoName = candidateAmmoName,
-                    SourcePlugin = srcPluginVal,
-                    Notes = $"COBJ source: {srcPluginVal}:{(createdId != 0 ? createdId.ToString("X8") : "00000000")}",
+                    SourcePlugin = cobjPlugin,
+                    Notes = $"COBJ source: {cobjPlugin}:{(cobjId != 0 ? cobjId.ToString("X8") : "00000000")} -> Weapon: {createdPlugin}:{createdId:X8}",
                     SuggestedTarget = "CreatedWeapon"
                 };
             }

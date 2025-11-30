@@ -22,11 +22,9 @@ namespace MunitionAutoPatcher.Services.Implementations
                 if (string.IsNullOrWhiteSpace(fileName))
                     fileName = fk.PluginName;
 
-                var modType = fileName.EndsWith(".esm", StringComparison.OrdinalIgnoreCase) ? ModType.Master
-                           : fileName.EndsWith(".esl", StringComparison.OrdinalIgnoreCase) ? ModType.Light
-                           : ModType.Plugin;
-
-                var modKey = new ModKey(fileName, modType);
+                // Use ModKey.FromNameAndExtension which properly handles filenames with extensions
+                // This avoids the double-extension issue (e.g., "TestMod.esp.esp")
+                var modKey = ModKey.FromNameAndExtension(fileName);
                 return new FormKey(modKey, fk.FormId);
             }
             catch

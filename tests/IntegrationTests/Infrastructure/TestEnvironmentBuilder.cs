@@ -7,6 +7,7 @@ using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins.Binary;
 using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Plugins.Cache;
 using Noggog;
 
 namespace IntegrationTests.Infrastructure;
@@ -40,6 +41,7 @@ public class TestEnvironmentBuilder
 
     /// <summary>
     /// Adds a plugin to the virtual environment with optional modification action.
+    /// If the plugin already exists, the modification is applied to the existing mod.
     /// </summary>
     /// <param name="pluginName">Name of the plugin file (e.g., "MyMod.esp")</param>
     /// <param name="modifyAction">Optional action to modify the plugin before adding</param>
@@ -47,17 +49,20 @@ public class TestEnvironmentBuilder
     public TestEnvironmentBuilder WithPlugin(string pluginName, Action<Fallout4Mod>? modifyAction = null)
     {
         var modKey = ModKey.FromNameAndExtension(pluginName);
-        _modKeys.Add(modKey);
         
-        var mod = new Fallout4Mod(modKey, Fallout4Release.Fallout4);
+        // Check if we already have this mod - if so, reuse it instead of creating a new one
+        if (!_mods.TryGetValue(modKey, out var mod))
+        {
+            // New mod - add to tracking and create it
+            _modKeys.Add(modKey);
+            mod = new Fallout4Mod(modKey, Fallout4Release.Fallout4);
+            _mods[modKey] = mod;
+        }
         
         // Apply modifications if provided
         modifyAction?.Invoke(mod);
         
-        // Store the mod for potential future reference
-        _mods[modKey] = mod;
-        
-        // Write the mod to the mock file system
+        // Write the mod to the mock file system (overwrites previous version)
         var filePath = Path.Combine(_testDataPath, pluginName);
         using var memStream = new MemoryStream();
         mod.WriteToBinary(memStream);
@@ -146,7 +151,54 @@ public class TestEnvironmentBuilder
     }
 
     /// <summary>
+    /// Builds an in-memory LoadOrder from the configured mods.
+    /// This is more reliable for testing as it doesn't depend on file system resolution.
+    /// </summary>
+    /// <returns>A LoadOrder containing all configured mods</returns>
+    public ILoadOrder<IModListing<IFallout4ModGetter>> BuildInMemoryLoadOrder()
+    {
+        var listings = new List<IModListing<IFallout4ModGetter>>();
+        foreach (var modKey in _modKeys)
+        {
+            if (_mods.TryGetValue(modKey, out var mod))
+            {
+                listings.Add(new ModListing<IFallout4ModGetter>(mod, true));
+            }
+        }
+        return new LoadOrder<IModListing<IFallout4ModGetter>>(listings);
+    }
+
+    /// <summary>
+    /// Builds an in-memory LinkCache from the configured mods.
+    /// This allows resolution of records without file system access.
+    /// </summary>
+    /// <returns>A LinkCache containing all records from configured mods</returns>
+    public ILinkCache<IFallout4Mod, IFallout4ModGetter> BuildInMemoryLinkCache()
+    {
+        var loadOrder = BuildInMemoryLoadOrder();
+        return loadOrder.ToImmutableLinkCache<IFallout4Mod, IFallout4ModGetter>();
+    }
+
+    /// <summary>
+    /// Gets all configured mods in load order.
+    /// </summary>
+    public IReadOnlyList<IFallout4ModGetter> GetModsInOrder()
+    {
+        var result = new List<IFallout4ModGetter>();
+        foreach (var modKey in _modKeys)
+        {
+            if (_mods.TryGetValue(modKey, out var mod))
+            {
+                result.Add(mod);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Builds the virtual game environment with all configured plugins.
+    /// NOTE: This method relies on file system mocking which may not work reliably.
+    /// Consider using BuildInMemoryLoadOrder() and BuildInMemoryLinkCache() instead.
     /// </summary>
     /// <returns>A configured game environment for testing</returns>
     public IGameEnvironment<IFallout4Mod, IFallout4ModGetter> Build()

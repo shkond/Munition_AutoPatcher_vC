@@ -78,6 +78,7 @@ public sealed class TestServiceProvider : IDisposable
         private ITestOutputHelper? _testOutput;
         private ILoggerFactory? _loggerFactory;
         private Action<IServiceCollection>? _configureServices;
+        private Func<IResourcedMutagenEnvironment>? _mutagenEnvironmentCreator;
 
         /// <summary>
         /// Sets the game data path for IConfigService.
@@ -144,6 +145,16 @@ public sealed class TestServiceProvider : IDisposable
         }
 
         /// <summary>
+        /// Sets the Mutagen environment creator function for test scenarios.
+        /// This allows E2E tests to inject environments built by TestEnvironmentBuilder.
+        /// </summary>
+        public Builder WithMutagenEnvironment(Func<IResourcedMutagenEnvironment> environmentCreator)
+        {
+            _mutagenEnvironmentCreator = environmentCreator;
+            return this;
+        }
+
+        /// <summary>
         /// Builds the TestServiceProvider with configured options.
         /// </summary>
         public TestServiceProvider Build()
@@ -191,16 +202,27 @@ public sealed class TestServiceProvider : IDisposable
             // Core services (from App.xaml.cs)
             services.AddSingleton<ILoadOrderService, LoadOrderService>();
             services.AddSingleton<IWeaponsService, WeaponsService>();
-            services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
 
-            // Mutagen environment - will be set externally via test harness
-            // For now, register as null - tests must configure this
-            services.AddSingleton<IResourcedMutagenEnvironment>(sp =>
+            // Use test factory if environment creator was provided, otherwise use production factory
+            if (_mutagenEnvironmentCreator != null)
             {
-                throw new InvalidOperationException(
-                    "IResourcedMutagenEnvironment must be provided by the test harness. " +
-                    "Use ConfigureServices() to register a test environment.");
-            });
+                services.AddSingleton<IMutagenEnvironmentFactory>(new TestMutagenEnvironmentFactory(_mutagenEnvironmentCreator));
+                // Also register IResourcedMutagenEnvironment for services that inject it directly
+                // (e.g., MutagenV51Detector)
+                services.AddSingleton<IResourcedMutagenEnvironment>(sp => _mutagenEnvironmentCreator());
+            }
+            else
+            {
+                services.AddSingleton<IMutagenEnvironmentFactory, MutagenEnvironmentFactory>();
+                // Mutagen environment - will be set externally via test harness
+                // For now, register as null - tests must configure this
+                services.AddSingleton<IResourcedMutagenEnvironment>(sp =>
+                {
+                    throw new InvalidOperationException(
+                        "IResourcedMutagenEnvironment must be provided by the test harness. " +
+                        "Use ConfigureServices() to register a test environment.");
+                });
+            }
 
             services.AddSingleton<IOmodPropertyAdapter, MutagenV51OmodPropertyAdapter>();
             services.AddSingleton<IAmmunitionChangeDetector, MutagenV51Detector>();
@@ -313,6 +335,22 @@ public sealed class TestPathService : IPathService
     public string GetRepoRoot() => _repoRoot;
     public string GetArtifactsDirectory() => _artifactsDirectory;
     public string GetOutputDirectory() => _outputDirectory;
+}
+
+/// <summary>
+/// Test implementation of IMutagenEnvironmentFactory that returns a pre-configured environment.
+/// Used for E2E tests where we want to inject a test environment built by TestEnvironmentBuilder.
+/// </summary>
+public sealed class TestMutagenEnvironmentFactory : IMutagenEnvironmentFactory
+{
+    private readonly Func<IResourcedMutagenEnvironment> _environmentCreator;
+
+    public TestMutagenEnvironmentFactory(Func<IResourcedMutagenEnvironment> environmentCreator)
+    {
+        _environmentCreator = environmentCreator ?? throw new ArgumentNullException(nameof(environmentCreator));
+    }
+
+    public IResourcedMutagenEnvironment Create() => _environmentCreator();
 }
 
 /// <summary>

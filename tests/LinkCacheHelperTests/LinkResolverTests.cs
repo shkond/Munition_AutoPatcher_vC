@@ -121,5 +121,199 @@ namespace LinkCacheHelperTests
             // Verify TryResolve was called
             mockCache.Verify(x => x.TryResolve<IObjectModificationGetter>(It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out It.Ref<IObjectModificationGetter?>.IsAny, It.IsAny<ResolveTarget>()), Times.Once);
         }
+
+        [Fact]
+        public void ResolveByKey_WithNullPluginName_ReturnsNull()
+        {
+            var mockCache = new Mock<ILinkCache>();
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+
+            // FormKey with null PluginName should return null
+            var result = resolver.ResolveByKey(new MunitionAutoPatcher.Models.FormKey { PluginName = null!, FormId = 0x10 });
+            Assert.Null(result);
+
+            // Verify no TryResolve calls made
+            mockCache.Verify(x => x.TryResolve<IObjectModificationGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), 
+                out It.Ref<IObjectModificationGetter?>.IsAny, 
+                It.IsAny<ResolveTarget>()), Times.Never);
+        }
+
+        [Fact]
+        public void ResolveByKey_WithEmptyPluginName_ReturnsNull()
+        {
+            var mockCache = new Mock<ILinkCache>();
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+
+            var result = resolver.ResolveByKey(new MunitionAutoPatcher.Models.FormKey { PluginName = "", FormId = 0x10 });
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public void TryResolve_WithCustomFormKey_ResolvesCorrectly()
+        {
+            var mockCache = new Mock<ILinkCache>();
+            var mockWeapon = new Mock<IWeaponGetter>();
+            IWeaponGetter? outWeapon = mockWeapon.Object;
+
+            // Setup IWeaponGetter resolution (checked after OMOD, COBJ)
+            IObjectModificationGetter? nullOmod = null;
+            IConstructibleObjectGetter? nullCobj = null;
+            mockCache.Setup(x => x.TryResolve<IObjectModificationGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullOmod, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IConstructibleObjectGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullCobj, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IWeaponGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out outWeapon, It.IsAny<ResolveTarget>()))
+                .Returns(true);
+
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+            
+            // Use custom FormKey (MunitionAutoPatcher.Models.FormKey)
+            var customFk = new MunitionAutoPatcher.Models.FormKey { PluginName = "Weapons.esp", FormId = 0x1234 };
+            
+            Assert.True(resolver.TryResolve(customFk, out var result));
+            Assert.NotNull(result);
+            Assert.IsAssignableFrom<IWeaponGetter>(result);
+        }
+
+        [Fact]
+        public void TryResolve_WhenAllTypedResolutionsFail_TriesGenericFallback()
+        {
+            var mockCache = new Mock<ILinkCache>();
+            
+            // Setup all typed resolutions to fail
+            IObjectModificationGetter? nullOmod = null;
+            IConstructibleObjectGetter? nullCobj = null;
+            IWeaponGetter? nullWeap = null;
+            IAmmunitionGetter? nullAmmo = null;
+            IMajorRecordGetter? nullRecord = null;
+
+            mockCache.Setup(x => x.TryResolve<IObjectModificationGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullOmod, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IConstructibleObjectGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullCobj, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IWeaponGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullWeap, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IAmmunitionGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullAmmo, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            // Generic fallback also fails in this test
+            mockCache.Setup(x => x.TryResolve<IMajorRecordGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullRecord, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+            var fk = new Mutagen.Bethesda.Plugins.FormKey("Test.esp", 0x999);
+            
+            // All resolutions fail, so result should be false
+            Assert.False(resolver.TryResolve(fk, out var result));
+            Assert.Null(result);
+            
+            // Verify generic fallback was attempted (at least once - Moq counts interface calls regardless of generic type)
+            mockCache.Verify(x => x.TryResolve<IMajorRecordGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), 
+                out It.Ref<IMajorRecordGetter?>.IsAny, 
+                It.IsAny<ResolveTarget>()), Times.AtLeastOnce);
+        }
+
+        [Fact]
+        public void TryResolve_WhenCacheMissesAll_ReturnsFalse()
+        {
+            var mockCache = new Mock<ILinkCache>();
+            
+            // Setup all resolutions to fail
+            IObjectModificationGetter? nullOmod = null;
+            IConstructibleObjectGetter? nullCobj = null;
+            IWeaponGetter? nullWeap = null;
+            IAmmunitionGetter? nullAmmo = null;
+            IMajorRecordGetter? nullRecord = null;
+
+            mockCache.Setup(x => x.TryResolve<IObjectModificationGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullOmod, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IConstructibleObjectGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullCobj, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IWeaponGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullWeap, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IAmmunitionGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullAmmo, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+            mockCache.Setup(x => x.TryResolve<IMajorRecordGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out nullRecord, It.IsAny<ResolveTarget>()))
+                .Returns(false);
+
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+            var fk = new Mutagen.Bethesda.Plugins.FormKey("Missing.esp", 0xDEAD);
+            
+            Assert.False(resolver.TryResolve(fk, out var result));
+            Assert.Null(result);
+        }
+
+        [Fact]
+        public void LinkCache_Property_ReturnsUnderlyingCache()
+        {
+            var mockCache = new Mock<ILinkCache>();
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+
+            Assert.Same(mockCache.Object, resolver.LinkCache);
+        }
+
+        [Fact]
+        public void TryResolve_WithFormLinkProperty_ExtractsFormKeyAndResolves()
+        {
+            var mockCache = new Mock<ILinkCache>();
+            var mockOmod = new Mock<IObjectModificationGetter>();
+            IObjectModificationGetter? outOmod = mockOmod.Object;
+
+            mockCache.Setup(x => x.TryResolve<IObjectModificationGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out outOmod, It.IsAny<ResolveTarget>()))
+                .Returns(true);
+
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+
+            // Create a mock object with FormKey property (simulating FormLink behavior)
+            var fk = new Mutagen.Bethesda.Plugins.FormKey("Link.esp", 0x100);
+            var mockLinkLike = new Mock<IFormLinkGetter>();
+            mockLinkLike.Setup(x => x.FormKey).Returns(fk);
+
+            Assert.True(resolver.TryResolve(mockLinkLike.Object, out var result));
+            Assert.NotNull(result);
+        }
+
+        [Theory]
+        [InlineData("Fallout4.esm", 0x0001F278)]  // Vanilla 10mm ammo
+        [InlineData("DLCNukaWorld.esm", 0x00001234)]
+        [InlineData("MyMod.esp", 0xABCDEF)]
+        public void ResolveByKey_VariousPluginFormats_AttemptsResolution(string pluginName, uint formId)
+        {
+            var mockCache = new Mock<ILinkCache>();
+            var mockOmod = new Mock<IObjectModificationGetter>();
+            IObjectModificationGetter? outOmod = mockOmod.Object;
+
+            mockCache.Setup(x => x.TryResolve<IObjectModificationGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), out outOmod, It.IsAny<ResolveTarget>()))
+                .Returns(true);
+
+            var resolver = new LinkResolver(mockCache.Object, NullLogger<LinkResolver>.Instance);
+            var customFk = new MunitionAutoPatcher.Models.FormKey { PluginName = pluginName, FormId = formId };
+            
+            var result = resolver.ResolveByKey(customFk);
+            
+            // Verify resolution was attempted
+            mockCache.Verify(x => x.TryResolve<IObjectModificationGetter>(
+                It.IsAny<Mutagen.Bethesda.Plugins.FormKey>(), 
+                out It.Ref<IObjectModificationGetter?>.IsAny, 
+                It.IsAny<ResolveTarget>()), Times.Once);
+            
+            Assert.NotNull(result);
+        }
     }
 }

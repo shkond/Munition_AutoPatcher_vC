@@ -41,9 +41,11 @@ Fallout 4武器自動パッチツール - WPF MVVM実装
 
 ```
 MunitionAutoPatcher/
-├── Models/                          # データモデル
+├── Models/                          # データモデル (9ファイル)
 │   ├── AmmoCategory.cs
 │   ├── AmmoData.cs
+│   ├── ConfirmationContext.cs       # 確認コンテキスト
+│   ├── ExtractionContext.cs         # 抽出コンテキスト
 │   ├── FormKey.cs
 │   ├── OmodCandidate.cs
 │   ├── StrategyConfig.cs
@@ -62,36 +64,58 @@ MunitionAutoPatcher/
 │   ├── MapperView.xaml
 │   └── SettingsView.xaml
 ├── Services/                        # サービス層
-│   ├── Helpers/
+│   ├── Helpers/                     # レガシーヘルパー (※段階的廃止予定)
 │   │   ├── CandidateEnumerator.cs
-│   │   ├── DiagnosticWriter.cs
+│   │   ├── DiagnosticWriter.cs      # static版 (Implementations版へ移行推奨)
 │   │   └── ReverseMapBuilder.cs
-│   ├── Interfaces/
+│   ├── Interfaces/                  # サービスインターフェース (17ファイル)
 │   │   ├── IAmmunitionChangeDetector.cs
+│   │   ├── ICandidateConfirmer.cs   # 候補確認戦略
+│   │   ├── ICandidateProvider.cs    # 候補提供戦略
 │   │   ├── IConfigService.cs
+│   │   ├── IDiagnosticWriter.cs     # 診断出力サービス
+│   │   ├── IEspPatchService.cs      # ESPパッチ生成
+│   │   ├── ILinkResolver.cs         # リンク解決
 │   │   ├── ILoadOrderService.cs
+│   │   ├── IMutagenAccessor.cs      # Mutagen境界API
+│   │   ├── IOmodPropertyAdapter.cs  # OMODプロパティアダプタ
 │   │   ├── IOrchestrator.cs
+│   │   ├── IPathService.cs          # パス解決サービス
 │   │   ├── IRobCoIniGenerator.cs
+│   │   ├── ITypedAmmunitionChangeDetector.cs
+│   │   ├── IWeaponDataExtractor.cs  # 武器データ抽出
 │   │   ├── IWeaponOmodExtractor.cs
 │   │   └── IWeaponsService.cs
-│   └── Implementations/
+│   └── Implementations/             # サービス実装 (30ファイル)
+│       ├── AttachPointConfirmer.cs  # アタッチポイント確認
+│       ├── CobjCandidateProvider.cs # COBJ候補提供
 │       ├── ConfigService.cs
-│       ├── DetectorFactory.cs
+│       ├── DiagnosticWriter.cs      # DI対応版診断出力
+│       ├── EspPatchService.cs       # ESPパッチ生成実装
+│       ├── FormKeyNormalizer.cs     # FormKey正規化
 │       ├── IMutagenEnvironment.cs
 │       ├── IMutagenEnvironmentFactory.cs
 │       ├── IResourcedMutagenEnvironment.cs
 │       ├── LinkCacheHelper.cs
+│       ├── LinkResolver.cs          # リンク解決実装
 │       ├── LoadOrderService.cs
+│       ├── MutagenAccessor.cs       # Mutagen境界API実装
 │       ├── MutagenEnvironmentFactory.cs
 │       ├── MutagenV51Detector.cs
 │       ├── MutagenV51EnvironmentAdapter.cs
+│       ├── MutagenV51OmodPropertyAdapter.cs
 │       ├── NoOpMutagenEnvironment.cs
+│       ├── OmodResolutionDiagnostics.cs
 │       ├── OrchestratorService.cs
+│       ├── PathService.cs           # パス解決実装
 │       ├── ReflectionFallbackDetector.cs
 │       ├── ResourcedMutagenEnvironment.cs
 │       ├── ReverseMapBuilder.cs
+│       ├── ReverseMapConfirmer.cs   # 逆参照確認
+│       ├── ReverseReferenceCandidateProvider.cs # 逆参照候補提供
 │       ├── RobCoIniGenerator.cs
-│       ├── WeaponOmodExtractor.cs
+│       ├── WeaponDataExtractor.cs   # 武器データ抽出実装
+│       ├── WeaponOmodExtractor.cs   # オーケストレータ
 │       └── WeaponsService.cs
 ├── Commands/                        # コマンドハンドラ
 │   ├── AsyncRelayCommand.cs
@@ -104,6 +128,12 @@ MunitionAutoPatcher/
 ├── App.xaml.cs                      # アプリケーションエントリポイント + DI設定
 ├── AppLogger.cs                     # ロギング
 └── DebugConsole.cs                  # デバッグコンソール
+
+tests/                               # テストプロジェクト (4プロジェクト)
+├── ConfirmerTests/                  # 確認ロジックテスト
+├── IntegrationTests/                # E2E統合テスト
+├── LinkCacheHelperTests/            # LinkCacheヘルパーテスト
+└── WeaponDataExtractorTests/        # 武器データ抽出テスト
 ```
 
 ## ビルド方法
