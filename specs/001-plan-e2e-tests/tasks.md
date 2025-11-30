@@ -65,9 +65,9 @@ Paths reference the existing solution layout:
 
 - [X] T009 [P] [US1] Implement tests/IntegrationTests/Infrastructure/TestServiceProvider.cs that mirrors App.xaml.cs registrations, swapping test-safe IConfigService/IPathService/IDiagnosticWriter
 - [X] T010 [P] [US1] Implement tests/IntegrationTests/Infrastructure/AsyncTestHarness.cs to coordinate CancellationToken, timeout enforcement, and orderly disposal around MapperViewModel runs
-- [ ] T011 [US1] Implement tests/IntegrationTests/Infrastructure/EspFileValidator.cs performing Mutagen overlay reads plus header-field normalization as documented in research.md
-- [ ] T012 [US1] Implement tests/IntegrationTests/Infrastructure/ViewModelHarness.cs that builds TestEnvironmentBuilder, resolves MapperViewModel via TestServiceProvider, runs commands, and returns ScenarioRunArtifact data
-- [ ] T013 [US1] Update tests/IntegrationTests/ViewModelE2ETests.cs to execute the harness end-to-end, assert ScenarioRunArtifact contents (ESP exists, structural counts pass), and capture diagnostics/logs
+- [X] T011 [US1] Implement tests/IntegrationTests/Infrastructure/EspFileValidator.cs performing Mutagen overlay reads plus header-field normalization as documented in research.md
+- [X] T012 [US1] Implement tests/IntegrationTests/Infrastructure/ViewModelHarness.cs that builds TestEnvironmentBuilder, resolves MapperViewModel via TestServiceProvider, runs commands, and returns ScenarioRunArtifact data
+- [X] T013 [US1] Update tests/IntegrationTests/ViewModelE2ETests.cs to execute the harness end-to-end, assert ScenarioRunArtifact contents (ESP exists, structural counts pass), and capture diagnostics/logs
 
 **Checkpoint**: MapperViewModel-driven ESP generation validated for the baseline scenario with deterministic results.
 

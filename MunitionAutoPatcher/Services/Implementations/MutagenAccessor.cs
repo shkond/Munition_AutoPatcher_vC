@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Services.Interfaces;
@@ -220,7 +221,10 @@ public class MutagenAccessor : IMutagenAccessor
     }
 
     /// <inheritdoc/>
-    public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, Models.FormKey formKey, out T? record) 
+    public bool TryResolveRecord<T>(
+        IResourcedMutagenEnvironment env,
+        Models.FormKey formKey,
+        [NotNullWhen(true)] out T? record) 
         where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter
     {
         record = null;

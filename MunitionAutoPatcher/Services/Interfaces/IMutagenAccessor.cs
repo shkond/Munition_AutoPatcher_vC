@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using MunitionAutoPatcher.Services.Implementations;
 using Mutagen.Bethesda.Plugins.Cache;
 
@@ -53,7 +54,10 @@ public interface IMutagenAccessor
     /// <param name="formKey">解決対象のFormKey</param>
     /// <param name="record">解決されたレコード（失敗時はnull）</param>
     /// <returns>解決に成功した場合はtrue</returns>
-    bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, Models.FormKey formKey, out T? record) 
+    bool TryResolveRecord<T>(
+        IResourcedMutagenEnvironment env,
+        Models.FormKey formKey,
+        [NotNullWhen(true)] out T? record) 
         where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter;
 
     /// <summary>

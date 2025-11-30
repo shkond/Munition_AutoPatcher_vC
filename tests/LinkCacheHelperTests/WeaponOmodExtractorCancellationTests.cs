@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -125,7 +126,7 @@ namespace LinkCacheHelperTests
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId) { pluginName = string.Empty; formId = 0; return false; }
             public string GetEditorId(object? record) => string.Empty;
-            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, out T? record) where T : class, IMajorRecordGetter { record = null; return false; }
+            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, [NotNullWhen(true)] out T? record) where T : class, IMajorRecordGetter { record = null; return false; }
             public Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, CancellationToken ct) where T : class, IMajorRecordGetter => Task.FromResult<(bool, T?)>((false, null));
         }
 
