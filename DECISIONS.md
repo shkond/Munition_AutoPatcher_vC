@@ -365,6 +365,59 @@
 
 ---
 
+### ADR-011: Debug.WriteLine / Console.WriteLine の ILogger<T> 移行と許可例外
+
+- **Date**: 2025-11-30
+- **Status**: Accepted
+- **Related-PR**: N/A
+- **Author**: @shkond
+
+#### Context
+- Constitution Section 5 は `Console.WriteLine` / `Debug.WriteLine` を禁止している。
+- `planRefactoring.md` の調査により、21件の違反（Debug.WriteLine 10件、Console.WriteLine 11件）が5ファイルで発見された。
+- しかし、すべてを ILogger に置換することは技術的に不可能または不適切なケースがある：
+  - ロガー自身の障害時フォールバック（AppLogger.cs）
+  - DI コンテナ構築前のブートストラップフェーズ（App.xaml.cs）
+  - デバッグコンソールインフラ（DebugConsole.cs）
+
+#### Decision
+
+**1. 修正対象（ILogger<T> への移行）**
+- `LoadOrderService.cs`: `Console.WriteLine` → `_logger.LogInformation()`（既存の ILogger 注入を活用）
+- `MainViewModel.cs`: `Debug.WriteLine` → `_logger.LogDebug()`（ILogger<MainViewModel> を新規注入）
+
+**2. 許可例外（意図的設計として維持）**
+
+| ファイル | 違反件数 | 許可理由 |
+|---------|---------|---------|
+| `AppLogger.cs` | 8件 | ロガー自身のエラーハンドリング。ILogger に変換すると無限再帰が発生するため、最終手段として Debug.WriteLine を維持。 |
+| `App.xaml.cs` | 6件 | DI コンテナ構築前のブートストラップ/クラッシュハンドリング。この時点では ILogger が利用不可能。 |
+| `DebugConsole.cs` | 4件 | コンソールリダイレクト自体のエラー処理。AppLogger 障害時のフォールバックとして意図的に Console.WriteLine を使用。 |
+
+**3. 許可基準の明文化**
+以下の条件を満たす場合のみ、Debug.WriteLine / Console.WriteLine の使用を許可する：
+- ロガーインフラ自体の障害処理である
+- DI コンテナが利用不可能なアプリケーションライフサイクルフェーズである
+- 最終手段のフォールバックとして明確にコメントされている
+
+#### Alternatives
+- **Serilog/NLog の静的ロガー導入**: DI 前でも利用可能だが、既存の ILogger<T> パターンとの統合コストが高く、効果に対して過剰。
+- **全件強制移行**: 技術的に不可能（ロガーが自身のエラーをロガーで報告すると無限ループ）。
+- **例外を文書化せず放置**: 将来の開発者が違反と誤認する可能性があるため、ADR で明文化する方針を採用。
+
+#### Consequences
+- **メリット**:
+  - 修正可能な2件（LoadOrderService, MainViewModel）を型安全な ILogger に移行。
+  - 残りの18件が「意図的設計」であることを明文化し、将来の誤修正を防止。
+  - Constitution Section 5 の実質的な遵守（許可例外を除く）。
+- **デメリット**:
+  - 形式上は一部の Debug.WriteLine/Console.WriteLine が残存。
+  - 許可基準の判断が必要なため、新規追加時に確認が必要。
+- **運用ルール**:
+  - 新規コードで Debug.WriteLine/Console.WriteLine を使用する場合は、上記の許可基準に該当することをコメントで明記すること。
+
+---
+
 ## 今後の追記方針
 
 - ここに挙げた ADR は暫定サマリです。今後、具体的な PR やリファクタリングのタイミングで、

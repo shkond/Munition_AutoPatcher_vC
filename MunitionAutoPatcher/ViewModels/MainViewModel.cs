@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using Microsoft.Extensions.Logging;
 using MunitionAutoPatcher.Commands;
 using MunitionAutoPatcher.Services.Interfaces;
 using MunitionAutoPatcher;
@@ -12,6 +13,7 @@ namespace MunitionAutoPatcher.ViewModels;
 public class MainViewModel : ViewModelBase
 {
     private readonly IOrchestrator _orchestrator;
+    private readonly ILogger<MainViewModel> _logger;
     private ViewModelBase? _currentView;
     private string _statusMessage = "準備完了";
     private ObservableCollection<string> _logMessages = new();
@@ -19,9 +21,11 @@ public class MainViewModel : ViewModelBase
     public MainViewModel(
         IOrchestrator orchestrator,
         SettingsViewModel settingsViewModel,
-        MapperViewModel mapperViewModel)
+        MapperViewModel mapperViewModel,
+        ILogger<MainViewModel> logger)
     {
         _orchestrator = orchestrator;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         SettingsViewModel = settingsViewModel;
         MapperViewModel = mapperViewModel;
 
@@ -141,7 +145,7 @@ public class MainViewModel : ViewModelBase
                 catch (Exception ex)
                 {
                     // Never allow logging failures to affect UI; AppLogger itself is best-effort.
-                    System.Diagnostics.Debug.WriteLine($"AddLog: AppLogger failed: {ex.Message}");
+                    _logger.LogDebug(ex, "AddLog: AppLogger failed");
                 }
             }
         }

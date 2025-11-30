@@ -52,7 +52,7 @@ public class LoadOrderService : ILoadOrderService
                     if (imported != null)
                     {
                         _loadOrder = imported;
-                        Console.WriteLine($"Using GameEnvironment-derived load order (DataFolder={envData})");
+                        _logger.LogInformation("Using GameEnvironment-derived load order (DataFolder={DataFolder})", envData);
                         return _loadOrder;
                     }
                 }
