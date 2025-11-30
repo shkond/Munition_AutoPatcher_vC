@@ -82,8 +82,9 @@ namespace LinkCacheHelperTests
             Assert.Single(result);
             var cand = result[0];
             Assert.Equal("COBJ", cand.CandidateType);
-            Assert.Equal("Base.esp", cand.CandidateFormKey.PluginName);
-            Assert.Equal((uint)0x00000111, cand.CandidateFormKey.FormId);
+            // CandidateFormKey should now be the COBJ's FormKey (not the CreatedObject/Weapon's FormKey)
+            Assert.Equal("Src.esp", cand.CandidateFormKey.PluginName);
+            Assert.Equal((uint)0x0000F001, cand.CandidateFormKey.FormId);
             Assert.NotNull(cand.CandidateAmmo);
             Assert.Equal("Ammo.esp", cand.CandidateAmmo!.PluginName);
             Assert.Equal((uint)0x000000A1, cand.CandidateAmmo!.FormId);

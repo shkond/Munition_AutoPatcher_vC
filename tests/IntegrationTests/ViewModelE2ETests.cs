@@ -2,6 +2,8 @@
 
 using IntegrationTests.Infrastructure;
 using IntegrationTests.Infrastructure.Models;
+using Microsoft.Extensions.DependencyInjection;
+using MunitionAutoPatcher.ViewModels;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -193,6 +195,109 @@ public class ViewModelE2ETests : IAsyncLifetime
         // The harness should at minimum capture its own status messages
         Assert.NotNull(artifact.Diagnostics);
         Assert.NotEmpty(artifact.Diagnostics.StatusMessages);
+    }
+
+    /// <summary>
+    /// T020: Diagnostic test to verify LinkResolver and LinkCache status during E2E execution.
+    /// This test logs detailed information about the resolution process to help diagnose
+    /// why WeaponMappings may be 0 even when OmodCandidates are extracted.
+    /// </summary>
+    [Fact]
+    public async Task DiagnoseConfirmationContext_LogsResolverAndLinkCacheStatus()
+    {
+        // Arrange
+        var scenario = CreateBasicScenario(
+            "resolver-diagnostic",
+            "LinkResolver/LinkCache Diagnostic Test");
+
+        _output.WriteLine("=== LinkResolver/LinkCache Diagnostic Test ===");
+        _output.WriteLine($"Test output root: {_testOutputRoot}");
+
+        // Act
+        await using var harness = await ViewModelHarness.CreateBuilder()
+            .WithScenario(scenario)
+            .WithTestOutput(_output)
+            .WithTempRoot(_testOutputRoot)
+            .BuildAsync();
+
+        var artifact = await harness.ExecuteAsync();
+
+        // Gather diagnostic info from MapperViewModel
+        var mapperViewModel = harness.Services.GetRequiredService<MapperViewModel>();
+        
+        _output.WriteLine("\n=== Execution Results ===");
+        _output.WriteLine($"State: {artifact.State}");
+        _output.WriteLine($"Duration: {artifact.Duration.TotalSeconds:F2}s");
+        _output.WriteLine($"OmodCandidates count: {mapperViewModel.OmodCandidates.Count}");
+        _output.WriteLine($"WeaponMappings count: {mapperViewModel.WeaponMappings.Count}");
+
+        // Log candidate details
+        _output.WriteLine("\n=== OmodCandidate Details ===");
+        var candidateIndex = 0;
+        foreach (var candidate in mapperViewModel.OmodCandidates.Take(20))
+        {
+            _output.WriteLine($"[{candidateIndex++}] Type={candidate.CandidateType}");
+            _output.WriteLine($"      FormKey={candidate.CandidateFormKey?.PluginName}:{candidate.CandidateFormKey?.FormId:X8}");
+            _output.WriteLine($"      BaseWeapon={candidate.BaseWeapon?.PluginName}:{candidate.BaseWeapon?.FormId:X8}");
+            _output.WriteLine($"      BaseWeaponEditorId={candidate.BaseWeaponEditorId}");
+            _output.WriteLine($"      ConfirmedAmmoChange={candidate.ConfirmedAmmoChange}");
+            _output.WriteLine($"      ConfirmReason={candidate.ConfirmReason ?? "(null)"}");
+            _output.WriteLine($"      CandidateAmmo={candidate.CandidateAmmo?.PluginName}:{candidate.CandidateAmmo?.FormId:X8}");
+            _output.WriteLine($"      CandidateAmmoName={candidate.CandidateAmmoName}");
+        }
+
+        // Log mapping details
+        _output.WriteLine("\n=== WeaponMapping Details ===");
+        var mappingIndex = 0;
+        foreach (var mapping in mapperViewModel.WeaponMappings.Take(20))
+        {
+            _output.WriteLine($"[{mappingIndex++}] WeaponFormKey={mapping.WeaponFormKey}");
+            _output.WriteLine($"      WeaponName={mapping.WeaponName}");
+            _output.WriteLine($"      AmmoFormKey={mapping.AmmoFormKey}");
+            _output.WriteLine($"      AmmoName={mapping.AmmoName}");
+            _output.WriteLine($"      Strategy={mapping.Strategy}");
+        }
+
+        // Log status messages
+        _output.WriteLine("\n=== Status Messages ===");
+        foreach (var msg in harness.StatusMessages)
+        {
+            _output.WriteLine($"  {msg}");
+        }
+
+        // Check for known diagnostic patterns in logs
+        var confirmedCount = mapperViewModel.OmodCandidates.Count(c => c.ConfirmedAmmoChange);
+        var unconfirmedWithReason = mapperViewModel.OmodCandidates.Count(c => !string.IsNullOrEmpty(c.ConfirmReason));
+        
+        _output.WriteLine("\n=== Confirmation Summary ===");
+        _output.WriteLine($"Total candidates: {mapperViewModel.OmodCandidates.Count}");
+        _output.WriteLine($"Confirmed: {confirmedCount}");
+        _output.WriteLine($"With ConfirmReason (but not confirmed): {unconfirmedWithReason - confirmedCount}");
+
+        // Group unconfirmed reasons
+        var reasonGroups = mapperViewModel.OmodCandidates
+            .Where(c => !c.ConfirmedAmmoChange && !string.IsNullOrEmpty(c.ConfirmReason))
+            .GroupBy(c => c.ConfirmReason)
+            .Select(g => new { Reason = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count);
+
+        _output.WriteLine("\n=== Unconfirmed Reasons ===");
+        foreach (var group in reasonGroups)
+        {
+            _output.WriteLine($"  [{group.Count}] {group.Reason}");
+        }
+
+        // Assert basic expectations
+        Assert.True(artifact.State >= RunState.Initialized, 
+            $"Expected state >= Initialized, got {artifact.State}");
+        
+        // Log if we have candidates but no mappings (the diagnostic focus)
+        if (mapperViewModel.OmodCandidates.Count > 0 && mapperViewModel.WeaponMappings.Count == 0)
+        {
+            _output.WriteLine("\n*** DIAGNOSTIC: Candidates extracted but no mappings generated ***");
+            _output.WriteLine("This indicates confirmation logic did not confirm any candidates.");
+            _output.WriteLine("Check the ConfirmReason values above for root cause.");
+        }
     }
 
     /// <summary>
