@@ -178,9 +178,9 @@
 
 ### ADR-007: E2E テストハーネス — ViewModel 駆動アーキテクチャ
 
-- **Date**: 2025-01-XX
+- **Date**: 2025-11-25
 - **Status**: Accepted
-- **Related-PR**: #XXX
+- **Related-PR**: N/A
 - **Context**:
   - 手動統合テストに依存していたため、リグレッション検出が困難で、CI における自動検証ができなかった。
   - WPF シェルを使用せずに MapperViewModel の動作を検証し、生成された ESP ファイルを自動的に検証する必要があった。
@@ -219,9 +219,9 @@
 
 ### ADR-008: E2E テストの DTO 署名とキャンセル戦略
 
-- **Date**: 2025-01-XX
+- **Date**: 2025-11-25
 - **Status**: Accepted
-- **Related-PR**: #XXX
+- **Related-PR**: N/A
 - **Context**:
   - E2E テストハーネスには、シナリオ定義とテスト実行アーティファクトに対する安定した DTO 契約が必要。
   - 長時間実行されるテストには適切なキャンセルとタイムアウト処理が必要。
@@ -243,6 +243,56 @@
   - DTO 契約により、テストコードとシナリオマニフェスト間の型安全性を保証。
   - タイムアウト強制により、テストが無限に実行されることを防止。
   - JSON シリアライゼーションによりシナリオの手動編集と CI 統合が容易に。
+
+---
+
+### ADR-009: FormKeyNormalizer 二重拡張子バグ修正と関連バグチェーン
+
+- **Date**: 2025-11-30
+- **Status**: Accepted
+- **Related-PR**: N/A
+- **Author**: @shkond
+
+#### Context
+- E2Eテストで「ESPファイルは作成されるがレコードが空」という現象が発生。
+- 調査の結果、複数のバグが連鎖して発生していることが判明した。
+- 根本原因は `FormKeyNormalizer` における `ModKey` コンストラクタの誤用。
+- 詳細なデバッグ記録は `espdebug.md` に記載。
+
+#### Decision
+
+**1. FormKeyNormalizer の修正（根本原因）**
+- `new ModKey(fileName, modType)` を `ModKey.FromNameAndExtension(fileName)` に変更。
+- Mutagen API の挙動:
+  - `new ModKey("TestMod.esp", ModType.Plugin)` → `"TestMod.esp.esp"` ✗
+  - `ModKey.FromNameAndExtension("TestMod.esp")` → `"TestMod.esp"` ✓
+
+**2. WeaponDataExtractor の CandidateFormKey 修正**
+- `CandidateFormKey` を CreatedObject (Weapon) ではなく COBJ レコードの FormKey に設定。
+- 後続の `AttachPointConfirmer` が COBJ を解決するために必要。
+
+**3. MutagenV51EnvironmentAdapter の InMemoryLinkCache 対応**
+- `InnerGameEnvironment` プロパティを追加。
+- コンストラクタに `ILinkCache? inMemoryLinkCache` パラメータを追加。
+- `EffectiveLinkCache` プロパティでインメモリを優先するように変更。
+
+**4. TestEnvironmentBuilder のモッド重複作成防止**
+- `WithPlugin()` で同じ ModKey に対して既存の mod を再利用するように変更。
+
+#### Alternatives
+- ModKey の入力から拡張子を手動で除去する案 → 複雑でエラーを招きやすいため却下。
+- Mutagen API を直接使用せず文字列操作で FormKey を構築する案 → 型安全性が失われるため却下。
+
+#### Consequences
+- **メリット**:
+  - E2Eテスト含む193件全てのテストが成功。
+  - Mutagen の ModKey API の正しい使用法が明確化。
+  - LinkCache 解決が正常に動作し、ESP 生成が成功。
+- **デメリット**:
+  - なし（純粋なバグ修正）。
+- **学んだ教訓**:
+  - Mutagen API は入力形式に敏感。`new ModKey()` と `ModKey.FromNameAndExtension()` の使い分けが重要。
+  - 複合バグの診断には E2E テスト → 単体テスト → 診断ログの段階的アプローチが有効。
 
 ---
 

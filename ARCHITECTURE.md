@@ -53,8 +53,23 @@
 - Complex operations are broken down into smaller, single-responsibility helper classes. For example, the `WeaponOmodExtractor` service delegates tasks to:
   - `CandidateEnumerator`: Finds potential weapon mod candidates.
   - `ReverseMapBuilder`: Builds reverse-lookup maps for efficient processing.
-  - `DiagnosticWriter`: Writes diagnostic and log files.
+  - `DiagnosticWriter` (`IDiagnosticWriter`): Writes diagnostic and log files via DI.
 - This approach enhances maintainability, testability, and readability.
+
+#### DiagnosticWriter の二重構成について (Dual DiagnosticWriter Implementation)
+
+現在、`DiagnosticWriter` は以下の2つの実装が存在します：
+
+| 実装 | 場所 | 特徴 | 状態 |
+|------|------|------|------|
+| **DI対応版（正規）** | `Services/Implementations/DiagnosticWriter.cs` | `IDiagnosticWriter` を実装、`IPathService` と `ILogger<T>` を DI で受け取る、型安全 | ✅ 推奨 |
+| **Static版（レガシー）** | `Services/Helpers/DiagnosticWriter.cs` | `internal static` クラス、リフレクション多用、`object` 型を直接操作 | ⚠️ 廃止予定 |
+
+**廃止計画:**
+- `Services/Helpers/DiagnosticWriter.cs` は将来のリファクタリングで削除予定です。
+- 新規コードでは必ず `IDiagnosticWriter`（DI 経由）を使用してください。
+- レガシー版は `WeaponOmodExtractor` の一部レガシーコードパスでのみ使用されています。
+- 完全移行後、`Services/Helpers/DiagnosticWriter.cs` を削除し、`CandidateEnumerator.cs` と `ReverseMapBuilder.cs` も同様に DI 対応版への移行を検討します。
 
 ### Asynchronous Operations & UI Responsiveness
 - Long-running tasks, such as data extraction, are executed on background threads using `Task.Run` and `AsyncRelayCommand`.
