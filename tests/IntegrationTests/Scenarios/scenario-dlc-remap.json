@@ -1,0 +1,41 @@
+{
+  "id": "scenario-dlc-remap",
+  "displayName": "DLC Weapon/Ammo Remapping",
+  "description": "Tests remapping of DLC weapon and ammunition records to base game equivalents",
+  "pluginSeeds": [
+    {
+      "name": "DLCMod.esp",
+      "builderActionName": "CreateDlcWeaponRemap",
+      "ownsEnvironment": true
+    }
+  ],
+  "expectedEspName": "DLCMod_Munition.esp",
+  "validationProfile": {
+    "profileId": "dlc-validation",
+    "ignoreHeaderFields": ["timestamp", "nextFormId"],
+    "allowedWarnings": [
+      "DLC reference detected",
+      "Remapping required"
+    ],
+    "structuralExpectations": {
+      "weaponCount": "atleast:1"
+    }
+  },
+  "scenarioAssertions": [
+    {
+      "target": "DLCRemapApplied",
+      "expectedValue": "true",
+      "description": "DLC weapon should be remapped to base game equivalent"
+    },
+    {
+      "target": "NoDLCReferences",
+      "expectedValue": "true",
+      "description": "Output should not contain direct DLC references"
+    }
+  ],
+  "configOverrides": {
+    "EnableDiagnostics": "true",
+    "EnableDLCRemapping": "true"
+  },
+  "timeoutSeconds": 30
+}

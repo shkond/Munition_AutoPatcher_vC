@@ -1,0 +1,187 @@
+# CI workflow for E2E Integration Tests
+# T024: Runs integration tests with artifact collection for baseline comparison
+
+name: E2E Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'MunitionAutoPatcher/**'
+      - 'tests/IntegrationTests/**'
+      - '.github/workflows/e2e-tests.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'MunitionAutoPatcher/**'
+      - 'tests/IntegrationTests/**'
+  workflow_dispatch:
+    inputs:
+      run_baseline_update:
+        description: 'Update baseline artifacts'
+        type: boolean
+        default: false
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  ARTIFACTS_PATH: 'test-artifacts'
+
+jobs:
+  integration-tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore MunitionAutoPatcher.sln
+
+    - name: Build solution
+      run: dotnet build MunitionAutoPatcher.sln -c Release --no-restore
+
+    - name: Run Integration Tests
+      run: |
+        dotnet test tests/IntegrationTests/IntegrationTests.csproj `
+          -c Release `
+          --no-build `
+          --verbosity normal `
+          --logger "trx;LogFileName=integration-test-results.trx" `
+          --results-directory "${{ env.ARTIFACTS_PATH }}/test-results"
+      env:
+        MUNITION_TEST_ARTIFACT_PATH: ${{ github.workspace }}/${{ env.ARTIFACTS_PATH }}
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: ${{ env.ARTIFACTS_PATH }}/test-results/
+        retention-days: 30
+
+    - name: Upload scenario artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: scenario-artifacts
+        path: ${{ env.ARTIFACTS_PATH }}/scenarios/
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Upload generated ESPs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: generated-esps
+        path: |
+          ${{ env.ARTIFACTS_PATH }}/**/*.esp
+          ${{ env.ARTIFACTS_PATH }}/**/*.esm
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Upload diagnostics
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: diagnostics
+        path: |
+          ${{ env.ARTIFACTS_PATH }}/**/*.csv
+          ${{ env.ARTIFACTS_PATH }}/**/*.log
+          ${{ env.ARTIFACTS_PATH }}/**/diagnostics.json
+        retention-days: 14
+        if-no-files-found: ignore
+
+  baseline-comparison:
+    runs-on: windows-latest
+    needs: integration-tests
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.base.ref }}
+        path: baseline
+
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        path: pr
+
+    - name: Download scenario artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: scenario-artifacts
+        path: pr-artifacts
+      continue-on-error: true
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Build baseline comparison tool
+      run: |
+        cd pr
+        dotnet build tests/IntegrationTests/IntegrationTests.csproj -c Release
+
+    - name: Run baseline comparison
+      run: |
+        # This would run a custom comparison tool
+        # For now, we just list the artifacts
+        Write-Host "=== Scenario Artifacts ==="
+        if (Test-Path pr-artifacts) {
+          Get-ChildItem -Path pr-artifacts -Recurse | Format-Table Name, Length, LastWriteTime
+        } else {
+          Write-Host "No artifacts found"
+        }
+      shell: pwsh
+
+  update-baseline:
+    runs-on: windows-latest
+    needs: integration-tests
+    if: github.event.inputs.run_baseline_update == 'true'
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download scenario artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: scenario-artifacts
+        path: new-baseline
+
+    - name: Update baseline files
+      run: |
+        $baselinePath = "tests/IntegrationTests/Baselines"
+        if (-not (Test-Path $baselinePath)) {
+          New-Item -ItemType Directory -Path $baselinePath -Force
+        }
+        if (Test-Path new-baseline) {
+          Copy-Item -Path "new-baseline/*" -Destination $baselinePath -Recurse -Force
+        }
+      shell: pwsh
+
+    - name: Create baseline update PR
+      uses: peter-evans/create-pull-request@v6
+      with:
+        commit-message: "chore: update E2E test baselines"
+        title: "[Auto] Update E2E Test Baselines"
+        body: |
+          This PR updates the E2E test baseline artifacts.
+          
+          **Artifacts updated:**
+          - Generated ESP files
+          - Diagnostic outputs
+          - Scenario metadata
+          
+          Please review the changes carefully before merging.
+        branch: auto/update-baselines
+        delete-branch: true

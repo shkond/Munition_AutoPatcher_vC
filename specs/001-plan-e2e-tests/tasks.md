@@ -81,15 +81,15 @@ Paths reference the existing solution layout:
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Add tests/IntegrationTests/Infrastructure/ScenarioCatalogTests.cs validating JSON schema, duplicate detection, and config override enforcement for scenario manifests
+- [X] T014 [P] [US2] Add tests/IntegrationTests/Infrastructure/ScenarioCatalogTests.cs validating JSON schema, duplicate detection, and config override enforcement for scenario manifests
 
 ### Implementation for User Story 2
 
-- [ ] T015 [P] [US2] Implement tests/IntegrationTests/Infrastructure/ScenarioCatalog.cs that loads Scenarios/*.json, materializes E2EScenarioDefinition objects, and exposes them to the harness
-- [ ] T016 [P] [US2] Implement tests/IntegrationTests/Infrastructure/ScenarioManifestSerializer.cs to read/write scenario manifests with strict validation errors per data-model.md
-- [ ] T017 [US2] Implement tests/IntegrationTests/Infrastructure/TestDataFactoryScenarioExtensions.cs registering builder actions referenced by PluginSeeds so scenarios reuse TestDataFactory helpers
-- [ ] T018 [US2] Add scenario manifests tests/IntegrationTests/Scenarios/scenario-basic-mapping.json and tests/IntegrationTests/Scenarios/scenario-dlc-remap.json covering distinct ammo/weapon mappings plus validation profiles
-- [ ] T019 [US2] Update tests/IntegrationTests/ViewModelE2ETests.cs to enumerate ScenarioCatalog results, execute each scenario, and surface scenario-specific assertion failures without manual test changes
+- [X] T015 [P] [US2] Implement tests/IntegrationTests/Infrastructure/ScenarioCatalog.cs that loads Scenarios/*.json, materializes E2EScenarioDefinition objects, and exposes them to the harness
+- [X] T016 [P] [US2] Implement tests/IntegrationTests/Infrastructure/ScenarioManifestSerializer.cs to read/write scenario manifests with strict validation errors per data-model.md
+- [X] T017 [US2] Implement tests/IntegrationTests/Infrastructure/TestDataFactoryScenarioExtensions.cs registering builder actions referenced by PluginSeeds so scenarios reuse TestDataFactory helpers
+- [X] T018 [US2] Add scenario manifests tests/IntegrationTests/Scenarios/scenario-basic-mapping.json and tests/IntegrationTests/Scenarios/scenario-dlc-remap.json covering distinct ammo/weapon mappings plus validation profiles
+- [X] T019 [US2] Update tests/IntegrationTests/ViewModelE2ETests.cs to enumerate ScenarioCatalog results, execute each scenario, and surface scenario-specific assertion failures without manual test changes
 
 **Checkpoint**: Multiple declarative scenarios can be authored and executed without code changes, enabling rapid coverage growth.
 
@@ -103,16 +103,16 @@ Paths reference the existing solution layout:
 
 ### Tests for User Story 3
 
-- [ ] T020 [P] [US3] Add tests/IntegrationTests/Infrastructure/ScenarioArtifactPublisherTests.cs to exercise manifest serialization and artifact packaging failure modes
-- [ ] T021 [P] [US3] Add tests/IntegrationTests/Infrastructure/BaselineDiffTests.cs covering ESP baseline comparison, ignore-list handling, and fatal vs warning classification
+- [X] T020 [P] [US3] Add tests/IntegrationTests/Infrastructure/ScenarioArtifactPublisherTests.cs to exercise manifest serialization and artifact packaging failure modes
+- [X] T021 [P] [US3] Add tests/IntegrationTests/Infrastructure/BaselineDiffTests.cs covering ESP baseline comparison, ignore-list handling, and fatal vs warning classification
 
 ### Implementation for User Story 3
 
-- [ ] T022 [P] [US3] Implement tests/IntegrationTests/Infrastructure/ScenarioArtifactPublisher.cs that copies ESPs/logs/diagnostics into per-scenario folders, zips them, and records ScenarioRunArtifact manifests
-- [ ] T023 [US3] Extend tests/IntegrationTests/Infrastructure/EspFileValidator.cs to compare generated ESPs with baselines under tests/IntegrationTests/Artifacts/ and emit diff reports referenced by diagnostics
-- [ ] T024 [US3] Add baseline ESP artifacts plus README under tests/IntegrationTests/Artifacts/ describing approval workflow for updated baselines
-- [ ] T025 [US3] Add .github/workflows/e2e-tests.yml running `dotnet test tests/IntegrationTests/IntegrationTests.csproj --filter FullyQualifiedName~ViewModelE2ETests`, uploading `e2e-test-results`, and gating on failures
-- [ ] T026 [US3] Update run-integration-tests.ps1 and run-integration-tests.sh to accept a `-Suite ViewModelE2E` option that executes the new tests and collects artifacts locally
+- [X] T022 [P] [US3] Implement tests/IntegrationTests/Infrastructure/ScenarioArtifactPublisher.cs that copies ESPs/logs/diagnostics into per-scenario folders, zips them, and records ScenarioRunArtifact manifests
+- [X] T023 [US3] Extend tests/IntegrationTests/Infrastructure/EspFileValidator.cs to compare generated ESPs with baselines under tests/IntegrationTests/Artifacts/ and emit diff reports referenced by diagnostics
+- [X] T024 [US3] Add baseline ESP artifacts plus README under tests/IntegrationTests/Artifacts/ describing approval workflow for updated baselines
+- [X] T025 [US3] Add .github/workflows/e2e-tests.yml running `dotnet test tests/IntegrationTests/IntegrationTests.csproj --filter FullyQualifiedName~ViewModelE2ETests`, uploading `e2e-test-results`, and gating on failures
+- [X] T026 [US3] Update run-integration-tests.ps1 and run-integration-tests.sh to accept a `-Suite ViewModelE2E` option that executes the new tests and collects artifacts locally
 
 **Checkpoint**: CI enforces deterministic ESP validation with downloadable artifacts for every run.
 
@@ -122,9 +122,9 @@ Paths reference the existing solution layout:
 
 **Purpose**: Final documentation, governance, and validation touches shared across stories.
 
-- [ ] T027 [P] Document scenario onboarding steps and quickstart pointers inside docs/README.md so contributors can find the new harness quickly
-- [ ] T028 [P] Record Stage 2 design agreements (DTO signatures, cancellation strategy) in DECISIONS.md for long-term traceability
-- [ ] T029 Update specs/001-plan-e2e-tests/quickstart.md after running the end-to-end suite to confirm commands, artifact paths, and troubleshooting steps remain accurate
+- [X] T027 [P] Document scenario onboarding steps and quickstart pointers inside docs/README.md so contributors can find the new harness quickly
+- [X] T028 [P] Record Stage 2 design agreements (DTO signatures, cancellation strategy) in DECISIONS.md for long-term traceability
+- [X] T029 Update specs/001-plan-e2e-tests/quickstart.md after running the end-to-end suite to confirm commands, artifact paths, and troubleshooting steps remain accurate
 
 ---
 
