@@ -24,6 +24,7 @@ public class WeaponsService : IWeaponsService
 {
     private readonly ILoadOrderService _loadOrderService;
     private readonly IMutagenEnvironmentFactory _mutagenEnvironmentFactory;
+    private readonly IMutagenAccessor _mutagenAccessor;
     private readonly List<WeaponData> _weapons = new();
     private readonly List<AmmoData> _ammo = new();
     private readonly ILogger<WeaponsService> _logger;
@@ -41,10 +42,11 @@ public class WeaponsService : IWeaponsService
             _logger.LogError(message);
     }
 
-    public WeaponsService(ILoadOrderService loadOrderService, IMutagenEnvironmentFactory mutagenEnvironmentFactory, ILogger<WeaponsService> logger)
+    public WeaponsService(ILoadOrderService loadOrderService, IMutagenEnvironmentFactory mutagenEnvironmentFactory, IMutagenAccessor mutagenAccessor, ILogger<WeaponsService> logger)
     {
         _loadOrderService = loadOrderService;
         _mutagenEnvironmentFactory = mutagenEnvironmentFactory ?? throw new ArgumentNullException(nameof(mutagenEnvironmentFactory));
+        _mutagenAccessor = mutagenAccessor ?? throw new ArgumentNullException(nameof(mutagenAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -189,12 +191,10 @@ public class WeaponsService : IWeaponsService
                 {
                     try
                     {
-                        // Use reflection-safe helpers to extract FormKey and common properties.
-                        // Dynamic binding can throw when the object doesn't expose expected members
-                        // (e.g., in test/no-op environments), so prefer guarded extraction.
+                        // Use type-safe accessor to extract FormKey and common properties.
                         string pluginName = string.Empty;
                         uint formId = 0;
-                        if (!MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(weaponGetter, out pluginName, out formId))
+                        if (!_mutagenAccessor.TryGetPluginAndIdFromRecord(weaponGetter, out pluginName, out formId))
                         {
                             // Skip weapons with invalid FormKeys instead of throwing
                             LogInfo($"WeaponsService: skipping weapon record with missing or invalid FormKey (Type: {weaponGetter?.GetType().Name ?? "null"})");
@@ -216,97 +216,129 @@ public class WeaponsService : IWeaponsService
 
                         if (string.IsNullOrEmpty(editorId))
                         {
-                            try
-                            {
-                                MutagenReflectionHelpers.TryGetPropertyValue<string>(weaponGetter, "EditorID", out editorId);
-                            }
-                            catch (Exception ex)
-                            {
-                                LogError($"WeaponsService: reflection EditorID access failed for {pluginName}:{formId:X8}", ex);
-                                editorId = null;
-                            }
+                            editorId = _mutagenAccessor.GetEditorId(weaponGetter);
                         }
 
-                        // Name / Description may be ITranslatedStringGetter or simple strings
+                        // Name / Description / Ammo via type-safe accessor
                         object? nameObj = null;
                         object? descObj = null;
                         object? ammoObj = null;
                         string name = string.Empty;
                         string description = string.Empty;
-                        try
-                        {
-                            MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Name", out nameObj);
-                            if (nameObj != null)
-                            {
-                                if (nameObj is ITranslatedStringGetter tname) name = GetBestTranslatedString(tname);
-                                else name = nameObj.ToString() ?? string.Empty;
-                            }
-                        }
-                        catch { name = string.Empty; }
 
-                        try
+                        // Use typed API when possible
+                        if (weaponGetter is IWeaponGetter typedWpn)
                         {
-                            MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Description", out descObj);
-                            if (descObj != null)
+                            try
                             {
-                                if (descObj is ITranslatedStringGetter tdesc) description = GetBestTranslatedString(tdesc);
-                                else description = descObj.ToString() ?? string.Empty;
+                                name = _mutagenAccessor.GetWeaponName(typedWpn) ?? string.Empty;
+                                nameObj = typedWpn.Name; // Keep for mojibake detection
                             }
-                        }
-                        catch { description = string.Empty; }
+                            catch { name = string.Empty; }
 
-                        try { MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Ammo", out ammoObj); } catch { ammoObj = null; }
+                            try
+                            {
+                                description = _mutagenAccessor.GetWeaponDescription(typedWpn) ?? string.Empty;
+                                descObj = typedWpn.Description; // Keep for mojibake detection
+                            }
+                            catch { description = string.Empty; }
+
+                            try
+                            {
+                                ammoObj = _mutagenAccessor.GetWeaponAmmoLink(typedWpn);
+                            }
+                            catch { ammoObj = null; }
+                        }
+                        else
+                        {
+                            // Fallback to property accessor for non-typed records
+                            try
+                            {
+                                _mutagenAccessor.TryGetPropertyValue<object>(weaponGetter, "Name", out nameObj);
+                                if (nameObj != null)
+                                {
+                                    if (nameObj is ITranslatedStringGetter tname) name = GetBestTranslatedString(tname);
+                                    else name = nameObj.ToString() ?? string.Empty;
+                                }
+                            }
+                            catch { name = string.Empty; }
+
+                            try
+                            {
+                                _mutagenAccessor.TryGetPropertyValue<object>(weaponGetter, "Description", out descObj);
+                                if (descObj != null)
+                                {
+                                    if (descObj is ITranslatedStringGetter tdesc) description = GetBestTranslatedString(tdesc);
+                                    else description = descObj.ToString() ?? string.Empty;
+                                }
+                            }
+                            catch { description = string.Empty; }
+
+                            try { _mutagenAccessor.TryGetPropertyValue<object>(weaponGetter, "Ammo", out ammoObj); } catch { ammoObj = null; }
+                        }
 
                         float damage = 0f;
-                        try
-                        {
-                            if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "BaseDamage", out var bd) && bd != null)
-                            {
-                                damage = ToSingleFlexible(bd);
-                            }
-                            else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Data", out var wdata) && wdata != null)
-                            {
-                                if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata, "BaseDamage", out var bd2) && bd2 != null)
-                                {
-                                    damage = ToSingleFlexible(bd2);
-                                }
-                                else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata, "Damage", out var bd3) && bd3 != null)
-                                {
-                                    damage = ToSingleFlexible(bd3);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "WeaponsService: damage extraction failed for {Plugin}:{FormId:X8}", pluginName, formId);
-                            damage = 0f;
-                        }
-
                         float fireRate = 0f;
-                        try
+                        if (weaponGetter is IWeaponGetter typedWpn2)
                         {
-                            float secs = 0f;
-                            if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "AnimationAttackSeconds", out var aas) && aas != null)
-                            {
-                                secs = ToSingleFlexible(aas);
-                            }
-                            else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(weaponGetter, "Data", out var wdata2) && wdata2 != null)
-                            {
-                                if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata2, "AnimationAttackSeconds", out var aas2) && aas2 != null)
-                                {
-                                    secs = ToSingleFlexible(aas2);
-                                }
-                                else if (MutagenReflectionHelpers.TryGetPropertyValue<object>(wdata2, "AttackDelaySec", out var delay) && delay != null)
-                                {
-                                    secs = ToSingleFlexible(delay);
-                                }
-                            }
-                            fireRate = secs > 0 ? 60f / secs : 0f;
+                            try { damage = _mutagenAccessor.GetWeaponBaseDamage(typedWpn2); }
+                            catch (Exception ex) { _logger.LogError(ex, "WeaponsService: damage extraction failed for {Plugin}:{FormId:X8}", pluginName, formId); }
+
+                            try { fireRate = _mutagenAccessor.GetWeaponFireRate(typedWpn2); }
+                            catch (Exception ex) { _logger.LogError(ex, "WeaponsService: fire rate extraction failed for {Plugin}:{FormId:X8}", pluginName, formId); }
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            _logger.LogError(ex, "WeaponsService: fire rate extraction failed for {Plugin}:{FormId:X8}", pluginName, formId);
-                            fireRate = 0f;
+                            // Fallback for non-typed records
+                            try
+                            {
+                                if (_mutagenAccessor.TryGetPropertyValue<object>(weaponGetter, "BaseDamage", out var bd) && bd != null)
+                                {
+                                    damage = ToSingleFlexible(bd);
+                                }
+                                else if (_mutagenAccessor.TryGetPropertyValue<object>(weaponGetter, "Data", out var wdata) && wdata != null)
+                                {
+                                    if (_mutagenAccessor.TryGetPropertyValue<object>(wdata, "BaseDamage", out var bd2) && bd2 != null)
+                                    {
+                                        damage = ToSingleFlexible(bd2);
+                                    }
+                                    else if (_mutagenAccessor.TryGetPropertyValue<object>(wdata, "Damage", out var bd3) && bd3 != null)
+                                    {
+                                        damage = ToSingleFlexible(bd3);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "WeaponsService: damage extraction failed for {Plugin}:{FormId:X8}", pluginName, formId);
+                                damage = 0f;
+                            }
+
+                            try
+                            {
+                                float secs = 0f;
+                                if (_mutagenAccessor.TryGetPropertyValue<object>(weaponGetter, "AnimationAttackSeconds", out var aas) && aas != null)
+                                {
+                                    secs = ToSingleFlexible(aas);
+                                }
+                                else if (_mutagenAccessor.TryGetPropertyValue<object>(weaponGetter, "Data", out var wdata2) && wdata2 != null)
+                                {
+                                    if (_mutagenAccessor.TryGetPropertyValue<object>(wdata2, "AnimationAttackSeconds", out var aas2) && aas2 != null)
+                                    {
+                                        secs = ToSingleFlexible(aas2);
+                                    }
+                                    else if (_mutagenAccessor.TryGetPropertyValue<object>(wdata2, "AttackDelaySec", out var delay) && delay != null)
+                                    {
+                                        secs = ToSingleFlexible(delay);
+                                    }
+                                }
+                                fireRate = secs > 0 ? 60f / secs : 0f;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "WeaponsService: fire rate extraction failed for {Plugin}:{FormId:X8}", pluginName, formId);
+                                fireRate = 0f;
+                            }
                         }
 
                         var weaponData = new WeaponData
@@ -376,13 +408,14 @@ public class WeaponsService : IWeaponsService
                                 var ammoRecord = ammoResolved;
                                 try
                                 {
-                                    if (MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoRecord, out string ammoPlugin, out uint id))
+                                    if (_mutagenAccessor.TryGetPluginAndIdFromRecord(ammoRecord, out string ammoPlugin, out uint id))
                                     {
                                         weaponData.DefaultAmmo = new Models.FormKey { PluginName = ammoPlugin, FormId = id };
 
-                                        if (MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? ammoEditorId) && !string.IsNullOrEmpty(ammoEditorId))
+                                        var ammoEditorId = _mutagenAccessor.GetEditorId(ammoRecord);
+                                        if (!string.IsNullOrEmpty(ammoEditorId))
                                         {
-                                            weaponData.DefaultAmmoName = ammoEditorId!;
+                                            weaponData.DefaultAmmoName = ammoEditorId;
                                         }
 
                                         var key = $"{ammoPlugin}:{id:X8}";
@@ -390,12 +423,11 @@ public class WeaponsService : IWeaponsService
                                         {
                                             seen.Add(key);
 
-                                            MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoRecord, "EditorID", out string? ammoEditorId2);
                                             _ammo.Add(new AmmoData
                                             {
                                                 FormKey = new Models.FormKey { PluginName = ammoPlugin, FormId = id },
                                                 Name = weaponData.DefaultAmmoName ?? string.Empty,
-                                                EditorId = ammoEditorId2 ?? string.Empty,
+                                                EditorId = ammoEditorId ?? string.Empty,
                                                 Damage = 0,
                                                 AmmoType = string.Empty
                                             });
@@ -406,19 +438,20 @@ public class WeaponsService : IWeaponsService
                             }
                             else
                             {
-                                // Fallback: try to read FormKey directly from the weapon's Ammo property via reflection.
+                                // Fallback: try to read FormKey directly from the weapon's Ammo property via accessor.
                                 // Even if we can't resolve the full record through LinkCache, we can still surface the ammo FormKey
                                 // in outputs and collect a minimal ammo entry so the Ammo table isn't empty.
                                 try
                                 {
-                                    if (ammoObj != null && MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(ammoObj, out string ammoPluginFallback, out uint ammoFormId))
+                                    if (ammoObj != null && _mutagenAccessor.TryGetPluginAndIdFromRecord(ammoObj, out string ammoPluginFallback, out uint ammoFormId))
                                     {
                                         weaponData.DefaultAmmo = new Models.FormKey { PluginName = ammoPluginFallback, FormId = ammoFormId };
 
                                         // Try to read an EditorID directly off the object (works if it's already a record/overlay)
                                         try
                                         {
-                                            if (MutagenReflectionHelpers.TryGetPropertyValue<string>(ammoObj, "EditorID", out string? eid) && !string.IsNullOrWhiteSpace(eid))
+                                            var eid = _mutagenAccessor.GetEditorId(ammoObj);
+                                            if (!string.IsNullOrWhiteSpace(eid))
                                             {
                                                 weaponData.DefaultAmmoName = eid;
                                             }
@@ -717,11 +750,15 @@ public class WeaponsService : IWeaponsService
                     break;
             }
 
-            // Try Value property commonly used by wrapper structs
+            // Try Value property commonly used by wrapper structs (simple reflection fallback)
             try
             {
-                if (MutagenReflectionHelpers.TryGetPropertyValue<object>(v, "Value", out var inner) && inner != null)
-                    return ToSingleFlexible(inner);
+                var valueProp = v.GetType().GetProperty("Value", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (valueProp != null)
+                {
+                    var inner = valueProp.GetValue(v);
+                    if (inner != null) return ToSingleFlexible(inner);
+                }
             }
             catch { /* ignore */ }
 

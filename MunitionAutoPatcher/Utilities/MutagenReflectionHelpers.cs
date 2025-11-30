@@ -11,8 +11,11 @@ namespace MunitionAutoPatcher.Utilities
     /// Collection of small reflection helpers used to extract FormKey/ModKey/FileName/ID
     /// information from adapter-provided objects. These helpers are defensive and return
     /// false on any unexpected shape or exceptions.
+    /// 
+    /// NOTE: This class is internal to enforce the Accessor boundary pattern.
+    /// External code should use IMutagenAccessor methods instead.
     /// </summary>
-    public static class MutagenReflectionHelpers
+    internal static class MutagenReflectionHelpers
     {
         private static readonly ConcurrentDictionary<string, int> s_msgCounts = new();
         private const int s_msgSuppressThreshold = 3;

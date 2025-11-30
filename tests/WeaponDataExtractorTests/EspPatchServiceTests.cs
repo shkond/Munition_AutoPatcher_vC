@@ -80,6 +80,17 @@ namespace WeaponDataExtractorTestsProject
             public string GetEditorId(object? record) => string.Empty;
             public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, [NotNullWhen(true)] out T? record) where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter { record = null; return false; }
             public Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, CancellationToken ct) where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter => Task.FromResult<(bool, T?)>((false, null));
+            
+            // New Weapon API methods
+            public string? GetWeaponName(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon) => null;
+            public string? GetWeaponDescription(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon) => null;
+            public float GetWeaponBaseDamage(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon) => 0f;
+            public float GetWeaponFireRate(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon) => 0f;
+            public object? GetWeaponAmmoLink(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon) => null;
+            
+            // New FormKey/Property API methods
+            public bool TryGetFormKey(object? record, out Mutagen.Bethesda.Plugins.FormKey? formKey) { formKey = null; return false; }
+            public bool TryGetPropertyValue<TValue>(object? obj, string propertyName, out TValue? value) { value = default; return false; }
         }
 
         private class FakeLogger<T> : ILogger<T>

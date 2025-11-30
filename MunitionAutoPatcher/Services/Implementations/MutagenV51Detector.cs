@@ -38,7 +38,7 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
         _accessor = accessor ?? throw new ArgumentNullException(nameof(accessor));
         _env = env ?? throw new ArgumentNullException(nameof(env));
         _propertyAdapter = propertyAdapter ?? throw new ArgumentNullException(nameof(propertyAdapter));
-        _fallback = new ReflectionFallbackDetector(loggerFactory.CreateLogger<ReflectionFallbackDetector>());
+        _fallback = new ReflectionFallbackDetector(loggerFactory.CreateLogger<ReflectionFallbackDetector>(), accessor);
     }
 
     public string Name => "MutagenV51Detector";

@@ -308,4 +308,164 @@ public class MutagenAccessor : IMutagenAccessor
         var success = TryResolveRecord<T>(env, formKey, out var record);
         return (success, record);
     }
+
+    #region 型安全な Weapon プロパティアクセサ
+
+    /// <inheritdoc/>
+    public string? GetWeaponName(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon)
+    {
+        if (weapon == null) return null;
+        try
+        {
+            var nameObj = weapon.Name;
+            if (nameObj == null) return null;
+            
+            // ITranslatedStringGetter の場合は String プロパティを使用
+            if (nameObj is Mutagen.Bethesda.Strings.ITranslatedStringGetter translated)
+            {
+                return translated.String;
+            }
+            return nameObj.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.GetWeaponName: failed to read Name");
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public string? GetWeaponDescription(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon)
+    {
+        if (weapon == null) return null;
+        try
+        {
+            var descObj = weapon.Description;
+            if (descObj == null) return null;
+            
+            if (descObj is Mutagen.Bethesda.Strings.ITranslatedStringGetter translated)
+            {
+                return translated.String;
+            }
+            return descObj.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.GetWeaponDescription: failed to read Description");
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public float GetWeaponBaseDamage(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon)
+    {
+        if (weapon == null) return 0f;
+        try
+        {
+            // Fallout 4 の IWeaponGetter は BaseDamage を直接プロパティとして持つ
+            return weapon.BaseDamage;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.GetWeaponBaseDamage: failed to read BaseDamage");
+            return 0f;
+        }
+    }
+
+    /// <inheritdoc/>
+    public float GetWeaponFireRate(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon)
+    {
+        if (weapon == null) return 0f;
+        try
+        {
+            // AnimationAttackSeconds から RPM を計算 (直接プロパティとして存在)
+            var attackSeconds = weapon.AnimationAttackSeconds;
+            if (attackSeconds > 0)
+            {
+                return 60f / attackSeconds;
+            }
+            return 0f;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.GetWeaponFireRate: failed to read FireRate");
+            return 0f;
+        }
+    }
+
+    /// <inheritdoc/>
+    public object? GetWeaponAmmoLink(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon)
+    {
+        if (weapon == null) return null;
+        try
+        {
+            return weapon.Ammo;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.GetWeaponAmmoLink: failed to read Ammo");
+            return null;
+        }
+    }
+
+    #endregion
+
+    #region FormKey / プロパティアクセサ
+
+    /// <inheritdoc/>
+    public bool TryGetFormKey(object? record, out Mutagen.Bethesda.Plugins.FormKey? formKey)
+    {
+        formKey = null;
+        if (record == null) return false;
+
+        try
+        {
+            // Fast path: typed record
+            if (record is Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter mrFast)
+            {
+                formKey = mrFast.FormKey;
+                return true;
+            }
+
+            // Fast path: FormKey itself
+            if (record is Mutagen.Bethesda.Plugins.FormKey fkDirect)
+            {
+                formKey = fkDirect;
+                return true;
+            }
+
+            // Fallback: reflection (delegated to internal helper)
+            if (MutagenReflectionHelpers.TryGetFormKey(record, out var fkObj) && fkObj is Mutagen.Bethesda.Plugins.FormKey fk)
+            {
+                formKey = fk;
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.TryGetFormKey: failed to extract FormKey");
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool TryGetPropertyValue<T>(object? obj, string propertyName, out T? value)
+    {
+        value = default;
+        if (obj == null || string.IsNullOrEmpty(propertyName)) return false;
+
+        try
+        {
+            return MutagenReflectionHelpers.TryGetPropertyValue(obj, propertyName, out value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor.TryGetPropertyValue: failed for property {PropertyName}", propertyName);
+            return false;
+        }
+    }
+
+    #endregion
 }

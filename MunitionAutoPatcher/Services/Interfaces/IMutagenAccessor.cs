@@ -84,4 +84,48 @@ public interface IMutagenAccessor
         Models.FormKey formKey, 
         CancellationToken ct) 
         where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter;
+
+    #region 型安全な Weapon プロパティアクセサ
+
+    /// <summary>
+    /// Weapon レコードから名前を取得します。
+    /// </summary>
+    string? GetWeaponName(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon);
+
+    /// <summary>
+    /// Weapon レコードから説明文を取得します。
+    /// </summary>
+    string? GetWeaponDescription(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon);
+
+    /// <summary>
+    /// Weapon レコードから基本ダメージを取得します。
+    /// </summary>
+    float GetWeaponBaseDamage(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon);
+
+    /// <summary>
+    /// Weapon レコードから発射レート（RPM）を取得します。
+    /// </summary>
+    float GetWeaponFireRate(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon);
+
+    /// <summary>
+    /// Weapon レコードから弾薬リンクを取得します。
+    /// </summary>
+    object? GetWeaponAmmoLink(Mutagen.Bethesda.Fallout4.IWeaponGetter weapon);
+
+    #endregion
+
+    #region FormKey / プロパティアクセサ
+
+    /// <summary>
+    /// オブジェクトから FormKey を抽出します。
+    /// </summary>
+    bool TryGetFormKey(object? record, out Mutagen.Bethesda.Plugins.FormKey? formKey);
+
+    /// <summary>
+    /// オブジェクトからプロパティ値をリフレクションで取得します。
+    /// Accessor 内部に隠蔽されたリフレクションロジックを使用します。
+    /// </summary>
+    bool TryGetPropertyValue<T>(object? obj, string propertyName, out T? value);
+
+    #endregion
 }

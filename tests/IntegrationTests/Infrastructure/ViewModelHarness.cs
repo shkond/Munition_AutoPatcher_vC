@@ -500,7 +500,7 @@ file sealed class MutagenV51EnvironmentAdapter : IMutagenEnvironment, IDisposabl
 }
 
 /// <summary>
-/// Wraps Mutagen's ILinkCache for test use, delegating to LinkCacheHelper.
+/// Wraps Mutagen's ILinkCache for test use with type-safe resolution.
 /// </summary>
 file sealed class LinkResolverAdapter : ILinkResolver
 {
@@ -514,20 +514,35 @@ file sealed class LinkResolverAdapter : ILinkResolver
     public bool TryResolve(object linkLike, out object? result)
     {
         result = null;
-        if (LinkCache == null) return false;
-        
-        // Use the robust LinkCacheHelper that handles all the reflection complexity
-        result = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(linkLike, LinkCache);
-        return result != null;
+        if (LinkCache == null || linkLike == null) return false;
+
+        try
+        {
+            // Extract FormKey from linkLike object
+            Mutagen.Bethesda.Plugins.FormKey? fk = linkLike switch
+            {
+                Mutagen.Bethesda.Plugins.FormKey directFk => directFk,
+                MunitionAutoPatcher.Models.FormKey customFk => MunitionAutoPatcher.Services.Implementations.FormKeyNormalizer.ToMutagenFormKey(customFk),
+                _ => TryExtractFormKey(linkLike)
+            };
+
+            if (fk.HasValue)
+            {
+                result = ResolveFormKeyTyped(fk.Value);
+                return result != null;
+            }
+        }
+        catch
+        {
+            // Ignore resolution failures
+        }
+        return false;
     }
 
     public bool TryResolve<TGetter>(object linkLike, out TGetter? result) where TGetter : class?
     {
         result = null;
-        if (LinkCache == null) return false;
-
-        var resolved = MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(linkLike, LinkCache);
-        if (resolved is TGetter typed)
+        if (TryResolve(linkLike, out var resolved) && resolved is TGetter typed)
         {
             result = typed;
             return true;
@@ -541,17 +556,42 @@ file sealed class LinkResolverAdapter : ILinkResolver
 
         try
         {
-            var mutagenKey = new Mutagen.Bethesda.Plugins.FormKey(
-                Mutagen.Bethesda.Plugins.ModKey.FromFileName(key.PluginName),
-                key.FormId);
-            
-            // Use LinkCacheHelper's reflection-based resolution
-            return MunitionAutoPatcher.Services.Implementations.LinkCacheHelper.TryResolveViaLinkCache(mutagenKey, LinkCache);
+            var mutagenKey = MunitionAutoPatcher.Services.Implementations.FormKeyNormalizer.ToMutagenFormKey(key);
+            if (mutagenKey.HasValue)
+            {
+                return ResolveFormKeyTyped(mutagenKey.Value);
+            }
         }
         catch
         {
             // Ignore resolution failures
         }
+        return null;
+    }
+
+    private Mutagen.Bethesda.Plugins.FormKey? TryExtractFormKey(object linkLike)
+    {
+        var prop = linkLike.GetType().GetProperty("FormKey");
+        var raw = prop?.GetValue(linkLike);
+        return raw as Mutagen.Bethesda.Plugins.FormKey?;
+    }
+
+    private object? ResolveFormKeyTyped(Mutagen.Bethesda.Plugins.FormKey fk)
+    {
+        if (LinkCache == null) return null;
+
+        // Try typed paths first (same as production LinkResolver)
+        if (LinkCache.TryResolve<IObjectModificationGetter>(fk, out var omod) && omod != null)
+            return omod;
+        if (LinkCache.TryResolve<IConstructibleObjectGetter>(fk, out var cobj) && cobj != null)
+            return cobj;
+        if (LinkCache.TryResolve<IWeaponGetter>(fk, out var weap) && weap != null)
+            return weap;
+        if (LinkCache.TryResolve<IAmmunitionGetter>(fk, out var ammo) && ammo != null)
+            return ammo;
+        if (LinkCache.TryResolve<IMajorRecordGetter>(fk, out var any) && any != null)
+            return any;
+
         return null;
     }
 }
