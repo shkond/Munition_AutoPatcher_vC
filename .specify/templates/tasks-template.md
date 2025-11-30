@@ -249,3 +249,10 @@ With multiple developers:
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
+
+### Mutagen / AI-Specific Task Notes
+
+- When tasks involve Mutagen API usage or plugin parsing, include explicit subtasks for:
+  - Verifying boundaries via `IMutagenAccessor` and Detector/Strategy patterns.
+  - Researching Mutagen types using the MCP server `mcp_mutagen-rag_search_repository` (record definitions, fields, enums).
+  - Adding or updating DECISIONS.md entries if Stage 2 AI design agreements (憲章セクション 12) are involved.

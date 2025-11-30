@@ -1,5 +1,3 @@
-# Munition AutoPatcher vC — Constitution
-
 <!--
 Sync Impact Report
 - Version change: 1.0.0 -> 1.1.0
@@ -7,23 +5,24 @@ Sync Impact Report
 - Added sections: AI citation rule for Mutagen using GitHub MCP server
 - Removed sections: none
 - Templates requiring updates:
-  - ✅ `.specify/templates/plan-template.md` (Constitution Check: now references MCP server)
-  - ✅ `.specify/templates/agent-file-template.md` (agent guidance updated)
-  - ⚠ `.specify/templates/spec-template.md` (requires a small References note; updated)
-  - ⚠ `.specify/templates/tasks-template.md` (no required changes but review recommended)
+	- ✅ `.specify/templates/plan-template.md` (Constitution Check: now references MCP server)
+	- ✅ `.specify/templates/agent-file-template.md` (agent guidance updated)
+	- ⚠ `.specify/templates/spec-template.md` (requires a small References note; updated)
+	- ⚠ `.specify/templates/tasks-template.md` (no required changes but review recommended)
 - Follow-up TODOs:
-  - TODO(RATIFICATION_DATE): Ratification date not present in repo; please supply YYYY-MM-DD.
-  - Manual review: verify `.specify/templates/commands/*.md` for agent-specific tokens that
-    should be made generic (e.g., agent names) and ensure MCP-server usage is referenced where
-    Mutagen research is expected.
+	- TODO(RATIFICATION_DATE): Ratification date not present in repo; please supply YYYY-MM-DD.
+	- Manual review: verify `.specify/templates/commands/*.md` for agent-specific tokens that
+		should be made generic (e.g., agent names) and ensure MCP-server usage is referenced where
+		Mutagen research is expected.
+-->
 
----
+# Munition AutoPatcher vC — Constitution
 
 **Metadata**
 
 - **CONSTITUTION_VERSION**: 1.1.0
 - **RATIFICATION_DATE**: TODO(RATIFICATION_DATE)
-- **LAST_AMENDED_DATE**: 2025-11-18
+- **LAST_AMENDED_DATE**: 2025-11-30
 
 
 目的
@@ -54,8 +53,8 @@ Sync Impact Report
 - Microsoft.Extensions.DependencyInjection を使用し App 起動時に登録する。
 - コンストラクタインジェクションのみ許可（Service Locator 禁止）。
 - ライフタイム:
-  - Transient: 副作用のない処理や軽量ヘルパ
-  - Singleton: 設定/パス/ログ/Accessor 等の共有リソース
+	- Transient: 副作用のない処理や軽量ヘルパ
+	- Singleton: 設定/パス/ログ/Accessor 等の共有リソース
 - Scoped は WPF では使用しない。
 
 ---
@@ -69,10 +68,10 @@ Sync Impact Report
 ### 2.2 Detector パターン（機能検知）
 - バージョン固定を行わず、起動時に「機能の有無（Caps）」を検知して最適 Strategy を選択する。
 - 構成要素:
-  - MutagenCapabilityDetector: リフレクションや小さなプローブで機能を検出（メソッド/型の存在、振る舞いの簡易確認）。
-  - IMutagenApiStrategy: Accessor が上位に提供する安定インターフェイス。
-  - Strategy 実装群: 高速パス（WinningOverrides 等）／フォールバックパス。
-  - StrategyFactory: 検知結果から Strategy を生成し、結果を Singleton キャッシュ。
+	- MutagenCapabilityDetector: リフレクションや小さなプローブで機能を検出（メソッド/型の存在、振る舞いの簡易確認）。
+	- IMutagenApiStrategy: Accessor が上位に提供する安定インターフェイス。
+	- Strategy 実装群: 高速パス（WinningOverrides 等）／フォールバックパス。
+	- StrategyFactory: 検知結果から Strategy を生成し、結果を Singleton キャッシュ。
 - 検知は起動時に一度実行し結果をキャッシュする。
 
 ### 2.3 リソース管理とパフォーマンス
@@ -105,8 +104,8 @@ Sync Impact Report
 - 既定ログパス: `./artifacts/logs/munition_autopatcher_ui.log`（アプリ起動時に初期化）
 - Console.WriteLine / Debug.WriteLine は禁止。
 - ログチャネル:
-  - サービス層: Microsoft.Extensions.Logging の ILogger<T>
-  - UI 層・ユーザ通知: IAppLogger（アプリ内イベント型のロガー）
+	- サービス層: Microsoft.Extensions.Logging の ILogger<T>
+	- UI 層・ユーザ通知: IAppLogger（アプリ内イベント型のロガー）
 - AppLoggerProvider (ILoggerProvider 実装) がファイル出力を担当し、Warning 以上を IAppLogger に転送して UI 備える。
 
 初期化とフォールバック
@@ -199,11 +198,11 @@ Stage 1 の出力フォーマット（AI 回答に必須）
 - Performance: 1-pass 方針や LinkCache の生存範囲等
 - DisposePlan: GameEnvironment / LinkCache の寿命管理案
 - References: 公式ドキュメント URL または
-  - When research requires inspecting Mutagen code or generated artifacts, AI MUST use the
-    GitHub MCP server or browser https://github.com/shkond/Munition_AutoPatcher_vC to query the `Mutagen-Modding/Mutagen` repositories (examples: fetch
-    generated C# files, XML schemas, or record definitions). Use the MCP server tools for
-    implementation details and the repository contents before generating code that depends on
-    Mutagen internals.
+	- When research requires inspecting Mutagen code or generated artifacts, AI MUST use the
+		GitHub MCP server query the `Mutagen-Modding/Mutagen` repositories (examples: fetch
+		generated C# files, XML schemas, or record definitions). Use the MCP server tools for
+		implementation details and the repository contents before generating code that depends on
+		Mutagen internals.
 
 Stage 2 の内容（設計合意テンプレ）
 - 入力/出力の具体シグネチャ（DTO/モデル定義を含む）
@@ -259,13 +258,13 @@ DECISIONS.md への落とし込み
 - ログ既定パス: `./artifacts/logs/munition_autopatcher_ui.log`（起動時初期化、不可時は `%TEMP%/MunitionAutoPatcher/logs/...` にフォールバック）
 - 環境変数でログレベル上書き: `MUNITION_LOG_LEVEL`
 - DECISIONS.md エントリ形式（テンプレ）:
-  - Title:
-  - Context:
-  - Decision:
-  - Alternatives:
-  - Consequences:
-  - Date:
-  - Author:
-  - Related-PR:
+	- Title:
+	- Context:
+	- Decision:
+	- Alternatives:
+	- Consequences:
+	- Date:
+	- Author:
+	- Related-PR:
 
 ---

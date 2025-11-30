@@ -6,6 +6,12 @@ This file provides instructions and context for GitHub Copilot Coding Agent when
 
 **Munition AutoPatcher vC** is a WPF desktop application for Fallout 4 modding. It automatically generates RobCo Patcher configuration files (INI) for weapon mods by extracting weapon data from plugins and mapping ammunition.
 
+The definitive architecture and process rules are defined in the project constitution:
+
+- `.specify/memory/constitution.md` (Munition AutoPatcher vC — Constitution)
+
+When in doubt, Copilot must prioritize the constitution over any generic guidance in this file.
+
 ### Technology Stack
 
   - **.NET 8.0** (Windows-only, WPF)
@@ -45,29 +51,34 @@ This file provides instructions and context for GitHub Copilot Coding Agent when
 
 This project's primary external dependency is the **Mutagen API (v0.51.5)**, referenced as a compiled **.dll (black box)**.
 
-Because you cannot read the source code from the local workspace, you **MUST** use the connected MCP servers (`@github` and `@deepwiki`) to acquire context before generating code related to plugin parsing.
+Because you cannot read the source code from the local workspace, you **MUST** use the connected MCP servers to acquire context before generating code related to plugin parsing. For Mutagen specifically, the primary source of truth is the Mutagen repository itself, accessed via the `mutagen-rag` MCP server.
 
 ### AI Context Strategy for Mutagen (MCP Tools)
 
-Use the following two tools strategically, depending on the information you need:
+Use the following tools strategically, depending on the information you need:
 
-1.  **Use `@deepwiki` for Architectural Understanding (The "Why")**
+1.  **Use `mcp_mutagen-rag_search_repository` for Implementation Details (The "What")**
 
-      * **Role:** Use this tool as the "Architect" or "Designer".
-      * **Purpose:** To understand the *design patterns, concepts, and relationships* within Mutagen.
-      * **Example Prompts:**
-          * `@deepwiki Explain the architecture of ObjectModification (OMOD) records in Mutagen.`
-          * `@deepwiki What is the correct pattern for FormLink remapping and resolution?`
-          * `@deepwiki How does Mutagen handle generated code from Loqui schemas?`
+  * **Role:** Ground-truth retriever for Mutagen internals.
+  * **Purpose:** Fetch the exact C# generated code (`.cs`) and XML schema (`.xml`) files from the `Mutagen-Modding/Mutagen` repositories. This is essential for getting precise class names, property names, and enum values without guessing.
+  * **Example Uses:**
+      * Query for Fallout 4 OMOD, COBJ, WEAP, and AMMO record definitions.
+      * Inspect WinningOverrides, LinkCache, and GameEnvironment-related types and patterns.
+      * Confirm field names and enum values before proposing any API usage.
 
-2.  **Use `@github` for Implementation Details (The "What")**
+2.  **Use `@deepwiki` for Architectural Understanding (The "Why")**
 
-      * **Role:** Use this tool as the "Implementer" or "File Retriever".
-      * **Purpose:** To fetch the **ground truth**—the exact C\# generated code (`.cs`) or XML schema (`.xml`) files—from the Mutagen repository. This is essential for getting precise class names, property names, and enum values.
-      * **Example Prompts:**
-          * `@github Fetch the file Mutagen.Bethesda.Fallout4/Records/Major Records/ObjectModification.xml`
-          * `@github Show me the C# implementation in AObjectModProperty_Generated.cs`
-          * `@github What fields are defined in the ObjectModItem subrecord XML?`
+  * **Role:** "Architect" or "Designer" for conceptual understanding.
+  * **Purpose:** Understand design patterns, concepts, and relationships within Mutagen.
+  * **Example Prompts:**
+      * `@deepwiki Explain the architecture of ObjectModification (OMOD) records in Mutagen.`
+      * `@deepwiki What is the correct pattern for FormLink remapping and resolution?`
+      * `@deepwiki How does Mutagen handle generated code from Loqui schemas?`
+
+3.  **Use `@github` only when a raw file fetch is required outside the Mutagen repositories**
+
+  * For non-Mutagen repos or generic examples, `@github` may still be used.
+  * For Mutagen itself, prefer `mcp_mutagen-rag_search_repository` so that results stay aligned with the constitution.
 
 ### Working with Mutagen (Key Project Conventions)
 
@@ -235,7 +246,7 @@ The following directories are gitignored:
 
 ### Working with Mutagen
 
-  - **First, get context:** Use `@deepwiki` for architecture and `@github` for implementation details (see "AI Context Strategy" section above).
+  - **First, get context:** Use `@deepwiki` for architecture and `mcp_mutagen-rag_search_repository` for implementation details from `Mutagen-Modding/Mutagen` (see "AI Context Strategy" section above).
   - **Then, write code:**
       - Prefer the `IMutagenAccessor` abstraction for testability.
       - Use `ILinkCache` for efficient record lookups.

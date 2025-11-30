@@ -114,8 +114,9 @@
 - **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
 - **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
 
-## References
+### References *(if Mutagen-related)*
 
-- If the specification or research requires referencing Mutagen internals (code, generated
-  artifacts, or schemas), use the GitHub MCP server to query the `Mutagen-Modding/Mutagen`
-  repositories for authoritative source material before proposing implementation details.
+- Architecture and boundary rules: `.specify/memory/constitution.md` セクション 2, 8, 11, 12。
+- Mutagen API / レコード定義の根拠:
+  - Use MCP server `mcp_mutagen-rag_search_repository` to query `Mutagen-Modding/Mutagen` for generated C# files and XML schemas.
+  - Capture key links or file paths used during research here to justify proposed APIs.
