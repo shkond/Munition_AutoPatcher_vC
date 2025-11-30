@@ -36,6 +36,16 @@ public interface IMutagenAccessor
     IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env);
 
     /// <summary>
+    /// Gets winning ConstructibleObject overrides with strong typing.
+    /// </summary>
+    IEnumerable<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped(IResourcedMutagenEnvironment env);
+
+    /// <summary>
+    /// Gets winning Weapon overrides with strong typing.
+    /// </summary>
+    IEnumerable<Mutagen.Bethesda.Fallout4.IWeaponGetter> GetWinningWeaponOverridesTyped(IResourcedMutagenEnvironment env);
+
+    /// <summary>
     /// Tries to extract plugin name and FormID from a record object using reflection.
     /// </summary>
     bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId);

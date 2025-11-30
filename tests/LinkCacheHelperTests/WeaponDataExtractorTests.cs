@@ -11,6 +11,7 @@ using Moq;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins;
 using MutagenFormKey = Mutagen.Bethesda.Plugins.FormKey;
+using IMutagenAccessor = MunitionAutoPatcher.Services.Interfaces.IMutagenAccessor;
 
 namespace LinkCacheHelperTests
 {
@@ -34,7 +35,7 @@ namespace LinkCacheHelperTests
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { mockWeapon.Object });
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
 
-            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
+            var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var results = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());
@@ -63,7 +64,7 @@ namespace LinkCacheHelperTests
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { mockWeapon.Object });
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
 
-            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
+            var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var results = await extractor.ExtractAsync(mockEnvironment.Object, excludedPlugins);
@@ -87,7 +88,7 @@ namespace LinkCacheHelperTests
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(weapons?.Cast<object>() ?? Enumerable.Empty<object>());
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(cobjs?.Cast<object>() ?? Enumerable.Empty<object>());
 
-            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
+            var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var results = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());

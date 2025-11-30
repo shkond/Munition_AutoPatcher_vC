@@ -1,236 +1,296 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MunitionAutoPatcher.Services.Helpers;
+using MunitionAutoPatcher.Services.Implementations;
+using MunitionAutoPatcher.Services.Interfaces;
+using MunitionAutoPatcher.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using MunitionAutoPatcher.Models;
 using Xunit;
 using Moq;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Records;
 using MutagenFormKey = Mutagen.Bethesda.Plugins.FormKey;
 
 namespace LinkCacheHelperTests
 {
-    public class CandidateEnumeratorTests
+    /// <summary>
+    /// Unit tests for CobjCandidateProvider.
+    /// Tests the type-safe COBJ candidate extraction via IMutagenAccessor.
+    /// </summary>
+    public class CobjCandidateProviderTests
     {
-        // Interfaces for mocking dynamic structure
-        public interface IMockPriorityOrder
+        private readonly Mock<IMutagenAccessor> _mockAccessor;
+        private readonly Mock<ILogger<CobjCandidateProvider>> _mockLogger;
+        private readonly CobjCandidateProvider _provider;
+
+        public CobjCandidateProviderTests()
         {
-            IEnumerable<IConstructibleObjectGetter> ConstructibleObject();
-            IEnumerable<IWeaponGetter> Weapon();
+            _mockAccessor = new Mock<IMutagenAccessor>();
+            _mockLogger = new Mock<ILogger<CobjCandidateProvider>>();
+            _provider = new CobjCandidateProvider(_mockAccessor.Object, _mockLogger.Object);
         }
 
-        public interface IMockLoadOrder
-        {
-            IMockPriorityOrder PriorityOrder { get; }
-        }
-
-        public interface IMockEnvironment
-        {
-            IMockLoadOrder LoadOrder { get; }
-        }
-        
-        public interface IMockRecordCollection<T> : IEnumerable<T>
-        {
-            IEnumerable<T> WinningOverrides();
-        }
-
-        [Theory]
-        [MemberData(nameof(GetValidCandidateTestData))]
-        public void EnumerateCandidates_WithValidWeaponAndCobj_IncludesExpectedCandidate(
-            Mock<IWeaponGetter> mockWeapon,
-            Mock<IConstructibleObjectGetter> mockCobj,
-            string expectedCandidateType,
-            string expectedSourcePlugin,
-            string expectedWeaponPlugin)
+        [Fact]
+        public void GetCandidates_WithNullEnvironment_ReturnsEmptyList()
         {
             // Arrange
-            var mockWeapons = new Mock<IMockRecordCollection<IWeaponGetter>>();
-            mockWeapons.Setup(x => x.WinningOverrides()).Returns(new[] { mockWeapon.Object });
-            mockWeapons.Setup(x => x.GetEnumerator()).Returns(() => new List<IWeaponGetter> { mockWeapon.Object }.GetEnumerator());
-
-            var mockCobjs = new Mock<IMockRecordCollection<IConstructibleObjectGetter>>();
-            mockCobjs.Setup(x => x.WinningOverrides()).Returns(new[] { mockCobj.Object });
-            mockCobjs.Setup(x => x.GetEnumerator()).Returns(() => new List<IConstructibleObjectGetter> { mockCobj.Object }.GetEnumerator());
-
-            var mockPriorityOrder = new Mock<IMockPriorityOrder>();
-            mockPriorityOrder.Setup(x => x.Weapon()).Returns(mockWeapons.Object);
-            mockPriorityOrder.Setup(x => x.ConstructibleObject()).Returns(mockCobjs.Object);
-
-            var mockLoadOrder = new Mock<IMockLoadOrder>();
-            mockLoadOrder.Setup(x => x.PriorityOrder).Returns(mockPriorityOrder.Object);
-
-            var mockEnvironment = new Mock<IMockEnvironment>();
-            mockEnvironment.Setup(x => x.LoadOrder).Returns(mockLoadOrder.Object);
-
-            var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var mockLogger = new Mock<ILogger>();
+            var context = new ExtractionContext
+            {
+                Environment = null,
+                ExcludedPlugins = new HashSet<string>()
+            };
 
             // Act
-            var results = CandidateEnumerator.EnumerateCandidates(
-                mockEnvironment.Object,
-                excludedPlugins,
-                null,
-                mockLogger.Object);
-
-            // Check for errors
-            mockLogger.Verify(l => l.Log(
-                LogLevel.Error,
-                It.IsAny<EventId>(),
-                It.IsAny<It.IsAnyType>(),
-                It.IsAny<Exception>(),
-                (Func<It.IsAnyType, Exception?, string>)It.IsAny<object>()), Times.Never);
-
-            // Verify mock access
-            mockCobjs.Verify(x => x.WinningOverrides(), Times.AtLeastOnce(), "WinningOverrides not called on COBJs");
-            mockCobj.Verify(c => c.CreatedObject, Times.AtLeastOnce(), "CreatedObject not accessed");
-            mockCobj.Verify(c => c.FormKey, Times.AtLeastOnce(), "FormKey not accessed");
+            var results = _provider.GetCandidates(context).ToList();
 
             // Assert
-            var candidate = Assert.Single(results);
-            Assert.True(candidate.CandidateType == expectedCandidateType, $"Type mismatch: Exp='{expectedCandidateType}', Act='{candidate.CandidateType}'");
-            Assert.True(candidate.SourcePlugin == expectedSourcePlugin, $"Source mismatch: Exp='{expectedSourcePlugin}', Act='{candidate.SourcePlugin}'");
-            Assert.True(candidate.CandidateFormKey.PluginName == expectedWeaponPlugin, $"WeaponPlugin mismatch: Exp='{expectedWeaponPlugin}', Act='{candidate.CandidateFormKey.PluginName}'");
+            Assert.Empty(results);
+            _mockLogger.Verify(
+                l => l.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Environment is null")),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
         }
 
-        [Theory]
-        [MemberData(nameof(GetExcludedPluginTestData))]
-        public void EnumerateCandidates_WithExcludedPlugin_SkipsExcludedCandidate(
-            Mock<IWeaponGetter> mockWeapon,
-            Mock<IConstructibleObjectGetter> mockCobj,
-            HashSet<string> excludedPlugins,
-            string excludedSourcePlugin)
+        [Fact]
+        public void GetCandidates_WithValidWeaponCobj_ReturnsCandidateWithCorrectType()
         {
             // Arrange
-            var mockWeapons = new Mock<IMockRecordCollection<IWeaponGetter>>();
-            mockWeapons.Setup(x => x.WinningOverrides()).Returns(new[] { mockWeapon.Object });
-            mockWeapons.Setup(x => x.GetEnumerator()).Returns(() => new List<IWeaponGetter> { mockWeapon.Object }.GetEnumerator());
+            var weaponFormKey = new MutagenFormKey(new ModKey("TestPlugin", ModType.Plugin), 0x1234);
+            var cobjFormKey = new MutagenFormKey(new ModKey("SourcePlugin", ModType.Plugin), 0x1111);
+            var ammoFormKey = new MutagenFormKey(new ModKey("AmmoPlugin", ModType.Plugin), 0xAAAA);
 
-            var mockCobjs = new Mock<IMockRecordCollection<IConstructibleObjectGetter>>();
-            mockCobjs.Setup(x => x.WinningOverrides()).Returns(new[] { mockCobj.Object });
-            mockCobjs.Setup(x => x.GetEnumerator()).Returns(() => new List<IConstructibleObjectGetter> { mockCobj.Object }.GetEnumerator());
+            var mockWeapon = CreateMockWeapon(weaponFormKey, "WPN_Test", ammoFormKey);
+            var mockCobj = CreateMockCobj(cobjFormKey, weaponFormKey, "COBJ_Test");
 
-            var mockPriorityOrder = new Mock<IMockPriorityOrder>();
-            mockPriorityOrder.Setup(x => x.Weapon()).Returns(mockWeapons.Object);
-            mockPriorityOrder.Setup(x => x.ConstructibleObject()).Returns(mockCobjs.Object);
+            var mockEnv = new Mock<IResourcedMutagenEnvironment>();
 
-            var mockLoadOrder = new Mock<IMockLoadOrder>();
-            mockLoadOrder.Setup(x => x.PriorityOrder).Returns(mockPriorityOrder.Object);
+            _mockAccessor.Setup(a => a.GetWinningConstructibleObjectOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockCobj.Object });
+            _mockAccessor.Setup(a => a.GetWinningWeaponOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockWeapon.Object });
+            _mockAccessor.Setup(a => a.BuildConcreteLinkCache(mockEnv.Object))
+                .Returns((ILinkCache?)null);
 
-            var mockEnvironment = new Mock<IMockEnvironment>();
-            mockEnvironment.Setup(x => x.LoadOrder).Returns(mockLoadOrder.Object);
+            var context = new ExtractionContext
+            {
+                Environment = mockEnv.Object,
+                ExcludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            };
 
             // Act
-            var results = CandidateEnumerator.EnumerateCandidates(
-                mockEnvironment.Object,
-                excludedPlugins,
-                null,
-                NullLogger.Instance);
+            var results = _provider.GetCandidates(context).ToList();
 
             // Assert
-            Assert.DoesNotContain(results, r => r.SourcePlugin == excludedSourcePlugin);
+            Assert.Single(results);
+            var candidate = results[0];
+            Assert.Equal("COBJ", candidate.CandidateType);
+            Assert.Equal("SourcePlugin.esp", candidate.SourcePlugin);
+            Assert.Equal("TestPlugin.esp", candidate.BaseWeapon?.PluginName);
+            Assert.Equal(0x1234u, candidate.BaseWeapon?.FormId);
+            Assert.Equal("WPN_Test", candidate.BaseWeaponEditorId);
+            Assert.Equal("COBJ_Test", candidate.CandidateEditorId);
         }
 
-        [Theory]
-        [MemberData(nameof(GetNullOrEmptyCollectionTestData))]
-        public void EnumerateCandidates_WithNullOrEmptyCollections_ReturnsEmptyResults(
-            IEnumerable<IConstructibleObjectGetter>? cobjs, 
-            IEnumerable<IWeaponGetter>? weapons)
+        [Fact]
+        public void GetCandidates_WithExcludedPlugin_SkipsCandidate()
         {
             // Arrange
-            var mockWeapons = new Mock<IMockRecordCollection<IWeaponGetter>>();
-            mockWeapons.Setup(x => x.WinningOverrides()).Returns(weapons ?? Enumerable.Empty<IWeaponGetter>());
-            mockWeapons.Setup(x => x.GetEnumerator()).Returns(() => (weapons ?? Enumerable.Empty<IWeaponGetter>()).GetEnumerator());
+            var weaponFormKey = new MutagenFormKey(new ModKey("TestPlugin", ModType.Plugin), 0x1234);
+            var cobjFormKey = new MutagenFormKey(new ModKey("ExcludedPlugin", ModType.Plugin), 0x1111);
 
-            var mockCobjs = new Mock<IMockRecordCollection<IConstructibleObjectGetter>>();
-            mockCobjs.Setup(x => x.WinningOverrides()).Returns(cobjs ?? Enumerable.Empty<IConstructibleObjectGetter>());
-            mockCobjs.Setup(x => x.GetEnumerator()).Returns(() => (cobjs ?? Enumerable.Empty<IConstructibleObjectGetter>()).GetEnumerator());
+            var mockWeapon = CreateMockWeapon(weaponFormKey, "WPN_Test", null);
+            var mockCobj = CreateMockCobj(cobjFormKey, weaponFormKey, "COBJ_Test");
 
-            var mockPriorityOrder = new Mock<IMockPriorityOrder>();
-            mockPriorityOrder.Setup(x => x.Weapon()).Returns(mockWeapons.Object);
-            mockPriorityOrder.Setup(x => x.ConstructibleObject()).Returns(mockCobjs.Object);
+            var mockEnv = new Mock<IResourcedMutagenEnvironment>();
 
-            var mockLoadOrder = new Mock<IMockLoadOrder>();
-            mockLoadOrder.Setup(x => x.PriorityOrder).Returns(mockPriorityOrder.Object);
+            _mockAccessor.Setup(a => a.GetWinningConstructibleObjectOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockCobj.Object });
+            _mockAccessor.Setup(a => a.GetWinningWeaponOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockWeapon.Object });
 
-            var mockEnvironment = new Mock<IMockEnvironment>();
-            mockEnvironment.Setup(x => x.LoadOrder).Returns(mockLoadOrder.Object);
-
-            var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var context = new ExtractionContext
+            {
+                Environment = mockEnv.Object,
+                ExcludedPlugins = new HashSet<string>(new[] { "ExcludedPlugin.esp" }, StringComparer.OrdinalIgnoreCase)
+            };
 
             // Act
-            var results = CandidateEnumerator.EnumerateCandidates(
-                mockEnvironment.Object,
-                excludedPlugins,
-                null,
-                NullLogger.Instance);
+            var results = _provider.GetCandidates(context).ToList();
 
             // Assert
             Assert.Empty(results);
         }
 
-        public static IEnumerable<object[]> GetValidCandidateTestData()
+        [Fact]
+        public void GetCandidates_WithNullCreatedObject_SkipsRecord()
         {
-            var weaponFormKey = new MutagenFormKey(new ModKey("TestPlugin", ModType.Plugin), 0x1234);
-            var ammoFormKey = new MutagenFormKey(new ModKey("AmmoPlugin", ModType.Plugin), 0xAAAA);
-
-            var mockWeapon = new Mock<IWeaponGetter>();
-            mockWeapon.Setup(w => w.FormKey).Returns(weaponFormKey);
-            mockWeapon.Setup(w => w.EditorID).Returns("WPN_ED");
-            
-            var mockAmmoLink = new Mock<IFormLinkGetter<IAmmunitionGetter>>();
-            mockAmmoLink.Setup(a => a.FormKey).Returns(ammoFormKey);
-            mockAmmoLink.Setup(a => a.IsNull).Returns(false);
-            mockWeapon.Setup(w => w.Ammo).Returns(mockAmmoLink.Object);
+            // Arrange
+            var cobjFormKey = new MutagenFormKey(new ModKey("SourcePlugin", ModType.Plugin), 0x1111);
 
             var mockCobj = new Mock<IConstructibleObjectGetter>();
-            mockCobj.Setup(c => c.FormKey).Returns(new MutagenFormKey(new ModKey("SourcePlugin", ModType.Plugin), 0x1111));
-            mockCobj.Setup(c => c.EditorID).Returns("COBJ_ED");
-            
+            mockCobj.Setup(c => c.FormKey).Returns(cobjFormKey);
+            mockCobj.Setup(c => c.EditorID).Returns("COBJ_NoWeapon");
+
             var mockCreatedObjectLink = new Mock<IFormLinkNullableGetter<IConstructibleObjectTargetGetter>>();
-            mockCreatedObjectLink.Setup(l => l.FormKey).Returns(weaponFormKey);
+            mockCreatedObjectLink.Setup(l => l.IsNull).Returns(true);
+            mockCobj.Setup(c => c.CreatedObject).Returns(mockCreatedObjectLink.Object);
+
+            var mockEnv = new Mock<IResourcedMutagenEnvironment>();
+
+            _mockAccessor.Setup(a => a.GetWinningConstructibleObjectOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockCobj.Object });
+            _mockAccessor.Setup(a => a.GetWinningWeaponOverridesTyped(mockEnv.Object))
+                .Returns(Enumerable.Empty<IWeaponGetter>());
+
+            var context = new ExtractionContext
+            {
+                Environment = mockEnv.Object,
+                ExcludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            };
+
+            // Act
+            var results = _provider.GetCandidates(context).ToList();
+
+            // Assert
+            Assert.Empty(results);
+        }
+
+        [Fact]
+        public void GetCandidates_WithNonWeaponCreatedObject_SkipsRecord()
+        {
+            // Arrange
+            var nonWeaponFormKey = new MutagenFormKey(new ModKey("OtherPlugin", ModType.Plugin), 0x9999);
+            var cobjFormKey = new MutagenFormKey(new ModKey("SourcePlugin", ModType.Plugin), 0x1111);
+
+            // COBJ creates something that is NOT a weapon
+            var mockCobj = CreateMockCobj(cobjFormKey, nonWeaponFormKey, "COBJ_NonWeapon");
+
+            var mockEnv = new Mock<IResourcedMutagenEnvironment>();
+
+            _mockAccessor.Setup(a => a.GetWinningConstructibleObjectOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockCobj.Object });
+            _mockAccessor.Setup(a => a.GetWinningWeaponOverridesTyped(mockEnv.Object))
+                .Returns(Enumerable.Empty<IWeaponGetter>()); // No weapons in load order
+
+            var context = new ExtractionContext
+            {
+                Environment = mockEnv.Object,
+                ExcludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            };
+
+            // Act
+            var results = _provider.GetCandidates(context).ToList();
+
+            // Assert
+            Assert.Empty(results);
+        }
+
+        [Fact]
+        public void GetCandidates_WithCancellationRequested_ThrowsOperationCanceledException()
+        {
+            // Arrange
+            var cts = new System.Threading.CancellationTokenSource();
+            cts.Cancel();
+
+            var mockEnv = new Mock<IResourcedMutagenEnvironment>();
+
+            _mockAccessor.Setup(a => a.GetWinningConstructibleObjectOverridesTyped(mockEnv.Object))
+                .Returns(Enumerable.Empty<IConstructibleObjectGetter>());
+            _mockAccessor.Setup(a => a.GetWinningWeaponOverridesTyped(mockEnv.Object))
+                .Returns(Enumerable.Empty<IWeaponGetter>());
+
+            var context = new ExtractionContext
+            {
+                Environment = mockEnv.Object,
+                ExcludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                CancellationToken = cts.Token
+            };
+
+            // Act & Assert
+            Assert.Throws<OperationCanceledException>(() => _provider.GetCandidates(context).ToList());
+        }
+
+        [Fact]
+        public void GetCandidates_WithAmmo_IncludesAmmoInCandidate()
+        {
+            // Arrange
+            var weaponFormKey = new MutagenFormKey(new ModKey("TestPlugin", ModType.Plugin), 0x1234);
+            var cobjFormKey = new MutagenFormKey(new ModKey("SourcePlugin", ModType.Plugin), 0x1111);
+            var ammoFormKey = new MutagenFormKey(new ModKey("AmmoPlugin", ModType.Plugin), 0xAAAA);
+
+            var mockWeapon = CreateMockWeapon(weaponFormKey, "WPN_Test", ammoFormKey);
+            var mockCobj = CreateMockCobj(cobjFormKey, weaponFormKey, "COBJ_Test");
+
+            var mockEnv = new Mock<IResourcedMutagenEnvironment>();
+
+            _mockAccessor.Setup(a => a.GetWinningConstructibleObjectOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockCobj.Object });
+            _mockAccessor.Setup(a => a.GetWinningWeaponOverridesTyped(mockEnv.Object))
+                .Returns(new[] { mockWeapon.Object });
+            _mockAccessor.Setup(a => a.BuildConcreteLinkCache(mockEnv.Object))
+                .Returns((ILinkCache?)null);
+
+            var context = new ExtractionContext
+            {
+                Environment = mockEnv.Object,
+                ExcludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            };
+
+            // Act
+            var results = _provider.GetCandidates(context).ToList();
+
+            // Assert
+            Assert.Single(results);
+            var candidate = results[0];
+            Assert.NotNull(candidate.CandidateAmmo);
+            Assert.Equal("AmmoPlugin.esp", candidate.CandidateAmmo!.PluginName);
+            Assert.Equal(0xAAAAu, candidate.CandidateAmmo.FormId);
+        }
+
+        #region Helper Methods
+
+        private Mock<IWeaponGetter> CreateMockWeapon(MutagenFormKey formKey, string editorId, MutagenFormKey? ammoFormKey)
+        {
+            var mockWeapon = new Mock<IWeaponGetter>();
+            mockWeapon.Setup(w => w.FormKey).Returns(formKey);
+            mockWeapon.Setup(w => w.EditorID).Returns(editorId);
+
+            var mockAmmoLink = new Mock<IFormLinkGetter<IAmmunitionGetter>>();
+            if (ammoFormKey.HasValue)
+            {
+                mockAmmoLink.Setup(a => a.FormKey).Returns(ammoFormKey.Value);
+                mockAmmoLink.Setup(a => a.IsNull).Returns(false);
+            }
+            else
+            {
+                mockAmmoLink.Setup(a => a.IsNull).Returns(true);
+            }
+            mockWeapon.Setup(w => w.Ammo).Returns(mockAmmoLink.Object);
+
+            return mockWeapon;
+        }
+
+        private Mock<IConstructibleObjectGetter> CreateMockCobj(MutagenFormKey cobjFormKey, MutagenFormKey createdObjectFormKey, string editorId)
+        {
+            var mockCobj = new Mock<IConstructibleObjectGetter>();
+            mockCobj.Setup(c => c.FormKey).Returns(cobjFormKey);
+            mockCobj.Setup(c => c.EditorID).Returns(editorId);
+
+            var mockCreatedObjectLink = new Mock<IFormLinkNullableGetter<IConstructibleObjectTargetGetter>>();
+            mockCreatedObjectLink.Setup(l => l.FormKey).Returns(createdObjectFormKey);
             mockCreatedObjectLink.Setup(l => l.IsNull).Returns(false);
             mockCobj.Setup(c => c.CreatedObject).Returns(mockCreatedObjectLink.Object);
 
-            yield return new object[]
-            {
-                mockWeapon,
-                mockCobj,
-                "COBJ", // expectedCandidateType
-                "SourcePlugin.esp", // expectedSourcePlugin
-                "TestPlugin.esp" // expectedWeaponPlugin
-            };
+            return mockCobj;
         }
 
-        public static IEnumerable<object[]> GetExcludedPluginTestData()
-        {
-            var weaponFormKey = new MutagenFormKey(new ModKey("TestPlugin", ModType.Plugin), 0x1234);
-
-            var mockWeapon = new Mock<IWeaponGetter>();
-            mockWeapon.Setup(w => w.FormKey).Returns(weaponFormKey);
-            
-            var mockCobj = new Mock<IConstructibleObjectGetter>();
-            mockCobj.Setup(c => c.FormKey).Returns(new MutagenFormKey(new ModKey("SourcePlugin", ModType.Plugin), 0x1111));
-            
-            var mockCreatedObjectLink = new Mock<IFormLinkNullableGetter<IConstructibleObjectTargetGetter>>();
-            mockCreatedObjectLink.Setup(l => l.FormKey).Returns(weaponFormKey);
-            mockCobj.Setup(c => c.CreatedObject).Returns(mockCreatedObjectLink.Object);
-
-            yield return new object[]
-            {
-                mockWeapon,
-                mockCobj,
-                new HashSet<string>(new[] { "SourcePlugin.esp" }, StringComparer.OrdinalIgnoreCase),
-                "SourcePlugin.esp" // excludedSourcePlugin
-            };
-        }
-
-        public static IEnumerable<object?[]> GetNullOrEmptyCollectionTestData()
-        {
-            yield return new object?[] { null, null };
-            yield return new object?[] { new IConstructibleObjectGetter[0], new IWeaponGetter[0] };
-        }
+        #endregion
     }
 }

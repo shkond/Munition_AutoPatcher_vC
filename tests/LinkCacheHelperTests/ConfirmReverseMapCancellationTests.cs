@@ -37,6 +37,8 @@ namespace LinkCacheHelperTests
             public IEnumerable<object> EnumerateRecordCollections(IResourcedMutagenEnvironment env, string collectionName) => Array.Empty<object>();
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public IEnumerable<object> GetWinningConstructibleObjectOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
+            public IEnumerable<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped(IResourcedMutagenEnvironment env) => Array.Empty<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter>();
+            public IEnumerable<Mutagen.Bethesda.Fallout4.IWeaponGetter> GetWinningWeaponOverridesTyped(IResourcedMutagenEnvironment env) => Array.Empty<Mutagen.Bethesda.Fallout4.IWeaponGetter>();
             public bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId)
             {
                 pluginName = string.Empty;

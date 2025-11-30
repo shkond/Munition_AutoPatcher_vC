@@ -296,6 +296,75 @@
 
 ---
 
+### ADR-010: CandidateEnumerator 廃止と型安全 Strategy パターンへの移行
+
+- **Date**: 2025-11-30
+- **Status**: Accepted
+- **Related-PR**: N/A
+- **Author**: @shkond
+
+#### Context
+- `Services/Helpers/CandidateEnumerator.cs` は約600行のコードで、`dynamic` キーワードを多用していた。
+- Constitution Section 14（dynamic/reflection 禁止）に違反しており、P0 Critical として `planRefactoring.md` で特定。
+- 主な問題点:
+  - `dynamic` 経由での COBJ/WEAP レコードアクセス（型安全性の欠如）
+  - `Debug.WriteLine` の直接使用
+  - Strategy パターン（ICandidateProvider）との責務重複
+  - テスト困難性（動的型付けのためモック作成が複雑）
+
+#### Decision
+
+**1. CandidateEnumerator.cs の完全削除**
+- `Services/Helpers/CandidateEnumerator.cs` を削除し、機能を既存の Strategy パターンに統合。
+
+**2. IMutagenAccessor への型安全 API 追加**
+- 以下のメソッドを `IMutagenAccessor` に追加:
+  ```csharp
+  IEnumerable<IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped(IResourcedMutagenEnvironment env);
+  IEnumerable<IWeaponGetter> GetWinningWeaponOverridesTyped(IResourcedMutagenEnvironment env);
+  ```
+- Mutagen の型安全な Getter インターフェースを直接返すことで、`dynamic` を排除。
+
+**3. CobjCandidateProvider の IMutagenAccessor 経由化**
+- `IWeaponDataExtractor` への依存を `IMutagenAccessor` に変更。
+- COBJ イテレーションに `GetWinningConstructibleObjectOverridesTyped()` を使用。
+- Weapon ルックアップに `Dictionary<(string Plugin, uint Id), IWeaponGetter>` を構築。
+- Ammo 抽出に `IWeaponGetter.Ammo` プロパティを型安全に使用。
+
+**4. WeaponDataExtractor の IMutagenAccessor 統一**
+- コンストラクタを `WeaponDataExtractor(ILogger)` から `WeaponDataExtractor(IMutagenAccessor, ILogger)` に変更。
+- すべての `MutagenReflectionHelpers` 呼び出しを `IMutagenAccessor` メソッドに置換。
+
+**5. ReverseReferenceCandidateProvider のリフレクション削減**
+- `TryExtractFormKeyInfo` メソッドを削除し、`_mutagenAccessor.TryGetPluginAndIdFromRecord()` を使用。
+- EditorID 取得を O(1) ルックアップに最適化（`BuildWeaponEditorIdLookup()`）。
+- 注: 汎用プロパティスキャンのため一部リフレクションは維持（別タスクで移行予定）。
+
+**6. テストの Provider 単体テスト化**
+- `CandidateEnumeratorTests` を `CobjCandidateProviderTests` にリネーム。
+- `IMutagenAccessor` をモック化した純粋な単体テストに書き換え。
+- テストケース: Null 環境、有効な COBJ、除外プラグイン、キャンセル、Null CreatedObject、非 Weapon CreatedObject、Ammo 含有
+
+#### Alternatives
+- **Mutagen Source Generator 導入**: 将来的には有望だが、現時点では既存アーキテクチャへの統合コストが高いため、段階的アプローチを選択。
+- **部分的な dynamic 維持**: 一部の動的アクセスを残す案は、Constitution 違反を継続するため却下。
+- **MutagenReflectionHelpers の同時移行**: スコープ拡大を避けるため、別タスクとして追跡。
+
+#### Consequences
+- **メリット**:
+  - Constitution Section 14 違反の解消（P0 Critical → 解決）
+  - 型安全なコードによるコンパイル時エラー検出
+  - テスト容易性の向上（IMutagenAccessor モック化のみで済む）
+  - IntelliSense とリファクタリングツールのフル活用
+  - コード行数の削減（600行の CandidateEnumerator → Provider 内の型安全コード）
+- **デメリット**:
+  - 既存テストの修正が必要（WeaponDataExtractor コンストラクタ変更による）
+  - MutagenReflectionHelpers.cs に残存するリフレクションは別途対応が必要
+- **残タスク**:
+  - `MutagenReflectionHelpers` の `IMutagenAccessor` への段階的移行（別タスクとして追跡）
+
+---
+
 ## 今後の追記方針
 
 - ここに挙げた ADR は暫定サマリです。今後、具体的な PR やリファクタリングのタイミングで、

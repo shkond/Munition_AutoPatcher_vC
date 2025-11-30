@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MunitionAutoPatcher.Models;
 using MunitionAutoPatcher.Services.Implementations;
+using MunitionAutoPatcher.Services.Interfaces;
 using Mutagen.Bethesda.Plugins.Records;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -32,7 +33,7 @@ namespace LinkCacheHelperTests
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(Enumerable.Empty<object>());
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
 
-            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
+            var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var result = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());
@@ -73,7 +74,7 @@ namespace LinkCacheHelperTests
             mockEnvironment.Setup(x => x.GetWinningWeaponOverrides()).Returns(new object[] { mockWeapon.Object });
             mockEnvironment.Setup(x => x.GetWinningConstructibleObjectOverrides()).Returns(new object[] { mockCobj.Object });
 
-            var extractor = new WeaponDataExtractor(NullLogger<WeaponDataExtractor>.Instance);
+            var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, NullLogger<WeaponDataExtractor>.Instance);
 
             // Act
             var result = await extractor.ExtractAsync(mockEnvironment.Object, new HashSet<string>());

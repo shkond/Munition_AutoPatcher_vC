@@ -199,6 +199,34 @@ public class MutagenAccessor : IMutagenAccessor
     }
 
     /// <inheritdoc/>
+    public IEnumerable<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter> GetWinningConstructibleObjectOverridesTyped(IResourcedMutagenEnvironment env)
+    {
+        try
+        {
+            return env.GetWinningConstructibleObjectOverridesTyped();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor: GetWinningConstructibleObjectOverridesTyped failed");
+            return Enumerable.Empty<Mutagen.Bethesda.Fallout4.IConstructibleObjectGetter>();
+        }
+    }
+
+    /// <inheritdoc/>
+    public IEnumerable<Mutagen.Bethesda.Fallout4.IWeaponGetter> GetWinningWeaponOverridesTyped(IResourcedMutagenEnvironment env)
+    {
+        try
+        {
+            return env.GetWinningWeaponOverridesTyped();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MutagenAccessor: GetWinningWeaponOverridesTyped failed");
+            return Enumerable.Empty<Mutagen.Bethesda.Fallout4.IWeaponGetter>();
+        }
+    }
+
+    /// <inheritdoc/>
     public bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId)
     {
         return MutagenReflectionHelpers.TryGetPluginAndIdFromRecord(record, out pluginName, out formId);

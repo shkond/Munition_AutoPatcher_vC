@@ -1,5 +1,6 @@
 using Xunit;
 using MunitionAutoPatcher.Services.Implementations;
+using MunitionAutoPatcher.Services.Interfaces;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Threading.Tasks;
 using IntegrationTests.Infrastructure;
@@ -9,6 +10,7 @@ using Mutagen.Bethesda.Plugins.Records;
 using System.Collections.Generic;
 using System.Linq;
 using System;
+using Moq;
 
 namespace IntegrationTests;
 
@@ -38,7 +40,7 @@ public class WeaponDataExtractorIntegrationTests
         using var resourcedEnv = new ResourcedMutagenEnvironment(mutagenEnv, gameEnv, loggerResourced);
 
         var extractorLogger = NullLogger<WeaponDataExtractor>.Instance;
-        var extractor = new WeaponDataExtractor(extractorLogger);
+        var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, extractorLogger);
 
         var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -78,7 +80,7 @@ public class WeaponDataExtractorIntegrationTests
         using var resourcedEnv = new ResourcedMutagenEnvironment(mutagenEnv, gameEnv, loggerResourced);
 
         var extractorLogger = NullLogger<WeaponDataExtractor>.Instance;
-        var extractor = new WeaponDataExtractor(extractorLogger);
+        var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, extractorLogger);
 
         var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -126,7 +128,7 @@ public class WeaponDataExtractorIntegrationTests
         using var resourcedEnv = new ResourcedMutagenEnvironment(mutagenEnv, gameEnv, loggerResourced);
 
         var extractorLogger = NullLogger<WeaponDataExtractor>.Instance;
-        var extractor = new WeaponDataExtractor(extractorLogger);
+        var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, extractorLogger);
 
         var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ExcludedMod.esp" };
 
@@ -163,7 +165,7 @@ public class WeaponDataExtractorIntegrationTests
         using var resourcedEnv = new ResourcedMutagenEnvironment(mutagenEnv, gameEnv, loggerResourced);
 
         var extractorLogger = NullLogger<WeaponDataExtractor>.Instance;
-        var extractor = new WeaponDataExtractor(extractorLogger);
+        var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, extractorLogger);
 
         var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -201,7 +203,7 @@ public class WeaponDataExtractorIntegrationTests
         using var resourcedEnv = new ResourcedMutagenEnvironment(mutagenEnv, gameEnv, loggerResourced);
 
         var extractorLogger = NullLogger<WeaponDataExtractor>.Instance;
-        var extractor = new WeaponDataExtractor(extractorLogger);
+        var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, extractorLogger);
 
         var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -236,7 +238,7 @@ public class WeaponDataExtractorIntegrationTests
         using var resourcedEnv = new ResourcedMutagenEnvironment(mutagenEnv, gameEnv, loggerResourced);
 
         var extractorLogger = NullLogger<WeaponDataExtractor>.Instance;
-        var extractor = new WeaponDataExtractor(extractorLogger);
+        var extractor = new WeaponDataExtractor(new Mock<IMutagenAccessor>().Object, extractorLogger);
 
         var excludedPlugins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
