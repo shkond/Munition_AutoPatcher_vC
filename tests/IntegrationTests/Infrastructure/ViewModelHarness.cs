@@ -326,16 +326,24 @@ public sealed class ViewModelHarness : IAsyncDisposable
                 NullLogger<ResourcedMutagenEnvironment>.Instance);
 
             // Build service provider with test overrides
+            // IMPORTANT: Use WithMutagenEnvironment to inject the test environment via IMutagenEnvironmentFactory
+            // This ensures WeaponOmodExtractor.ExtractCandidatesAsync() uses our test environment
+            // instead of trying to auto-detect Fallout 4 installation
             var serviceProvider = TestServiceProvider.CreateBuilder()
                 .WithGameDataPath(dataPath)
                 .WithOutputPath(outputPath)
                 .WithTempRoot(tempRoot)
                 .WithScenarioId(_scenario.Id)
                 .WithTestOutput(_testOutput)
-                .ConfigureServices(services =>
+                .WithMutagenEnvironment(() => 
                 {
-                    // Replace the placeholder IResourcedMutagenEnvironment with real one
-                    services.AddSingleton<IResourcedMutagenEnvironment>(resourcedEnv);
+                    // Create a new adapter for each factory call
+                    // The adapter wraps the same gameEnv but each call gets its own wrapper
+                    var adapter = new MutagenV51EnvironmentAdapter(gameEnv);
+                    return new ResourcedMutagenEnvironment(
+                        adapter,
+                        new NoOpDisposable(), // Factory-created envs use NoOpDisposable to avoid double-dispose
+                        NullLogger<ResourcedMutagenEnvironment>.Instance);
                 })
                 .Build();
 
@@ -519,4 +527,12 @@ file sealed class LinkResolverAdapter : ILinkResolver
         }
         return null;
     }
+}
+
+/// <summary>
+/// A no-op disposable for use when we don't need actual disposal.
+/// </summary>
+file sealed class NoOpDisposable : IDisposable
+{
+    public void Dispose() { }
 }
