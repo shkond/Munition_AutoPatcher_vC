@@ -1,0 +1,217 @@
+openapi: 3.0.3
+info:
+  title: Munition AutoPatcher E2E Harness
+  version: 0.1.0
+  description: >-
+    Conceptual API for orchestrating ViewModel-driven end-to-end scenarios.
+    Used as a contract between the test harness and any external runner (CI, local tooling).
+servers:
+  - url: http://localhost:5050
+    description: Local harness daemon (if hosted)
+paths:
+  /scenarios:
+    get:
+      summary: List available scenarios
+      tags: [Scenarios]
+      operationId: listScenarios
+      responses:
+        '200':
+          description: Array of registered scenarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/E2EScenarioDefinition'
+  /scenarios/{scenarioId}/run:
+    post:
+      summary: Execute a scenario and produce an ESP artifact
+      tags: [Runs]
+      operationId: runScenario
+      parameters:
+        - name: scenarioId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunOptions'
+      responses:
+        '202':
+          description: Run accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioRunArtifact'
+  /runs/{runId}:
+    get:
+      summary: Retrieve run metadata + validation results
+      tags: [Runs]
+      operationId: getRun
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioRunArtifact'
+        '404':
+          description: Run not found
+components:
+  schemas:
+    E2EScenarioDefinition:
+      type: object
+      required: [id, displayName, expectedEspName, validationProfile]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9_-]+$'
+        displayName:
+          type: string
+        description:
+          type: string
+        expectedEspName:
+          type: string
+        pluginSeeds:
+          type: array
+          items:
+            $ref: '#/components/schemas/PluginSeed'
+        validationProfile:
+          $ref: '#/components/schemas/ESPValidationProfile'
+        configOverrides:
+          type: object
+          additionalProperties:
+            type: string
+    PluginSeed:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        baselineCopySource:
+          type: string
+        builderAction:
+          type: string
+          description: Name of the registered TestDataFactory extension invoked for this seed.
+    ESPValidationProfile:
+      type: object
+      required: [profileId, structuralExpectations]
+      properties:
+        profileId:
+          type: string
+        baselineArtifacts:
+          type: string
+        ignoreHeaderFields:
+          type: array
+          items:
+            type: string
+            enum: [Timestamp, NextFormId, Author, Description]
+        allowedWarnings:
+          type: array
+          items:
+            type: string
+        structuralExpectations:
+          $ref: '#/components/schemas/StructuralExpectation'
+    StructuralExpectation:
+      type: object
+      properties:
+        weaponCount:
+          $ref: '#/components/schemas/Range'
+        ammoCount:
+          $ref: '#/components/schemas/Range'
+        cobjCount:
+          $ref: '#/components/schemas/Range'
+        customChecks:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomCheck'
+    CustomCheck:
+      type: object
+      properties:
+        description:
+          type: string
+        targetFormKey:
+          type: string
+        expectedValue:
+          type: string
+    Range:
+      type: object
+      required: [min, max]
+      properties:
+        min:
+          type: integer
+        max:
+          type: integer
+    ScenarioRunArtifact:
+      type: object
+      required: [runId, scenarioId, generatedEspPath, validationResult]
+      properties:
+        runId:
+          type: string
+        scenarioId:
+          type: string
+        executionTimestampUtc:
+          type: string
+          format: date-time
+        durationSeconds:
+          type: number
+          format: float
+        generatedEspPath:
+          type: string
+        tempDataPath:
+          type: string
+        tempOutputPath:
+          type: string
+        diagnostics:
+          type: array
+          items:
+            type: string
+        validationResult:
+          $ref: '#/components/schemas/ValidationResult'
+    ValidationResult:
+      type: object
+      properties:
+        isValid:
+          type: boolean
+        recordCount:
+          type: integer
+        cobjCount:
+          type: integer
+        ammoCount:
+          type: integer
+        weaponCount:
+          type: integer
+        hasValidHeader:
+          type: boolean
+        fileSizeBytes:
+          type: integer
+          format: int64
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+    RunOptions:
+      type: object
+      properties:
+        publishArtifacts:
+          type: boolean
+          default: true
+        overrideOutputPath:
+          type: string
+        timeoutSeconds:
+          type: integer
+          description: Optional scenario execution timeout; triggers CancellationToken if exceeded.

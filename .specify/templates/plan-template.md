@@ -31,12 +31,10 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
-
-Note: If research or design requires inspecting Mutagen internals (APIs, generated code,
-or schema files), the investigator MUST use the project's GitHub MCP server integration to
-query the `Mutagen-Modding/Mutagen` repositories for authoritative implementation details
-before drafting implementation code or relying on undocumented APIs.
+- 本プロジェクトの憲章: `.specify/memory/constitution.md`（Munition AutoPatcher vC — Constitution）に準拠すること。
+- Mutagen 関連の設計/実装タスクでは、IMutagenAccessor/Detector/Strategy 境界を尊重すること。
+- AI 支援を使う場合は「12. AI-Assisted 開発」セクションの Stage/Guardrail を満たすこと。
+- Mutagen の API/レコード定義を調査する場合、AI は GitHub MCP サーバ `mcp_mutagen-rag_search_repository` を使用して `Mutagen-Modding/Mutagen` リポジトリからソース/スキーマを参照した上で提案していることを確認すること。
 
 ## Project Structure
 

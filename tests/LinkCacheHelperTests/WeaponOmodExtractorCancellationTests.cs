@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -29,7 +30,8 @@ namespace LinkCacheHelperTests
                 new DummyMutagenAccessor(),
                 new DummyPathService(),
                 NullLogger<WeaponOmodExtractor>.Instance,
-                NullLoggerFactory.Instance
+                NullLoggerFactory.Instance,
+                new DummyAmmunitionChangeDetector()
             );
 
             using var cts = new CancellationTokenSource();
@@ -124,7 +126,7 @@ namespace LinkCacheHelperTests
             public IEnumerable<object> GetWinningWeaponOverrides(IResourcedMutagenEnvironment env) => Array.Empty<object>();
             public bool TryGetPluginAndIdFromRecord(object record, out string pluginName, out uint formId) { pluginName = string.Empty; formId = 0; return false; }
             public string GetEditorId(object? record) => string.Empty;
-            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, out T? record) where T : class, IMajorRecordGetter { record = null; return false; }
+            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, [NotNullWhen(true)] out T? record) where T : class, IMajorRecordGetter { record = null; return false; }
             public Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, CancellationToken ct) where T : class, IMajorRecordGetter => Task.FromResult<(bool, T?)>((false, null));
         }
 
@@ -133,6 +135,17 @@ namespace LinkCacheHelperTests
             public string GetArtifactsDirectory() => string.Empty;
             public string GetRepoRoot() => string.Empty;
             public string GetOutputDirectory() => string.Empty;
+        }
+
+        private sealed class DummyAmmunitionChangeDetector : IAmmunitionChangeDetector
+        {
+            public string Name => "Dummy";
+
+            public bool DoesOmodChangeAmmo(object omod, object? originalAmmoLink, out object? newAmmoLink)
+            {
+                newAmmoLink = null;
+                return false;
+            }
         }
     }
 }

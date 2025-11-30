@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -75,7 +76,7 @@ namespace WeaponDataExtractorTestsProject
                 return false;
             }
             public string GetEditorId(object? record) => string.Empty;
-            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, out T? record) where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter { record = null; return false; }
+            public bool TryResolveRecord<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, [NotNullWhen(true)] out T? record) where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter { record = null; return false; }
             public Task<(bool Success, T? Record)> TryResolveRecordAsync<T>(IResourcedMutagenEnvironment env, MunitionAutoPatcher.Models.FormKey formKey, CancellationToken ct) where T : class, Mutagen.Bethesda.Plugins.Records.IMajorRecordGetter => Task.FromResult<(bool, T?)>((false, null));
         }
 

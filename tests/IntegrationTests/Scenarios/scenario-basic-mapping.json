@@ -1,0 +1,37 @@
+{
+  "id": "scenario-basic-mapping",
+  "displayName": "Basic Weapon-Ammo Mapping",
+  "description": "Tests basic weapon to ammo mapping functionality with a single weapon and ammo pair",
+  "pluginSeeds": [
+    {
+      "name": "TestMod.esp",
+      "builderActionName": "CreateBasicWeaponAmmoScenario",
+      "ownsEnvironment": true
+    }
+  ],
+  "expectedEspName": "TestMod_Munition.esp",
+  "validationProfile": {
+    "profileId": "basic-validation",
+    "ignoreHeaderFields": ["timestamp", "nextFormId"],
+    "structuralExpectations": {
+      "weaponCount": "atleast:1",
+      "ammoCount": "atleast:1"
+    }
+  },
+  "scenarioAssertions": [
+    {
+      "target": "WeaponCount",
+      "expectedValue": ">=1",
+      "description": "At least one weapon should be present in output"
+    },
+    {
+      "target": "AmmoMappingExists",
+      "expectedValue": "true",
+      "description": "Weapon should have ammo mapping"
+    }
+  ],
+  "configOverrides": {
+    "EnableDiagnostics": "true"
+  },
+  "timeoutSeconds": 30
+}

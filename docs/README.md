@@ -16,6 +16,47 @@
 |---------|------|
 | [spaces-mcp-recommendation.md](spaces-mcp-recommendation.md) | Copilot Spaces + MCP サーバー連携の推奨設定と運用ガイドライン |
 
+## テスト / Testing
+
+### E2E Integration Test Harness
+
+プロジェクトには ViewModel 駆動の E2E テストハーネスが含まれています：
+
+| 場所 | 説明 |
+|------|------|
+| [tests/IntegrationTests/](../tests/IntegrationTests/) | E2E テストプロジェクト |
+| [tests/IntegrationTests/Infrastructure/](../tests/IntegrationTests/Infrastructure/) | テストハーネスインフラ |
+| [tests/IntegrationTests/Scenarios/](../tests/IntegrationTests/Scenarios/) | JSON シナリオマニフェスト |
+| [tests/IntegrationTests/Baselines/](../tests/IntegrationTests/Baselines/) | ベースラインアーティファクト |
+
+### E2E テストの実行
+
+```powershell
+# 全テスト実行
+./run-integration-tests.ps1
+
+# ViewModelE2E テストのみ実行
+./run-integration-tests.ps1 -Suite ViewModelE2E
+
+# アーティファクト出力先を指定
+./run-integration-tests.ps1 -Suite ViewModelE2E -ArtifactPath ./my-artifacts
+```
+
+```bash
+# Linux/macOS
+./run-integration-tests.sh --suite ViewModelE2E
+```
+
+### シナリオの追加
+
+新しいテストシナリオを追加するには：
+
+1. `tests/IntegrationTests/Scenarios/` に JSON マニフェストを作成
+2. `TestDataFactoryScenarioExtensions.cs` に必要な builder action を登録
+3. テストを実行して自動的にシナリオが検出・実行されることを確認
+
+詳細は [tests/IntegrationTests/Infrastructure/README.md](../tests/IntegrationTests/Infrastructure/README.md) を参照。
+
 ## 関連ドキュメント（ルートディレクトリ）
 
 プロジェクトの主要ドキュメントはリポジトリのルートに配置されています：

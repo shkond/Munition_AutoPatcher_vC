@@ -1,0 +1,33 @@
+{
+  "id": "scenario-multi-omod",
+  "displayName": "Multiple OMOD Attachments",
+  "description": "Tests weapons with multiple object modifications attached",
+  "pluginSeeds": [
+    {
+      "name": "OmodMod.esp",
+      "builderActionName": "CreateWeaponWithMultipleOmods",
+      "ownsEnvironment": true
+    }
+  ],
+  "expectedEspName": "OmodMod_Munition.esp",
+  "validationProfile": {
+    "profileId": "omod-validation",
+    "ignoreHeaderFields": ["timestamp", "nextFormId"],
+    "structuralExpectations": {
+      "weaponCount": "exact:1"
+    }
+  },
+  "scenarioAssertions": [
+    {
+      "target": "OmodCount",
+      "expectedValue": ">=3",
+      "description": "Weapon should have at least 3 OMODs"
+    },
+    {
+      "target": "AllOmodsProcessed",
+      "expectedValue": "true",
+      "description": "All OMODs should be processed without errors"
+    }
+  ],
+  "timeoutSeconds": 45
+}

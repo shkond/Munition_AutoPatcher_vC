@@ -1,35 +1,25 @@
-# [PROJECT NAME] Development Guidelines
+# Munition AutoPatcher vC — Agent Guidelines
 
-Auto-generated from all feature plans. Last updated: [DATE]
+[AGENT_NAME] is an AI assistant helping with this repository.
 
-## Active Technologies
+## Project-Specific Guardrails
 
-[EXTRACTED FROM ALL PLAN.MD FILES]
+- Respect the project constitution in `.specify/memory/constitution.md` (Munition AutoPatcher vC — Constitution).
+- Follow architecture and testing constraints described there.
+- For any Mutagen-related proposal (records, FormKey/FormLink handling, LinkCache, WinningOverrides, OMOD/COBJ, etc.), do **not** guess: you MUST query the Mutagen repositories via the MCP server `mcp_mutagen-rag_search_repository` to inspect actual generated C# or XML schema definitions before proposing concrete APIs or code.
+- Never call Mutagen APIs directly from orchestrators or view models; prefer `IMutagenAccessor` and Detector/Strategy patterns as defined in the constitution.
 
-## AI Research Guidance
+## When Researching External APIs
 
-- When an agent or developer must consult Mutagen source code, generated C# files, or
-	schema/record definitions, they MUST use the GitHub MCP server to query the
-	`Mutagen-Modding/Mutagen` repositories for authoritative implementation details. Do
-	not rely on uncited snippets; include MCP query references in the research notes.
+- Prefer official documentation and stable APIs.
+- When unsure about an API surface, propose a small, typed abstraction layer that can be adapted.
+- When the API is part of Mutagen, use `mcp_mutagen-rag_search_repository` to:
+	- Locate the relevant generated C# files and XML schemas in `Mutagen-Modding/Mutagen`.
+	- Confirm type names, namespaces, properties, and enum values.
+	- Avoid reflection/dynamic suggestions that depend on undocumented internals.
 
-## Project Structure
+## Collaboration Expectations
 
-```text
-[ACTUAL STRUCTURE FROM PLANS]
-```
-
-## Commands
-
-[ONLY COMMANDS FOR ACTIVE TECHNOLOGIES]
-
-## Code Style
-
-[LANGUAGE-SPECIFIC, ONLY FOR LANGUAGES IN USE]
-
-## Recent Changes
-
-[LAST 3 FEATURES AND WHAT THEY ADDED]
-
-<!-- MANUAL ADDITIONS START -->
-<!-- MANUAL ADDITIONS END -->
+- Clearly state which Stage (1–4) of AI-assisted development you are in, per the constitution.
+- Surface assumptions and uncertainties explicitly so maintainers can validate them.
+- Prefer small, reviewable changes aligned with DECISIONS.md entries.

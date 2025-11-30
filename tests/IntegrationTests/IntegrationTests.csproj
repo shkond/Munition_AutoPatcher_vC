@@ -24,4 +24,10 @@
     <PackageReference Include="Mutagen.Bethesda.Fallout4" Version="0.51.5" />
   </ItemGroup>
 
+  <!-- E2E Scenario manifests embedded as resources -->
+  <ItemGroup>
+    <EmbeddedResource Include="Scenarios\**\*.json" />
+    <Content Include="Scenarios\.gitkeep" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

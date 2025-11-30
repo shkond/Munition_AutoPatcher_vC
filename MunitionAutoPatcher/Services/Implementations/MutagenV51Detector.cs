@@ -4,7 +4,6 @@ using MunitionAutoPatcher.Utilities;
 using Mutagen.Bethesda.Fallout4;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Records;
-using System.Reflection;
 
 namespace MunitionAutoPatcher.Services.Implementations;
 
@@ -25,17 +24,20 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
     private readonly ILogger<MutagenV51Detector> _logger;
     private readonly IMutagenAccessor _accessor;
     private readonly IResourcedMutagenEnvironment _env;
+    private readonly IOmodPropertyAdapter _propertyAdapter;
 
     public MutagenV51Detector(
         ILogger<MutagenV51Detector> logger,
         ILoggerFactory loggerFactory,
         IMutagenAccessor accessor,
-        IResourcedMutagenEnvironment env)
+        IResourcedMutagenEnvironment env,
+        IOmodPropertyAdapter propertyAdapter)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         if (loggerFactory == null) throw new ArgumentNullException(nameof(loggerFactory));
         _accessor = accessor ?? throw new ArgumentNullException(nameof(accessor));
         _env = env ?? throw new ArgumentNullException(nameof(env));
+        _propertyAdapter = propertyAdapter ?? throw new ArgumentNullException(nameof(propertyAdapter));
         _fallback = new ReflectionFallbackDetector(loggerFactory.CreateLogger<ReflectionFallbackDetector>());
     }
 
@@ -49,25 +51,28 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
         IAmmunitionGetter? originalAmmo,
         out IAmmunitionGetter? newAmmo)
     {
+        ArgumentNullException.ThrowIfNull(weaponMod);
+
         newAmmo = null;
-        if (weaponMod?.Properties == null || weaponMod.Properties.Count == 0)
+        var properties = weaponMod.Properties;
+        if (properties == null || properties.Count == 0)
             return false;
 
         try
         {
-            foreach (var prop in weaponMod.Properties)
+            foreach (var prop in properties)
             {
                 // ✓ 型安全な enum 判定: Weapon.Property.Ammo のみ処理
                 if (prop.Property != Weapon.Property.Ammo)
                     continue;
 
                 // FormKey を取得（2段階アプローチ）
-                if (!TryGetFormKeyFromProperty(weaponMod, prop, out var ammoFormKey))
+                if (!_propertyAdapter.TryExtractFormKeyFromAmmoProperty(prop, weaponMod, out var ammoFormKey))
                     continue;
 
                 // LinkCache 経由で IAmmunitionGetter を解決
                 var appFormKey = Models.FormKey.FromMutagenFormKey(ammoFormKey);
-                if (!_accessor.TryResolveRecord<IAmmunitionGetter>(_env, appFormKey, out var ammo))
+                if (!_accessor.TryResolveRecord<IAmmunitionGetter>(_env, appFormKey, out var ammo) || ammo == null)
                 {
                     _logger.LogDebug(
                         "MutagenV51Detector: Failed to resolve ammo FormKey {FormKey} for weapon OMOD {EditorId}",
@@ -154,55 +159,22 @@ public class MutagenV51Detector : ITypedAmmunitionChangeDetector
         }
     }
 
-    /// <summary>
-    /// AObjectModProperty から FormKey を取得
-    /// </summary>
-    /// <remarks>
-    /// ValueType が FormIDInt の場合、Value1 から生 FormID を抽出します。
-    /// OMOD の ModKey と組み合わせて完全な FormKey を構築します。
-    /// </remarks>
-    private bool TryGetFormKeyFromProperty(
-        IWeaponModificationGetter weaponMod,
-        IAObjectModPropertyGetter<Weapon.Property> prop,
-        out FormKey formKey)
+    private bool TryDetectAmmoChangeTyped(
+        IAObjectModificationGetter omod,
+        object? originalAmmoLink,
+        out object? newAmmoLink)
     {
-        formKey = default;
+        newAmmoLink = null;
 
-        // Value1 から生 FormID を抽出（リフレクション最小限）
-        try
-        {
-            var propType = prop.GetType();
-            var valueTypeProp = propType.GetProperty("ValueType");
-            var value1Prop = propType.GetProperty("Value1");
-
-            if (valueTypeProp == null || value1Prop == null)
-                return false;
-
-            var valueType = valueTypeProp.GetValue(prop);
-            if (valueType?.ToString() != "FormIDInt")
-                return false;
-
-            var value1 = value1Prop.GetValue(prop);
-            if (value1 is not float floatValue)
-                return false;
-
-            var rawId = (uint)floatValue;
-            if (rawId == 0)
-                return false;
-
-            // OMOD の ModKey と組み合わせて FormKey を構築
-            var modKey = weaponMod.FormKey.ModKey;
-            if (modKey.IsNull)
-                return false;
-
-            formKey = new FormKey(modKey, rawId);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "MutagenV51Detector: failed to extract FormID from Value1 for weapon OMOD {EditorId}",
-                weaponMod.EditorID ?? "(unknown)");
+        if (omod is not IWeaponModificationGetter weaponMod)
             return false;
-        }
+
+        var originalAmmo = originalAmmoLink as IAmmunitionGetter;
+        if (!DoesOmodChangeAmmo(weaponMod, originalAmmo, out var newAmmoTyped))
+            return false;
+
+        newAmmoLink = newAmmoTyped;
+        return true;
     }
+
 }

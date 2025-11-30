@@ -176,6 +176,76 @@
 
 ---
 
+### ADR-007: E2E テストハーネス — ViewModel 駆動アーキテクチャ
+
+- **Date**: 2025-01-XX
+- **Status**: Accepted
+- **Related-PR**: #XXX
+- **Context**:
+  - 手動統合テストに依存していたため、リグレッション検出が困難で、CI における自動検証ができなかった。
+  - WPF シェルを使用せずに MapperViewModel の動作を検証し、生成された ESP ファイルを自動的に検証する必要があった。
+  - シナリオの追加が容易で、コード変更なしにカバレッジを拡大できる宣言的なアプローチが求められた。
+- **Decision**:
+  - **ViewModelHarness パターン**:
+    - `ViewModelHarness` が `TestEnvironmentBuilder` を使用して Mutagen 環境を構築
+    - `TestServiceProvider` が `App.xaml.cs` の DI 登録をミラーリングし、テスト安全な実装に置き換え
+    - `AsyncTestHarness` が CancellationToken とタイムアウト強制を管理
+  - **ScenarioCatalog による宣言的シナリオ**:
+    - シナリオは `tests/IntegrationTests/Scenarios/*.json` に JSON マニフェストとして定義
+    - `ScenarioCatalog` がマニフェストをロードし、`E2EScenarioDefinition` にマテリアライズ
+    - Builder アクションは `TestDataFactoryScenarioExtensions` で登録し、シナリオから名前で参照可能
+  - **ESP バリデーション**:
+    - `EspFileValidator` が Mutagen オーバーレイを使用して構造的な期待値（weapon/ammo/cobj カウント）を検証
+    - `ESPValidationProfile` がヘッダーフィールドの無視ルールと許容される警告を定義
+  - **アーティファクト管理**:
+    - `ScenarioArtifactPublisher` が ESP、診断情報、メタデータを CI アクセス可能な場所に公開
+    - `BaselineDiff` が生成されたアーティファクトをベースラインと比較し、回帰を検出
+- **Alternatives**:
+  - **Selenium/UI オートメーション**: WPF シェル起動のオーバーヘッドが大きく、テストが脆弱になるため却下。
+  - **サービス層のみのテスト**: ViewModel 統合の問題を検出できないため、不十分と判断。
+  - **コード内シナリオ定義**: シナリオ追加ごとにコード変更が必要になるため、宣言的 JSON アプローチを採用。
+- **Consequences**:
+  - **メリット**:
+    - ESP 生成の CI 強制により、リグレッションを早期に検出可能。
+    - JSON マニフェストによりシナリオ追加が容易。
+    - `TestServiceProvider` により ViewModel ロジックをモック可能な依存関係でテスト可能。
+    - アーティファクト公開により CI での診断が改善。
+  - **デメリット**:
+    - テストインフラの初期実装コストが増加。
+    - シナリオカタログとシリアライザの保守が必要。
+    - ベースラインのドリフトには承認ワークフローが必要。
+
+---
+
+### ADR-008: E2E テストの DTO 署名とキャンセル戦略
+
+- **Date**: 2025-01-XX
+- **Status**: Accepted
+- **Related-PR**: #XXX
+- **Context**:
+  - E2E テストハーネスには、シナリオ定義とテスト実行アーティファクトに対する安定した DTO 契約が必要。
+  - 長時間実行されるテストには適切なキャンセルとタイムアウト処理が必要。
+- **Decision**:
+  - **コア DTO**:
+    - `E2EScenarioDefinition`: シナリオ ID、表示名、プラグインシード、検証プロファイル、アサーション
+    - `PluginSeed`: プラグイン名、ビルダーアクション参照、環境所有権フラグ
+    - `ESPValidationProfile`: プロファイル ID、無視するヘッダーフィールド、構造的期待値
+    - `ScenarioRunArtifact`: 実行状態、期間、パス、診断バンドル、検証結果
+  - **キャンセル戦略**:
+    - `AsyncTestHarness` がテストスコープの `CancellationTokenSource` を管理
+    - シナリオごとの `TimeoutSeconds`（デフォルト 120 秒）でタイムアウトを強制
+    - キャンセル時のグレースフルシャットダウン（リソースのクリーンアップ後に状態を報告）
+  - **シリアライゼーション**:
+    - `ScenarioManifestSerializer` が `System.Text.Json` でシナリオ JSON を読み書き
+    - `CountRangeJsonConverter` がショートハンド形式（`"exact:5"`, `"atleast:3"`）をサポート
+    - スキーマ違反に対する厳格なバリデーションエラー
+- **Consequences**:
+  - DTO 契約により、テストコードとシナリオマニフェスト間の型安全性を保証。
+  - タイムアウト強制により、テストが無限に実行されることを防止。
+  - JSON シリアライゼーションによりシナリオの手動編集と CI 統合が容易に。
+
+---
+
 ## 今後の追記方針
 
 - ここに挙げた ADR は暫定サマリです。今後、具体的な PR やリファクタリングのタイミングで、

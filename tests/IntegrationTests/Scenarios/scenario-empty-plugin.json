@@ -1,0 +1,38 @@
+{
+  "id": "scenario-empty-plugin",
+  "displayName": "Empty Plugin Edge Case",
+  "description": "Tests behavior when processing a plugin with no weapon or ammo records",
+  "pluginSeeds": [
+    {
+      "name": "EmptyMod.esp",
+      "builderActionName": "CreateEmptyPlugin",
+      "ownsEnvironment": true
+    }
+  ],
+  "expectedEspName": "EmptyMod_Munition.esp",
+  "validationProfile": {
+    "profileId": "edge-case-validation",
+    "ignoreHeaderFields": ["timestamp", "nextFormId"],
+    "allowedWarnings": [
+      "No weapons found",
+      "No ammo found"
+    ],
+    "structuralExpectations": {
+      "weaponCount": "exact:0",
+      "ammoCount": "exact:0"
+    }
+  },
+  "scenarioAssertions": [
+    {
+      "target": "GracefulHandling",
+      "expectedValue": "true",
+      "description": "Empty plugin should be handled gracefully without errors"
+    },
+    {
+      "target": "NoOutputGenerated",
+      "expectedValue": "true",
+      "description": "No output ESP should be generated for empty input"
+    }
+  ],
+  "timeoutSeconds": 15
+}

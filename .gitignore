@@ -36,6 +36,10 @@ coverage/
 *.coverage
 *.coveragexml
 
+## E2E Test outputs (generated ESPs and diagnostics)
+tests/IntegrationTests/TestResults/
+**/MunitionAutoPatcher_E2E_Tests/
+
 ## Generated artifacts (project-specific)
 /artifacts/
 /artifacts/**/*.ini
