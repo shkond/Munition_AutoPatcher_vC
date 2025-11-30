@@ -29,7 +29,8 @@ namespace LinkCacheHelperTests
                 new DummyMutagenAccessor(),
                 new DummyPathService(),
                 NullLogger<WeaponOmodExtractor>.Instance,
-                NullLoggerFactory.Instance
+                NullLoggerFactory.Instance,
+                new DummyAmmunitionChangeDetector()
             );
 
             using var cts = new CancellationTokenSource();
@@ -133,6 +134,17 @@ namespace LinkCacheHelperTests
             public string GetArtifactsDirectory() => string.Empty;
             public string GetRepoRoot() => string.Empty;
             public string GetOutputDirectory() => string.Empty;
+        }
+
+        private sealed class DummyAmmunitionChangeDetector : IAmmunitionChangeDetector
+        {
+            public string Name => "Dummy";
+
+            public bool DoesOmodChangeAmmo(object omod, object? originalAmmoLink, out object? newAmmoLink)
+            {
+                newAmmoLink = null;
+                return false;
+            }
         }
     }
 }

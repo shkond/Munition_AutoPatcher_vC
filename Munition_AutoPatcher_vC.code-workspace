@@ -9,6 +9,7 @@
 		"mcp": {
 			"inputs": [],
 			"servers": {}
-		}
+		},
+		"chat.agent.maxRequests": 100
 	}
 }

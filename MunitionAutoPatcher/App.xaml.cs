@@ -82,6 +82,7 @@ public partial class App : Application
                 return factory.Create();
             });
 
+            services.AddSingleton<IOmodPropertyAdapter, MutagenV51OmodPropertyAdapter>();
             // Register IAmmunitionChangeDetector as MutagenV51Detector (Mutagen v0.51 固定)
             services.AddSingleton<IAmmunitionChangeDetector, MutagenV51Detector>();
 
